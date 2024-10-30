@@ -1,0 +1,728 @@
+import json
+from math import floor
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram import types
+from aiohttp import ClientSession
+from tortoise import timezone
+from loguru import logger
+from app import dependencies
+from app.db import models
+from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER
+from app.services.payments.anypay import AnypayAPI
+from app.services.payments.ckassa import get_ckassa_payments
+from app.services.payments.freekassa import Freekassa
+from app.services.payments.lava import LavaApi
+from app.services.payments.streampay import get_payment_status_streampay
+from app.services.sms_receive import SmsReceive
+from app.services.temp_mail import TempMail
+from app.services import bot_texts as bt
+import pytz
+import datetime
+
+from app.services.payments.yoomoney import check_payment_status
+
+
+async def check_payment_lava():
+    """
+    Проверяет статус платежей, выполненных через LavaApi, и обновляет соответствующие записи в базе данных.
+
+    Эта функция:
+    1. Получает список платежей, ожидающих проверки, из базы данных.
+    2. Для каждого платежа запрашивает статус инвойса через LavaApi.
+    3. Если платеж успешен:
+       - Обновляет статус платежа в базе данных.
+       - Увеличивает баланс пользователя на сумму платежа (с бонусом, если применимо).
+       - Начисляет реферальный бонус, если есть привязанный реферал.
+       - Отправляет пользователю сообщение об успешной оплате с возможностью продолжения операции.
+    4. Логирует и обрабатывает исключения, возникающие в процессе выполнения.
+
+    Исключения обрабатываются и записываются в лог, чтобы не прерывать выполнение функции при возникновении ошибки.
+
+    """
+
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_lava_payments()
+
+    # Проходим по каждому платежу в списке.
+    for payment in payments:
+        # Инициализируем объект LavaApi для взаимодействия с платежной системой.
+        lava = LavaApi()
+        try:
+            # Запрашиваем статус инвойса по order_id и invoice_id.
+            response = await lava.get_invoice_status(payment.order_id, payment.invoice_id)
+
+            # Проверяем успешность запроса к API.
+            if response['status'] == 200:
+                invoice = response['data']
+
+                # Если статус инвойса "success", обрабатываем успешный платеж.
+                if invoice['status'] == 'success':
+                    # Отмечаем платеж как успешный в базе данных.
+                    payment.is_success = True
+                    await payment.save()
+
+                    # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                    if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                        # Если бонус активен, увеличиваем сумму платежа на 10%.
+                        amount = floor(payment.amount * 1.1)
+                        # Сбрасываем срок действия бонуса.
+                        payment.user.bonus_end_at = None
+                    else:
+                        # Если бонус не активен, сумма остается без изменений.
+                        amount = payment.amount
+
+                    # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                    payment.user.balance += amount
+                    msg_text = (f'Пополнение Lava\n'
+                                f'mention {payment.user.mention} '
+                                f'сумма {payment.amount}')
+                    await send_coder(msg_text)
+                    await bot.send_message(chat_id=payment.user.telegram_id,
+                                           text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                    await payment.user.save()
+
+                    # Если у пользователя есть реферал, начисляем реферальный бонус.
+                    if payment.user.refer_id:
+                        refer = await models.User.get_or_none(id=payment.user.refer_id)
+                        if refer:
+                            # Рассчитываем реферальный бонус как процент от суммы платежа.
+                            ref_bonus = int(dependencies.REF_BONUS) / 100
+                            ref_sum = round(payment.amount * ref_bonus, 1)
+                            refer.ref_balance += ref_sum
+                            refer.total_ref_earnings += ref_sum
+                            await refer.save()
+
+                    try:
+                        # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                        builder = InlineKeyboardBuilder()
+                        if payment.continue_data:
+                            builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                        # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                        await bot.send_message(
+                            chat_id=payment.user.telegram_id,
+                            text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                            reply_markup=builder.as_markup()
+                        )
+                    except:
+                        # Игнорируем ошибки, возникающие при отправке сообщения пользователю.
+                        pass
+        except Exception as e:
+            # Логируем любые исключения, возникшие в процессе обработки платежа.
+            pass
+
+
+async def check_payment_freekassa():
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_freekassa_payments()
+
+    # Текущее время и время 5 часов назад
+    tz = pytz.timezone('Europe/Moscow')  # Пример для временной зоны Москвы
+    now = datetime.datetime.now(tz)
+    five_hours_ago = now - datetime.timedelta(hours=1)
+
+    fk = Freekassa(shop_id=FK_SHOP_ID, api_key=FK_FK_API_KEY)
+    # Получаем список оплаченных заказов (со статусом 1) за последние hours часов
+    try:
+        orders = fk.get_orders(order_status=1, date_from=five_hours_ago)
+        merchant_order_ids = [order['merchant_order_id'] for order in orders['orders']]
+    except Exception as e:
+        merchant_order_ids = []
+        pass
+
+    if merchant_order_ids:
+        for payment in payments:
+            try:
+                if str(payment.id) in merchant_order_ids:
+                    # Отмечаем платеж как успешный в базе данных.
+                    payment.is_success = True
+                    await payment.save()
+
+                    # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                    if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                        # Если бонус активен, увеличиваем сумму платежа на 10%.
+                        amount = floor(payment.amount * 1.1)
+                        # Сбрасываем срок действия бонуса.
+                        payment.user.bonus_end_at = None
+                    else:
+                        # Если бонус не активен, сумма остается без изменений.
+                        amount = payment.amount
+
+                    # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                    payment.user.balance += amount
+                    msg_text = (f'Пополнение freekassa\n'
+                                f'mention {payment.user.mention} '
+                                f'сумма {payment.amount}')
+                    await send_coder(msg_text)
+                    await bot.send_message(chat_id=payment.user.telegram_id,
+                                           text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                    await payment.user.save()
+
+                    # Если у пользователя есть реферал, начисляем реферальный бонус.
+                    if payment.user.refer_id:
+                        refer = await models.User.get_or_none(id=payment.user.refer_id)
+                        if refer:
+                            # Рассчитываем реферальный бонус как процент от суммы платежа.
+                            ref_bonus = int(dependencies.REF_BONUS) / 100
+                            ref_sum = round(payment.amount * ref_bonus, 1)
+                            refer.ref_balance += ref_sum
+                            refer.total_ref_earnings += ref_sum
+                            await refer.save()
+
+                        # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                        builder = InlineKeyboardBuilder()
+                        if payment.continue_data:
+                            builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                        # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                        await bot.send_message(
+                            chat_id=payment.user.telegram_id,
+                            text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                            reply_markup=builder.as_markup()
+                        )
+
+            except Exception as e:
+                # Логируем любые исключения, возникшие в процессе обработки платежа.
+                logger.warning(e)
+                msg_text = (f'❌freekassa \n'
+                            f'id {payment.id}\n'
+                            f'user_id {payment.user.telegram_id}\n'
+                            f'mention {payment.user.mention}\n'
+                            f'сумма {payment.amount}')
+                await send_coder(msg_text)
+
+
+async def check_payment_yoomoney():
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_yoomoney_payments()
+
+    for payment in payments:
+        try:
+            # Получаем список оплаченных заказов
+            if await check_payment_status(payment.id):
+                # Отмечаем платеж как успешный в базе данных.
+                payment.is_success = True
+                await payment.save()
+
+                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    # Если бонус активен, увеличиваем сумму платежа на 10%.
+                    amount = floor(payment.amount * 1.1)
+                    # Сбрасываем срок действия бонуса.
+                    payment.user.bonus_end_at = None
+                else:
+                    # Если бонус не активен, сумма остается без изменений.
+                    amount = payment.amount
+
+                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                payment.user.balance += amount
+                msg_text = (f'Пополнение yoomoney\n'
+                            f'mention {payment.user.mention} '
+                            f'сумма {payment.amount}')
+                await send_coder(msg_text)
+                await payment.user.save()
+                await bot.send_message(chat_id=payment.user.telegram_id,
+                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+
+                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                if payment.user.refer_id:
+                    refer = await models.User.get_or_none(id=payment.user.refer_id)
+                    if refer:
+                        # Рассчитываем реферальный бонус как процент от суммы платежа.
+                        ref_bonus = int(dependencies.REF_BONUS) / 100
+                        ref_sum = round(payment.amount * ref_bonus, 1)
+                        refer.ref_balance += ref_sum
+                        refer.total_ref_earnings += ref_sum
+                        await refer.save()
+
+                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                    builder = InlineKeyboardBuilder()
+                    if payment.continue_data:
+                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    await bot.send_message(
+                        chat_id=payment.user.telegram_id,
+                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        reply_markup=builder.as_markup()
+                    )
+
+        except Exception as e:
+            # Логируем любые исключения, возникшие в процессе обработки платежа.
+            logger.warning(e)
+            msg_text = (f'❌yoomoney \n'
+                        f'user_id {payment.user.telegram_id}\n'
+                        f'mention {payment.user.mention}\n'
+                        f'сумма {payment.amount}')
+            await send_coder(msg_text)
+
+
+async def check_payment_anypay():
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_anypay_payments()
+    api = AnypayAPI()
+    for payment in payments:
+        try:
+            # Получаем список оплаченных заказов
+            if await api.check_payment(payment.id):
+                # Отмечаем платеж как успешный в базе данных.
+                payment.is_success = True
+                await payment.save()
+
+                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    # Если бонус активен, увеличиваем сумму платежа на 10%.
+                    amount = floor(payment.amount * 1.1)
+                    # Сбрасываем срок действия бонуса.
+                    payment.user.bonus_end_at = None
+                else:
+                    # Если бонус не активен, сумма остается без изменений.
+                    amount = payment.amount
+
+                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                payment.user.balance += amount
+                msg_text = (f'Пополнение AnyPay\n'
+                            f'mention {payment.user.mention} '
+                            f'сумма {payment.amount}')
+                await send_coder(msg_text)
+                await bot.send_message(chat_id=payment.user.telegram_id,
+                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                await payment.user.save()
+
+                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                if payment.user.refer_id:
+                    refer = await models.User.get_or_none(id=payment.user.refer_id)
+                    if refer:
+                        # Рассчитываем реферальный бонус как процент от суммы платежа.
+                        ref_bonus = int(dependencies.REF_BONUS) / 100
+                        ref_sum = round(payment.amount * ref_bonus, 1)
+                        refer.ref_balance += ref_sum
+                        refer.total_ref_earnings += ref_sum
+                        await refer.save()
+
+                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                    builder = InlineKeyboardBuilder()
+                    if payment.continue_data:
+                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    await bot.send_message(
+                        chat_id=payment.user.telegram_id,
+                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        reply_markup=builder.as_markup()
+                    )
+
+        except Exception as e:
+            # Логируем любые исключения, возникшие в процессе обработки платежа.
+            logger.warning(e)
+            msg_text = (f'❌'
+                        f'AnyPay \n'
+                        f'user_id {payment.user.telegram_id}\n'
+                        f'mention {payment.user.mention}\n'
+                        f'сумма {payment.amount}')
+            await send_coder(msg_text)
+
+
+async def check_payment_streampay():
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_streampay_payments()
+    for payment in payments:
+        try:
+            # Получаем оплаченные заказы
+            if await get_payment_status_streampay(payment.invoice_id) == 'success':
+                # Отмечаем платеж как успешный в базе данных.
+                payment.is_success = True
+                await payment.save()
+
+                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    # Если бонус активен, увеличиваем сумму платежа на 10%.
+                    amount = floor(payment.amount * 1.1)
+                    # Сбрасываем срок действия бонуса.
+                    payment.user.bonus_end_at = None
+                else:
+                    # Если бонус не активен, сумма остается без изменений.
+                    amount = payment.amount
+
+                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                payment.user.balance += amount
+                msg_text = (f'Пополнение streampay\n'
+                            f'mention {payment.user.mention} '
+                            f'сумма {payment.amount}')
+                await send_coder(msg_text)
+                await bot.send_message(chat_id=payment.user.telegram_id,
+                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                await payment.user.save()
+
+                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                if payment.user.refer_id:
+                    refer = await models.User.get_or_none(id=payment.user.refer_id)
+                    if refer:
+                        # Рассчитываем реферальный бонус как процент от суммы платежа.
+                        ref_bonus = int(dependencies.REF_BONUS) / 100
+                        ref_sum = round(payment.amount * ref_bonus, 1)
+                        refer.ref_balance += ref_sum
+                        refer.total_ref_earnings += ref_sum
+                        await refer.save()
+
+                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                    builder = InlineKeyboardBuilder()
+                    if payment.continue_data:
+                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    await bot.send_message(
+                        chat_id=payment.user.telegram_id,
+                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        reply_markup=builder.as_markup()
+                    )
+
+        except Exception as e:
+            # Логируем любые исключения, возникшие в процессе обработки платежа.
+            logger.warning(e)
+            msg_text = (f'❌'
+                        f'streampay \n'
+                        f'user_id {payment.user.telegram_id}\n'
+                        f'mention {payment.user.mention}\n'
+                        f'сумма {payment.amount}')
+            await send_coder(msg_text)
+
+
+async def check_payment_ckassa():
+    """
+    Асинхронная функция для проверки статуса платежей CKassa.
+    """
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_ckassa_payments()
+
+    for payment in payments:
+        try:
+            # Получаем статус платежа через CKassa
+            payment_data = await get_ckassa_payments(payment.invoice_id)
+
+            # Проверяем, успешен ли платеж
+            if payment_data and payment_data.get('state') == 'PAYED':
+                # Отмечаем платеж как успешный в базе данных.
+                payment.is_success = True
+                await payment.save()
+
+                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    # Если бонус активен, увеличиваем сумму платежа на 10%.
+                    amount = floor(payment.amount * 1.1)
+                    # Сбрасываем срок действия бонуса.
+                    payment.user.bonus_end_at = None
+                else:
+                    # Если бонус не активен, сумма остается без изменений.
+                    amount = payment.amount
+
+                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса).
+                payment.user.balance += amount
+                await payment.user.save()
+                msg_text = (f'Пополнение ckassa\n'
+                            f'mention {payment.user.mention} '
+                            f'сумма {payment.amount}')
+                await send_coder(msg_text)
+                # Отправляем сообщение пользователю об успешном пополнении баланса.
+                await bot.send_message(chat_id=payment.user.telegram_id,
+                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+
+                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                if payment.user.refer_id:
+                    refer = await models.User.get_or_none(id=payment.user.refer_id)
+                    if refer:
+                        # Рассчитываем реферальный бонус как процент от суммы платежа.
+                        ref_bonus = int(dependencies.REF_BONUS) / 100
+                        ref_sum = round(payment.amount * ref_bonus, 1)
+                        refer.ref_balance += ref_sum
+                        refer.total_ref_earnings += ref_sum
+                        await refer.save()
+
+                # Если есть данные для продолжения операции после успешной оплаты, отправляем клавиатуру.
+                builder = InlineKeyboardBuilder()
+                if payment.continue_data:
+                    builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    await bot.send_message(
+                        chat_id=payment.user.telegram_id,
+                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        reply_markup=builder.as_markup()
+                    )
+
+        except Exception as e:
+            # Логируем любые исключения.
+            logger.warning(e)
+            msg_text = (f'❌'
+                        f'CKassa \n'
+                        f'user_id {payment.user.telegram_id}\n'
+                        f'mention {payment.user.mention}\n'
+                        f'сумма {payment.amount}')
+            await send_coder(msg_text)
+
+
+
+async def check_sms():
+    try:
+        # Получаем все активные активации
+        activations = await models.Activation.get_active_activations()
+
+        # Создаем экземпляр класса для получения SMS
+        sms = SmsReceive()
+
+        # Обрабатываем каждую активную активацию
+        for activation in activations:
+            # Получаем статус активации по её идентификатору
+            status = str(await sms.get_activation_status(activation.activation_id))
+
+            # Проверяем, начинается ли статус с 'STATUS_OK'
+            if status.startswith(models.StatusResponse.STATUS_OK.name):
+                # Обновляем статус активации на 'STATUS_OK'
+                activation.status = models.StatusResponse.STATUS_OK
+                # смотрим какая смс в БД
+                current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
+                # Извлекаем текст SMS из статуса
+                sms_from_status = status.split(':')[1]
+                activation.sms_text = sms_from_status
+                # Устанавливаем время истечения активации на None (активация завершена)
+                # activation.activation_expire_at = None
+                # Сохраняем изменения в базе данных
+                await activation.save()
+                # Загружаем связанные данные пользователя и сервиса
+                await activation.fetch_related('user', 'service')
+
+                # Формируем текст сообщения для отправки пользователю если смс новая
+                if int(current_sms) != int(sms_from_status):
+                    msg_text = f"""
+        💬<b>Новое SMS</b> на номер: +{activation.phone_number}
+
+        Ваш код активации для <b>{activation.service.name}</b>:
+        <code>{activation.sms_text}</code>
+        """
+                    # Отправляем сообщение пользователю в Telegram
+                    await bot.send_message(
+                        chat_id=activation.user.telegram_id,
+                        text=msg_text
+                    )
+
+        # Получаем все истекшие активации
+        activations = await models.Activation.get_expired_activations()
+
+        # Обрабатываем каждую истекшую активацию
+        for activation in activations:
+            # Обновляем статус активации на 'STATUS_CANCEL'
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            # Сохраняем изменения в базе данных
+            await activation.save()
+
+            # Возвращаем стоимость активации пользователю
+            activation.user.balance += activation.cost
+            # Сохраняем изменения баланса пользователя в базе данных
+            await activation.user.save()
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(e)
+
+
+import asyncio
+from aiogram.exceptions import TelegramBadRequest
+
+
+async def check_email():
+    """
+    Функция проверяет электронные почты на наличие новых сообщений и уведомляет пользователей через Telegram.
+
+    1. Деактивирует просроченные почтовые ящики.
+    2. Проверяет активные почтовые ящики на наличие новых сообщений.
+    3. Сохраняет новые сообщения в базе данных и отправляет уведомления пользователям через Telegram.
+
+    Исключения:
+        TelegramBadRequest: В случае ошибки при отправке сообщения через Telegram API.
+    """
+    try:
+        # Получаем список просроченных почтовых ящиков
+        expired_emails = await models.Mail.get_expired_mails()
+
+        for mail in expired_emails:
+            # Деактивируем просроченные почтовые ящики
+            mail.is_active = False
+            await mail.save()
+            await asyncio.sleep(0)  # Позволяет другим задачам выполняться
+
+        # Получаем список активных почтовых ящиков и связанных с ними пользователей
+        mails = await models.Mail.filter(is_active=True).all().prefetch_related('user')
+
+        for mail in mails:
+            tm = TempMail()
+            login, domain = mail.email.split('@')
+
+            # Получаем идентификаторы новых сообщений
+            message_ids = await tm.get_message_ids(login, domain)
+
+            for message_id in message_ids:
+                # Если ящик бесплатный и сообщений больше 10, выходим из функции
+                if not mail.is_paid_mail and len(mail.old_messages_id) > 10:
+                    return
+
+                # Проверяем, было ли сообщение уже обработано
+                if message_id not in mail.old_messages_id:
+                    # Читаем новое сообщение
+                    message = await tm.read_message(login, domain, message_id)
+
+                    # Обновляем список старых сообщений и сохраняем изменения
+                    mail.old_messages_id.append(message_id)
+                    await mail.save()
+
+                    # Сохраняем новое сообщение в базе данных
+                    await models.Letter.add_letter(
+                        mail=mail,
+                        user=mail.user,
+                        text=message.text
+                    )
+
+                    # Формируем текст уведомления для пользователя
+                    msg_text = (
+                        f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
+                        f'<b>От кого:</b> {message.from_}\n<b>Тема:</b> {message.subject}\n\n'
+                        f'{message.text}'
+                    )
+
+                    try:
+                        # Пытаемся отправить уведомление пользователю через Telegram
+                        await bot.send_message(
+                            chat_id=mail.user.telegram_id,
+                            text=msg_text
+                        )
+                    except TelegramBadRequest as e:
+                        # Обрабатываем исключение, если возникает ошибка при отправке сообщения
+                        logger.warning(f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}")
+
+                await asyncio.sleep(0)  # Уступаем управление другим задачам
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        pass
+
+
+async def get_services_names():
+    try:
+        data = {
+            'act': 'getServicesList',
+            'csrf': ''
+        }
+        url = 'https://sms-activate.org/api/api.php'
+        async with ClientSession() as session:
+            async with session.post(url=url, data=data) as response:
+                data = json.loads(await response.text())
+
+        services_dict = {}
+        for service in data['data']:
+            services_dict[service['code']] = service['name'].replace('<small>+переадресация</small>', '')
+            await asyncio.sleep(0)
+
+        return services_dict
+    except Exception as e:
+        logger.error(e)
+
+
+async def update_countries_and_services():
+    sms = SmsReceive()
+    countries = await sms.get_countries()
+    countries_db_ids = await models.Country.get_country_id_list()
+    for country in countries:
+        await models.Country.get_or_create(country_id=country["id"], name=country["name"])
+        try:
+            countries_db_ids.remove(int(country["id"]))
+        except ValueError:
+            pass
+
+        await asyncio.sleep(0)
+
+    for country_id in countries_db_ids:
+        country = await models.Country.get_country_by_id(country_id)
+        await country.delete()
+
+    services = await sms.get_services()
+    services_dict = await get_services_names()
+    services_db_codes = await models.Service.get_codes_list()
+    for service in services:
+        service_obj = await models.Service.get_service(code=service["code"])
+        if service_obj is None:
+            await models.Service.add_service(
+                code=service["code"],
+                name=services_dict[service["code"]],
+                search_names=service["search_names"]
+            )
+        else:
+            service_obj.name = services_dict[service["code"]]
+            service_obj.search_names = service["search_names"]
+            await service_obj.save()
+
+        try:
+            services_db_codes.remove(service["code"])
+        except ValueError:
+            pass
+
+        await asyncio.sleep(0)
+
+    for service_code in services_db_codes:
+        service = await models.Service.get_service(code=service_code)
+        await service.delete()
+
+
+async def check_mail_expiration_and_notify():
+    """
+    Проверяет почтовые ящики, срок аренды которых истекает через 24 часа, и уведомляет пользователей.
+    """
+    # Определяем временную зону +3
+    tz = pytz.timezone('Europe/Moscow')
+
+    # Получаем текущее время в UTC и переводим в нужную временную зону
+    now = datetime.datetime.now(pytz.utc).astimezone(tz)
+    next_day = now + datetime.timedelta(days=1)
+
+    # Округляем до начала часа
+    now_rounded = now.replace(minute=0, second=0, microsecond=0)
+    next_day_rounded = next_day.replace(minute=0, second=0, microsecond=0)
+
+    # Получаем все ID почтовых ящиков, которые истекают ровно через 24 часа и еще не уведомлены
+    expiring_mail_ids = await models.Mail.filter(
+        expire_at__gte=now_rounded,
+        expire_at__lte=next_day_rounded,
+        is_active=True,
+        is_paid_mail=True,
+        notification_sent=False
+    ).values_list('id', flat=True)
+
+    # Проходим по каждому ID и получаем почту вместе с пользователем
+    for mail_id in expiring_mail_ids:
+        mail = await models.Mail.get(id=mail_id).prefetch_related('user')
+
+        inline_kb = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text='Продлить аренду', callback_data='rental')
+                ]
+            ]
+        )
+
+        try:
+
+            # Пытаемся отправить уведомление пользователю через Telegram с inline-кнопкой
+            await bot.send_message(
+                chat_id=mail.user.telegram_id,
+                text=f'У вас истекает срок аренды почтового ящика <b>{mail.email}</b>️\n'
+                     f'Чтобы продлить аренду нажмите кнопку⤵️',
+                reply_markup=inline_kb
+            )
+
+            # Обновляем флаг уведомления
+            mail.notification_sent = True
+            await mail.save()
+        except TelegramBadRequest as e:
+            # Обрабатываем исключение, если возникает ошибка при отправке сообщения
+            logger.warning(f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}")
+
+
+async def send_coder(msg_text):
+    if CODER:
+        await bot.send_message(chat_id=CODER, text=msg_text)

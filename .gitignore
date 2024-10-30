@@ -1,0 +1,41 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# Migration files
+migrations/
+
+# Pytest cache
+.pytest_cache/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Compiled files
+*.pyc
+*.pyo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Certificates and keys
+*.crt
+*.key
+
+# Environment and config files (if not to be shared)
+.env
+config.yaml
+
+# Other temporary files
+*.tmp
+*.swp

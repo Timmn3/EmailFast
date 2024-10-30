@@ -1,0 +1,17 @@
+[Unit]
+Description=Pay Server
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/tgbot
+VIRTUAL_ENV=/root/tgbot/venv
+Environment=PATH=$VIRTUAL_ENV/bin:$PATH
+ExecStart=/root/tgbot/venv/bin/python /root/tgbot/pay_server.py
+RestartSec=10
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

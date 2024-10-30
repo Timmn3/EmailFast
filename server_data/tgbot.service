@@ -1,0 +1,19 @@
+[Unit]
+Description=Telegram Bot
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/tgbot
+VIRTUAL_ENV=/root/tgbot/venv
+Environment=PATH=$VIRTUAL_ENV/bin:$PATH
+ExecStart=/root/tgbot/venv/bin/python /root/tgbot/main.py
+RestartSec=10
+Restart=always
+StandardOutput=append:/root/tgbot/tgbot.log
+StandardError=append:/root/tgbot/tgbot.log
+
+[Install]
+WantedBy=multi-user.target
