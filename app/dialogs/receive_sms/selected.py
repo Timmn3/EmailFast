@@ -3,7 +3,6 @@ import pytz
 import math
 import asyncio
 from loguru import logger
-import anyio
 from aiogram import types
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
@@ -11,7 +10,7 @@ from aiogram_dialog.widgets.kbd import Select, Button
 from tortoise import timezone
 from app.db import models
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
-from app.services.bot_texts import INTEREST, country_flags
+from app.services.bot_texts import INTEREST, country_flags, sort_countries
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.sms_receive import SmsReceive
 from app.services import bot_texts as bt
@@ -316,7 +315,9 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     ]
 
     # Сортируем список стран по цене от меньшего к большему
-    sorted_countries_with_prices = countries_with_prices #sorted(countries_with_prices, key=lambda x: x['price'])
+    # sorted_countries_with_prices = sorted(countries_with_prices, key=lambda x: x['price'])
+
+    sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
     # Получаем словарь с именами стран
     country_name_mapping = await models.Country.get_country_name_mapping()
@@ -333,3 +334,25 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
 
 async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     await manager.switch_to(CountryMenu.select_country)
+
+
+def sort_countries_by_dict(countries_with_prices):
+    """
+    Сортирует список стран с ценами в соответствии с порядком в countries_dict
+
+    Args:
+        countries_with_prices (list): Список словарей с информацией о странах и ценах
+
+    Returns:
+        list: Отсортированный список стран с ценами
+    """
+    # Создаем словарь, где ключ - это country_id, а значение - позиция в countries_dict
+    order_dict = {country_id: position for position, country_id in enumerate(sort_countries.keys())}
+
+    # Сортируем список стран с ценами
+    sorted_countries = sorted(
+        countries_with_prices,
+        key=lambda x: order_dict.get(x['country'], float('inf'))  # если страны нет в словаре, ставим её в конец
+    )
+
+    return sorted_countries
