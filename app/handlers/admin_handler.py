@@ -24,6 +24,8 @@ class BroadcastState(StatesGroup):
     send_message = State()
 
 
+from datetime import timedelta
+
 @router.message(Command('stat'))
 async def stat(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -38,9 +40,23 @@ async def stat(message: types.Message):
         created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)).count()
 
     sms_count = await models.Activation.filter(status=models.StatusResponse.STATUS_OK).count()
-    sms_count_today = await models.Activation.filter(status=models.StatusResponse.STATUS_OK,
-                                                     created_at__gte=timezone.now().replace(hour=0, minute=0,
-                                                                                            second=0)).count()
+    sms_count_today = await models.Activation.filter(
+        status=models.StatusResponse.STATUS_OK,
+        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+    ).count()
+
+    sms_count_month = await models.Activation.filter(
+        status=models.StatusResponse.STATUS_OK,
+        created_at__gte=timezone.now() - timedelta(days=30)
+    ).count()
+
+    rented_sms_total = await models.Activation.all().count()
+    rented_sms_month = await models.Activation.filter(
+        created_at__gte=timezone.now() - timedelta(days=30)
+    ).count()
+    rented_sms_today = await models.Activation.filter(
+        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+    ).count()
 
     payments = await models.Payment.filter(is_success=True).all().prefetch_related('user')
     payments_count = len(payments)
@@ -51,22 +67,23 @@ async def stat(message: types.Message):
             payments_repeat_count += 1
         else:
             user_ids.append(payment.user.id)
-
         await asyncio.sleep(0)
 
-    payments_count_today = await models.Payment.filter(is_success=True,
-                                                       created_at__gte=timezone.now().replace(hour=0, minute=0,
-                                                                                              second=0)).count()
+    payments_count_today = await models.Payment.filter(
+        is_success=True,
+        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+    ).count()
 
-    payments_amount_today = sum(await models.Payment.filter(is_success=True,
-                                                            created_at__gte=timezone.now().replace(hour=0, minute=0,
-                                                                                                   second=0)).values_list(
-        'amount', flat=True))
+    payments_amount_today = sum(await models.Payment.filter(
+        is_success=True,
+        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+    ).values_list('amount', flat=True))
 
     rent_email_count = await models.Mail.filter(is_paid_mail=True).all().count()
-    rent_email_count_today = await models.Mail.filter(is_paid_mail=True,
-                                                      created_at__gte=timezone.now().replace(hour=0, minute=0,
-                                                                                             second=0)).count()
+    rent_email_count_today = await models.Mail.filter(
+        is_paid_mail=True,
+        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+    ).count()
 
     msg_text = bt.ADMIN_STAT.format(
         users_count=users_count,
@@ -82,10 +99,17 @@ async def stat(message: types.Message):
         payments_count_today=payments_count_today,
         payments_amount_today=payments_amount_today,
         rent_email_count=rent_email_count,
-        rent_email_count_today=rent_email_count_today
+        rent_email_count_today=rent_email_count_today,
+        rented_sms_total=rented_sms_total,
+        rented_sms_month=rented_sms_month,
+        rented_sms_today=rented_sms_today,
+        delivered_sms_total=sms_count,
+        delivered_sms_month=sms_count_month,
+        delivered_sms_today=sms_count_today,
     )
 
     await message.answer(msg_text)
+
 
 
 @router.message(Command('test_balance'))

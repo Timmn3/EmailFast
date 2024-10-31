@@ -172,23 +172,32 @@ WITHDRAW_INFO = """
 """
 
 ADMIN_STAT = """
-<b>Количество пользователей:</b> {users_count}
+<b>👥 Количество пользователей:</b> {users_count}
 <b>За сегодня:</b> {users_count_today}
 
-<b>Получено:</b> {received_count}
-<b>SMS</b> - {received_sms_count}
-<b>Email</b> - {received_email_count}
-
-<b>За сегодня:</b> {received_count_today}
-<b>SMS</b> - {received_sms_count_today}
-<b>Email</b> - {received_email_count_today}
-
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>📩 Статистика Email:</b>
+<b>Получено:</b> {received_email_count}
+<b>За сегодня:</b> {received_email_count_today}
 <b>Арендованных Email:</b> {rent_email_count}
 <b>За сегодня:</b> {rent_email_count_today}
 
-<b>Пополнений:</b> {payments_count}
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>📲 Статистика SMS:</b>
+<b>Всего номеров арендовано:</b> {rented_sms_total}
+<b>За месяц:</b> {rented_sms_month}
+<b>За сегодня:</b> {rented_sms_today}
+
+<b>Доставлено SMS:</b> {delivered_sms_total}
+<b>За месяц:</b> {delivered_sms_month}
+<b>За сегодня:</b> {delivered_sms_today}
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>💳 Пополнения:</b>
+<b>Всего:</b> {payments_count}
 <b>Повторные оплаты:</b> {payments_repeat_count}
-<b>Пополнений за сегодня:</b> {payments_count_today} ({payments_amount_today} руб.)
+<b>За сегодня:</b> {payments_count_today} (<b>{payments_amount_today} руб.</b>)
+
 """
 
 AFFILIATE_STAT = """
