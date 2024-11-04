@@ -265,26 +265,22 @@ class ServiceOnlinesim(Model):
         ordering = ["id"]
 
     id = fields.IntField(pk=True)  # ID сервиса
-    country = fields.ForeignKeyField("models.CountryOnlinesim", related_name='services')  # Связь с таблицей стран
+    country = fields.IntField(max_length=255, null=False)  # Название страны без связи
     price = fields.DecimalField(max_digits=10, decimal_places=2)  # Цена сервиса
     service_name = fields.CharField(max_length=255, null=False)  # Название сервиса
     slug = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
 
     @classmethod
-    async def add_service(cls, country_id: int, price: float, service_name: str, slug: str):
+    async def add_service(cls, country: str, price: float, service_name: str, slug: str):
         """
         Добавляет новый сервис в базу данных для указанной страны.
 
-        :param country_id: ID страны, к которой относится сервис.
+        :param country: Название страны, к которой относится сервис.
         :param price: Цена сервиса.
         :param service_name: Название сервиса.
         :param slug: Короткое название сервиса.
         :return: Созданный объект сервиса.
         """
-        country = await CountryOnlinesim.get_or_none(id=country_id)
-        if not country:
-            raise ValueError("Country not found")
-
         service = await cls.create(
             country=country,
             price=price,
@@ -315,30 +311,31 @@ class ServiceOnlinesim(Model):
         return service.slug if service else None
 
     @classmethod
-    async def update_service(cls, country_id: int, service_name: str, price: float):
+    async def update_service(cls, country: str, service_name: str, price: float):
         """
         Обновляет цену сервиса для указанной страны.
 
-        :param country_id: ID страны.
+        :param country: Название страны.
         :param service_name: Название сервиса.
         :param price: Новая цена сервиса.
         """
-        service = await cls.get_or_none(service_name=service_name, country__id=country_id)
+        service = await cls.get_or_none(service_name=service_name, country=country)
         if service:
             service.price = price
             await service.save()
 
     @classmethod
-    async def get_price_by_country_and_service(cls, country_id: int, service_name: str):
+    async def get_price_by_country_and_service(cls, country: str, service_name: str):
         """
         Получает цену для указанного сервиса в указанной стране.
 
-        :param country_id: ID страны.
+        :param country: Название страны.
         :param service_name: Название сервиса.
         :return: Цена сервиса или None, если сервис не найден.
         """
-        service = await cls.get_or_none(country__id=country_id, service_name=service_name)
+        service = await cls.get_or_none(country=country, service_name=service_name)
         return service.price if service else None
+
 
 
 class Service(Model):

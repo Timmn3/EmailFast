@@ -13,30 +13,33 @@ async def insert_services(country_id: int, services):
         return  # Прекращаем выполнение, если страна не найдена
 
     for service in services.services:
-        # Проверяем, существует ли уже сервис с таким именем для данной страны
-        existing_service = await ServiceOnlinesim.filter(service_name=service.service, country=country_instance.id).first()
+        # Обновляем данные сервиса или создаем новый, если он не существует
+        updated_count = await ServiceOnlinesim.filter(
+            service_name=service.service,
+            country=country_id # Используем название страны для фильтрации
+        ).update(
+            price=float(service.price),
+            slug=service.slug
+        )
 
-        if existing_service:
-            # Если сервис существует, обновляем его данные
-            existing_service.price = service.price
-            existing_service.slug = service.slug
-            await existing_service.save()
-            print(f"Обновлен сервис: {existing_service.service_name} (ID: {existing_service.id})")
-        else:
-            # Если сервис не существует, создаем новый
+        # Проверяем, был ли обновлён существующий сервис
+        if updated_count == 0:
+            # Если сервис не был обновлён, создаем новый
             new_service = await ServiceOnlinesim.create(
-                country=country_instance,  # Ссылаемся на экземпляр страны
-                price=service.price,
+                country=country_id,  # Ссылаемся на название страны
+                price=float(service.price),
                 service_name=service.service,
                 slug=service.slug
             )
             print(f"Добавлен новый сервис: {new_service.service_name} (ID: {new_service.id})")
+        else:
+            print(f"Обновлен сервис: {service.service} для страны: {country_instance.name}")
 
 
 async def add_services():
     client = OnlineSMS(api_key=API_KEY_ONLINESIM)
 
-    country_id = 7
+    country_id = 7  # Здесь country_id, который вы хотите использовать
     services = await client.get_services(country=str(country_id))
 
     await insert_services(country_id, services)
