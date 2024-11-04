@@ -9,7 +9,6 @@ async def insert_services(country_id: int, services):
         # Получаем экземпляр CountryOnlinesim по country_id
         country_instance = await CountryOnlinesim.get(country_id=country_id)
     except DoesNotExist:
-        print(f"Страна с id {country_id} не найдена. Прекращаем добавление сервисов.")
         return  # Прекращаем выполнение, если страна не найдена
 
     for service in services.services:
@@ -31,15 +30,20 @@ async def insert_services(country_id: int, services):
                 service_name=service.service,
                 slug=service.slug
             )
-            print(f"Добавлен новый сервис: {new_service.service_name} (ID: {new_service.id})")
-        else:
-            print(f"Обновлен сервис: {service.service} для страны: {country_instance.name}")
 
 
 async def add_services():
     client = OnlineSMS(api_key=API_KEY_ONLINESIM)
 
-    country_id = 7  # Здесь country_id, который вы хотите использовать
-    services = await client.get_services(country=str(country_id))
+    # Получаем список всех стран из CountryOnlinesim
+    countries = await CountryOnlinesim.all()
 
-    await insert_services(country_id, services)
+    # Проходим по каждой стране
+    for country in countries:
+        country_id = country.country_id  # Извлекаем country_id
+
+        # Получаем услуги для текущей страны
+        services = await client.get_services(country=str(country_id))
+
+        # Добавляем или обновляем услуги для данной страны
+        await insert_services(country_id, services)
