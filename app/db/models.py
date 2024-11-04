@@ -80,7 +80,6 @@ class User(Model):
         )
         return new_user
 
-
     @classmethod
     async def get_user(cls, telegram_id: int):
         """
@@ -257,6 +256,89 @@ class CountryOnlinesim(Model):
 
     def __str__(self):
         return self.name
+
+
+class ServiceOnlinesim(Model):
+    class Meta:
+        table = "service_onlinesim"
+        table_description = "Services by Country for Onlinesim"
+        ordering = ["id"]
+
+    id = fields.IntField(pk=True)  # ID сервиса
+    country = fields.ForeignKeyField("models.CountryOnlinesim", related_name='services')  # Связь с таблицей стран
+    price = fields.DecimalField(max_digits=10, decimal_places=2)  # Цена сервиса
+    service_name = fields.CharField(max_length=255, null=False)  # Название сервиса
+    slug = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
+
+    @classmethod
+    async def add_service(cls, country_id: int, price: float, service_name: str, slug: str):
+        """
+        Добавляет новый сервис в базу данных для указанной страны.
+
+        :param country_id: ID страны, к которой относится сервис.
+        :param price: Цена сервиса.
+        :param service_name: Название сервиса.
+        :param slug: Короткое название сервиса.
+        :return: Созданный объект сервиса.
+        """
+        country = await CountryOnlinesim.get_or_none(id=country_id)
+        if not country:
+            raise ValueError("Country not found")
+
+        service = await cls.create(
+            country=country,
+            price=price,
+            service_name=service_name,
+            slug=slug
+        )
+        return service
+
+    @classmethod
+    async def get_services_by_name(cls, service_name: str):
+        """
+        Получает список стран и цен для указанного сервиса.
+
+        :param service_name: Название сервиса для поиска.
+        :return: Список словарей с данными стран и цен.
+        """
+        return await cls.select().where(cls.service_name == service_name).dicts()
+
+    @classmethod
+    async def get_slug_by_service_name(cls, service_name: str):
+        """
+        Получает slug для указанного сервиса.
+
+        :param service_name: Название сервиса для поиска.
+        :return: Slug или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(service_name=service_name)
+        return service.slug if service else None
+
+    @classmethod
+    async def update_service(cls, country_id: int, service_name: str, price: float):
+        """
+        Обновляет цену сервиса для указанной страны.
+
+        :param country_id: ID страны.
+        :param service_name: Название сервиса.
+        :param price: Новая цена сервиса.
+        """
+        service = await cls.get_or_none(service_name=service_name, country__id=country_id)
+        if service:
+            service.price = price
+            await service.save()
+
+    @classmethod
+    async def get_price_by_country_and_service(cls, country_id: int, service_name: str):
+        """
+        Получает цену для указанного сервиса в указанной стране.
+
+        :param country_id: ID страны.
+        :param service_name: Название сервиса.
+        :return: Цена сервиса или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(country__id=country_id, service_name=service_name)
+        return service.price if service else None
 
 
 class Service(Model):
@@ -726,7 +808,6 @@ class Payment(Model):
                                 created_at__gt=timezone.now() - timedelta(hours=5),
                                 order_id__isnull=False).all().prefetch_related('user')
 
-
     @classmethod
     async def get_freekassa_payments(cls):
         """
@@ -736,7 +817,6 @@ class Payment(Model):
         """
         return await cls.filter(method=PaymentMethod.FREEKASSA, is_success=False,
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
-
 
     @classmethod
     async def get_yoomoney_payments(cls):
@@ -748,7 +828,6 @@ class Payment(Model):
         return await cls.filter(method=PaymentMethod.YOOMONEY, is_success=False,
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
 
-
     @classmethod
     async def get_anypay_payments(cls):
         """
@@ -759,7 +838,6 @@ class Payment(Model):
         return await cls.filter(method=PaymentMethod.ANYPAY, is_success=False,
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
 
-
     @classmethod
     async def get_streampay_payments(cls):
         """
@@ -769,7 +847,6 @@ class Payment(Model):
         """
         return await cls.filter(method=PaymentMethod.STREAMPAY, is_success=False,
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
-
 
     @classmethod
     async def get_ckassa_payments(cls):
