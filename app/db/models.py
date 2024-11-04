@@ -190,6 +190,75 @@ class Country(Model):
         return self.name
 
 
+class CountryOnlinesim(Model):
+    class Meta:
+        table = "country_onlinesim"
+        table_description = "Countries for Onlinesim"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+    country_id: int = fields.IntField(unique=True, index=True)
+    name: str = fields.CharField(max_length=128, unique=True)
+
+    @classmethod
+    async def get_country_id_by_name(cls, name: str) -> int:
+        """
+        Получает уникальный идентификатор страны по её названию.
+
+        :param name: Название страны.
+        :return: Уникальный идентификатор страны или None, если страна не найдена.
+        """
+        country = await cls.get_or_none(name=name)
+        if country:
+            return country.country_id
+        return 0
+
+    @classmethod
+    async def get_country_by_id(cls, country_id: int):
+        """
+        Получает страну по её уникальному идентификатору.
+
+        :param country_id: Уникальный идентификатор страны.
+        :return: Объект страны или None, если страна не найдена.
+        """
+        return await cls.get_or_none(country_id=country_id)
+
+    @classmethod
+    async def get_country_name_mapping(cls):
+        """
+        Получает словарь, где ключами являются идентификаторы стран, а значениями — их имена.
+
+        :return: Словарь с идентификаторами стран в качестве ключей и именами стран в качестве значений.
+        """
+        countries = await cls.all()
+        country_name_mapping = {country.country_id: country.name for country in countries}
+        return country_name_mapping
+
+    @classmethod
+    async def get_country_id_list(cls):
+        """
+        Получает список всех идентификаторов стран.
+
+        :return: Список идентификаторов стран.
+        """
+        return await cls.all().values_list('country_id', flat=True)
+
+    @classmethod
+    async def search_countries(cls, search_name: str):
+        """
+        Ищет страны по части названия.
+
+        :param search_name: Часть названия страны для поиска.
+        :return: Список имен стран, соответствующих поисковому запросу.
+        """
+        countries = await cls.filter(name__icontains=search_name).all()
+        country_names = [country.name for country in countries]
+        return country_names
+
+    def __str__(self):
+        return self.name
+
+
 class Service(Model):
     class Meta:
         table = "services"
