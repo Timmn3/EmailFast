@@ -3,6 +3,7 @@ import random
 import string
 
 from app.services.bot_texts import country_flags
+from app.services.onlinesim.service_updater import add_services
 from app.services.sms_receive import SmsReceive
 from aiogram import Router, types, F
 from aiogram.filters import Command
@@ -351,4 +352,7 @@ async def add_balance(message: types.Message):
 
     await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
 
-
+@router.message(Command('services'))
+async def services(message: types.Message, state: FSMContext):
+    await message.answer(f"services")
+    await add_services()

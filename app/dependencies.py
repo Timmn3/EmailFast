@@ -93,6 +93,8 @@ API_LOGIN_CKASSA = config.get('API_LOGIN_CKASSA')
 API_KEY_CKASSA = config.get('API_KEY_CKASSA')
 SERV_CODE_CKASSA = config.get('SERV_CODE_CKASSA')
 
+API_KEY_ONLINESIM = config.get('API_KEY_ONLINESIM')
+
 bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode='HTML', link_preview_is_disabled=True)
