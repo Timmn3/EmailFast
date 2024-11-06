@@ -337,15 +337,15 @@ class ServiceOnlinesim(Model):
         return service.price if service else None
 
     @classmethod
-    async def get_service_data(cls, service_name: str) -> dict:
+    async def get_service_data(cls, slug: str) -> dict:
         """
         Получает данные по сервису: для каждой страны возвращает её название и цену на указанный сервис.
 
-        :param service_name: Название сервиса для поиска.
+        :param slug: Название сервиса для поиска.
         :return: Словарь, где ключами являются названия стран, а значениями — цены на указанный сервис.
         """
-        # ШПолучаем все записи, соответствующие service_name
-        services = await cls.filter(service_name=service_name).all()
+        # ШПолучаем все записи, соответствующие slug
+        services = await cls.filter(slug=slug).all()
 
         # Получаем словарь country_id -> country_name из CountryOnlinesim
         country_name_mapping = await CountryOnlinesim.get_country_name_mapping()
@@ -358,6 +358,18 @@ class ServiceOnlinesim(Model):
                 result[country_name] = service.price  # Добавляем в словарь
 
         return result
+
+    @classmethod
+    async def get_service_name_by_slug(cls, slug: str) -> str:
+        """
+        Получает название сервиса по-указанному slug.
+
+        :param slug: Короткое название сервиса (slug).
+        :return: Название сервиса или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(slug=slug)
+        return service.service_name if service else None
+
 
 class Service(Model):
     class Meta:

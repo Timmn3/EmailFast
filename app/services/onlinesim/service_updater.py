@@ -52,3 +52,4 @@ async def add_services():
         # Добавляем или обновляем услуги для данной страны
         await insert_services(country_id, services)
 
+
