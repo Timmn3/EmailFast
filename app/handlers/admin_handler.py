@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from tortoise import timezone
 from app.db import models
-from app.db.models import User, Activation
+from app.db.models import User, Activation, ServiceOnlinesim
 from app.dependencies import ADMINS, bot
 from app.services import bot_texts as bt
 from tabulate import tabulate
@@ -352,7 +352,9 @@ async def add_balance(message: types.Message):
 
     await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
 
-@router.message(Command('services'))
-async def services(message: types.Message, state: FSMContext):
-    await message.answer(f"services")
-    await add_services()
+# @router.message(Command('services'))
+# async def services(message: types.Message, state: FSMContext):
+#     await message.answer(f"services")
+#     service_data = await ServiceOnlinesim.get_service_data("Telegram")
+#     print(service_data)
+

@@ -346,6 +346,9 @@ CHANNEL_LINK = 'https://t.me/neuronbo'
 # процент, который накидывает сервис
 INTEREST = 1.3
 
+# курс доллара для сервиса onlinesim с накидкой в 30%
+COURSE = 130
+
 country_flags = {
     "Россия": "\U0001F1F7\U0001F1FA",  # 🇷🇺
     "Украина": "\U0001F1FA\U0001F1E6",  # 🇺🇦

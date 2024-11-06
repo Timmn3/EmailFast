@@ -13,6 +13,7 @@ from app.dependencies import bot
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import start_handler, affiliate_program, admin_handler, bot_handler
 from app.services.notify_admins import notify_wakeup_bot
+from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, check_payment_ckassa
 from app.services.set_bot_commands import set_default_commands
@@ -93,6 +94,7 @@ def set_scheduled_jobs(scheduler, *args, **kwargs):
     # scheduler.add_job(check_payment_freekassa, "interval", seconds=15, max_instances=3)
     # scheduler.add_job(check_payment_anypay, "interval", seconds=16, max_instances=3)
     scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
+    scheduler.add_job(add_services, "cron", hour=0, minute=0)  # запуск обновления сервисов в 12 ночи
 
     # scheduler.add_job(update_countries_and_services, "interval", minutes=30,
     #                   next_run_time=datetime.now() + timedelta(seconds=10), max_instances=3)

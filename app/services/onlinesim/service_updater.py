@@ -2,7 +2,7 @@ from pyonlinesim import OnlineSMS
 from tortoise.exceptions import DoesNotExist
 from app.db.models import CountryOnlinesim, ServiceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM
-
+from loguru import logger
 
 async def insert_services(country_id: int, services):
     try:
@@ -42,8 +42,13 @@ async def add_services():
     for country in countries:
         country_id = country.country_id  # Извлекаем country_id
 
-        # Получаем услуги для текущей страны
-        services = await client.get_services(country=str(country_id))
+        try:
+            # Получаем услуги для текущей страны
+            services = await client.get_services(country=str(country_id))
+        except Exception as e:
+            logger.error(f"Не удалось получить услуги для страны с id {country_id}: {e}")
+            continue  # Переходим к следующей стране, если возникла ошибка
 
         # Добавляем или обновляем услуги для данной страны
         await insert_services(country_id, services)
+
