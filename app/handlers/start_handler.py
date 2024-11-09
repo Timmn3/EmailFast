@@ -410,10 +410,12 @@ async def request_code(call: types.CallbackQuery, **kwargs):
                 return
 
 
+from aiogram.exceptions import TelegramAPIError
+
+
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
     try:
-        logger.info(f"Получены дополнительные аргументы: {kwargs}")
         # Извлекаем идентификатор активации из данных callback
         activation_id = int(call.data.split(':')[1])
 
@@ -431,96 +433,51 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         except AttributeError:
             return
 
+        # Выбор API клиента в зависимости от типа услуги
         if service in SERVICES_TRANSLATION:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-            try:
-                # Пытаемся отменить активацию через API OnlineSim
-                cancel_status = await client.finish_order(operation_id=activation_id, ban=False)
-                if cancel_status.response == 1:
-                    # Если отмена прошла успешно, обновляем данные активации в базе данных
-                    activation.activation_expire_at = None  # Сбрасываем время истечения активации
-                    activation.status = models.StatusResponse.STATUS_CANCEL  # Устанавливаем статус "отменено"
-                    await activation.save()  # Сохраняем изменения в базе данных
-
-                    # Обновляем баланс пользователя, возвращая стоимость активации
-                    user = await models.User.get_user(telegram_id=call.from_user.id)
-                    user.balance += activation.cost
-                    await user.save()
-
-                    # Сообщаем пользователю об успешной отмене
-                    msg_text = bt.SERVICE_CANCEL
-                    if call.message.text != msg_text:  # Проверка, чтобы избежать ошибки "message is not modified"
-                        await call.message.edit_text(text=msg_text)
-                else:
-                    # Если отмена больше недоступна, сообщаем об этом пользователю
-                    msg_text = 'Отмена больше не доступна'
-
-            except Exception as e:
-                # Проверяем, содержит ли текст ошибки 'Unable to finish order'
-                if str(e) == "Unable to finish order":
-                    await call.answer(text='Нельзя отменить номер в первые 2 минуты', show_alert=True)
-                    return
-                # Проверяем на ошибку 'Wrong operation ID'
-                elif str(e) == "Wrong operation ID":
-                    await call.answer(text='Ошибка при отмене, попробуйте позже')
-                    return
-                # Обработка всех других исключений
-                else:
-                    # Логируем или уведомляем о неизвестной ошибке
-                    logger.error(f"Необработанное исключение: {e}")
-                    await call.answer(text='Произошла неизвестная ошибка. Попробуйте позже.', show_alert=True)
-
-
+            cancel_status = await client.finish_order(operation_id=activation_id, ban=False)
+            cancellation_successful = cancel_status.response == 1
         else:
-            # Создаем экземпляр класса для работы с SMS активациями
             sms = SmsReceive()
-
-            # Получаем текущий статус активации через API
             status = str(await sms.get_activation_status(activation.activation_id))
+            cancellation_successful = (
+                status == models.StatusResponse.STATUS_WAIT_CODE.name
+                and activation.status == models.StatusResponse.STATUS_WAIT_CODE
+            )
+            if cancellation_successful:
+                cancel_status = str(await sms.set_activation_status(
+                    activation_id=activation.activation_id,
+                    status=models.ActivationCode.CANCEL
+                ))
+                cancellation_successful = cancel_status == "ACCESS_CANCEL"
 
-            # Проверяем, что текущий статус активации соответствует ожиданию кода
-            # и статус в базе данных тоже соответствует ожиданию кода
-            if status == models.StatusResponse.STATUS_WAIT_CODE.name and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
-                # Пытаемся установить статус активации на "отменено" через API
-                cancel_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                                    status=models.ActivationCode.CANCEL))
+        if cancellation_successful:
+            activation.activation_expire_at = None
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save()
 
-                # Если API возвращает, что отмена ранняя и не может быть выполнена
-                if cancel_status == "EARLY_CANCEL_DENIED":
-                    await call.answer(text='Нельзя отменить номер в первые 2 минуты', show_alert=True)
-                    return
+            user = await models.User.get_user(telegram_id=call.from_user.id)
+            user.balance += activation.cost
+            await user.save()
 
-                # Если отмена по какой-то причине не удалась
-                if cancel_status != "ACCESS_CANCEL":
-                    await call.answer(text='Ошибка при отмене, попробуйте позже')
-                    return
-
-                # Если отмена прошла успешно, обновляем данные активации в базе данных
-                activation.activation_expire_at = None  # Сбрасываем время истечения активации
-                activation.status = models.StatusResponse.STATUS_CANCEL  # Устанавливаем статус "отменено"
-                await activation.save()  # Сохраняем изменения в базе данных
-
-                # Обновляем баланс пользователя, возвращая стоимость активации
-                user = await models.User.get_user(telegram_id=call.from_user.id)
-                user.balance += activation.cost
-                await user.save()
-
-                # Сообщаем пользователю об успешной отмене
-                msg_text = bt.SERVICE_CANCEL
-                if call.message.text != msg_text:  # Проверка, чтобы избежать ошибки "message is not modified"
+            msg_text = bt.SERVICE_CANCEL.strip()
+            # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
+            if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
+                try:
                     await call.message.edit_text(text=msg_text)
-            else:
-                # Если отмена больше недоступна, сообщаем об этом пользователю
-                msg_text = 'Отмена больше не доступна'
+                    await call.message.edit_reply_markup(reply_markup=None)
+                except TelegramAPIError as e:
+                    pass
+        else:
+            await call.answer(text='Отмена больше не доступна', show_alert=True)
 
-            # Отправляем ответ на callback с сообщением для пользователя
-            await call.answer(msg_text, show_alert=True)
-
-        # Убираем клавиатуру с кнопками под сообщением, если она есть
-        if call.message.reply_markup:
-            await call.message.edit_reply_markup(reply_markup=None)
+    except TelegramAPIError as e:
+        logger.warning(f"Telegram server error: {e}")
     except Exception as e:
-        logger.warning(e)
+        logger.error(f"Необработанное исключение: {e}")
+        await call.answer(text='Попробуйте позже', show_alert=True)
+
 
 @router.callback_query(F.data.startswith('continue_payment:'))
 async def continue_payment(call: types.CallbackQuery, dialog_manager: DialogManager):
