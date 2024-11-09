@@ -250,7 +250,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     )
     service = activation.service.name
     country = activation.country.name
-    print(f'activation {activation.country.id}')
     # Отправляет пользователю информацию о сервисе и номере телефона с клавиатурой
     await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
 
@@ -306,7 +305,6 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     :param c: Объект CallbackQuery от aiogram.
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
-
     if service_code in SERVICES_TRANSLATION:
         # переводим сервисный код в код для onlinesim
         code_onlinesim = SERVICES_TRANSLATION.get(service_code)
@@ -322,9 +320,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             for country, price in services.items()
         ]
 
-        # Передача данных через параметр `data`
-        await manager.start(CountryMenu.select_country, mode=StartMode.NORMAL,
-                            data={"countries_with_prices": sorted_countries_with_prices, "service_code": service_code})
+
 
     else:
         # Создаем экземпляр класса для получения SMS
@@ -362,6 +358,11 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             # Преобразуем идентификатор страны в int
             country_id = int(country["country"])
             country["country"] = country_name_mapping.get(country_id, "Unknown Country")
+
+    # Передача данных через параметр `data`
+    await manager.start(CountryMenu.select_country, mode=StartMode.NORMAL,
+                        data={"countries_with_prices": sorted_countries_with_prices,
+                              "service_code": service_code})
 
 
 async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):

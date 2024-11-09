@@ -3,11 +3,12 @@ from math import floor
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import types
 from aiohttp import ClientSession
+from pyonlinesim import OnlineSMS
 from tortoise import timezone
 from loguru import logger
 from app import dependencies
 from app.db import models
-from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER
+from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
 from app.services.payments.freekassa import Freekassa
@@ -465,13 +466,21 @@ async def check_sms():
         # Получаем все активные активации
         activations = await models.Activation.get_active_activations()
 
-        # Создаем экземпляр класса для получения SMS
-        sms = SmsReceive()
-
         # Обрабатываем каждую активную активацию
         for activation in activations:
+
             # Получаем статус активации по её идентификатору
-            status = str(await sms.get_activation_status(activation.activation_id))
+            if len(str(activation.activation_id)) > 9:
+                sms = SmsReceive()
+                status = str(await sms.get_activation_status(activation.activation_id))
+                # STATUS_OK:1231
+            else:
+                client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+                order_info = await client.get_order_info(operation_id=activation.activation_id)
+                status = ''
+                if 'msg' in order_info[0]:
+                    sms_code = order_info[0]['msg']
+                    status = f'STATUS_OK:{sms_code}'
 
             # Проверяем, начинается ли статус с 'STATUS_OK'
             if status.startswith(models.StatusResponse.STATUS_OK.name):
