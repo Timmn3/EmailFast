@@ -119,8 +119,8 @@ async def on_enter_other_price(m: types.Message, widget: TextInput, manager: Dia
         return
 
     price = int(price_text)
-    if price < 10:
-        await m.answer(text='Минимальная сумма - 10₽')
+    if price < 50:
+        await m.answer(text='Минимальная сумма - 50₽')
         await switch_state(manager)
         return
 
