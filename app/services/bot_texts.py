@@ -352,8 +352,12 @@ COURSE = 130
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
 SERVICES_TRANSLATION = {
     "tg": "telegram",
-    "wa": "whatsapp",
 }
+
+# возвращает первый ключ, соответствующий значению
+REVERSE_SERVICES_TRANSLATION = {v: k for k, v in SERVICES_TRANSLATION.items()}
+key = REVERSE_SERVICES_TRANSLATION.get("telegram")
+
 
 country_flags = {
     "Россия": "\U0001F1F7\U0001F1FA",  # 🇷🇺

@@ -223,6 +223,22 @@ class CountryOnlinesim(Model):
         return await cls.get_or_none(country_id=country_id)
 
     @classmethod
+    async def get_country_from_country_by_id(cls, country_id: int):
+        """
+        Получает страну по её уникальному идентификатору из CountryOnlinesim.
+
+        :param country_id: Уникальный идентификатор страны.
+        :return: Объект модели Country или None, если страна не найдена.
+        """
+        country_onlinesim = await cls.get_or_none(country_id=country_id)
+        if not country_onlinesim:
+            return None  # Страна не найдена в CountryOnlinesim
+
+        # Ищем страну по имени в таблице Country
+        country = await Country.get_or_none(name=country_onlinesim.name)
+        return country
+
+    @classmethod
     async def get_country_name_mapping(cls):
         """
         Получает словарь, где ключами являются идентификаторы стран, а значениями — их имена.
@@ -271,7 +287,7 @@ class ServiceOnlinesim(Model):
     slug = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
 
     @classmethod
-    async def add_service(cls, country: str, price: float, service_name: str, slug: str):
+    async def add_service(cls, country: int, price: float, service_name: str, slug: str):
         """
         Добавляет новый сервис в базу данных для указанной страны.
 
@@ -360,15 +376,15 @@ class ServiceOnlinesim(Model):
         return result
 
     @classmethod
-    async def get_service_name_by_slug(cls, slug: str) -> str:
+    async def get_service(cls, service_code: str, country_id: int):
         """
-        Получает название сервиса по-указанному slug.
+        Получает сервис по его короткому названию (slug) и стране.
 
-        :param slug: Короткое название сервиса (slug).
-        :return: Название сервиса или None, если сервис не найден.
+        :param service_code: Название сервиса.
+        :param country_id: ID страны.
+        :return: Объект сервиса или None, если сервис не найден.
         """
-        service = await cls.get_or_none(slug=slug)
-        return service.service_name if service else None
+        return await cls.get_or_none(slug=service_code, country=country_id)
 
 
 class Service(Model):

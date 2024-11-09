@@ -13,7 +13,8 @@ from app.db import models
 from app.db.models import ServiceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
-from app.services.bot_texts import INTEREST, country_flags, sort_countries, COURSE, SERVICES_TRANSLATION
+from app.services.bot_texts import INTEREST, country_flags, sort_countries, COURSE, SERVICES_TRANSLATION, \
+    REVERSE_SERVICES_TRANSLATION
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.sms_receive import SmsReceive
 from app.services import bot_texts as bt
@@ -179,11 +180,20 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     if free_price_map is None:
         client = OnlineSMS(api_key=API_KEY_ONLINESIM)
         try:
+            # Отправляем запрос на получение номера заказа с указанием сервиса и страны
             order_number_response = await client.order_number(service=service_code, country=country_id)
+            # Извлекаем уникальный идентификатор активации activation_id из ответа
             activation_id = order_number_response.get('tzid')
-            phone_number = (await client.get_order_info(operation_id=activation_id))[0].get('number')
-            country = await models.CountryOnlinesim.get_country_by_id(country_id=country_id)
-            service = await models.ServiceOnlinesim.get_service_name_by_slug(slug=service_code)
+            # Получаем информацию о заказе по идентификатору активации и извлекаем номер телефона
+            phone_number = (await client.get_order_info(operation_id=activation_id))[0].get('number').lstrip('+')
+            # Получаем объект страны из модели Country по country_id из CountryOnlinesim
+            country = await models.CountryOnlinesim.get_country_from_country_by_id(country_id=country_id)
+            # Получаем название сервиса таблицы services из service_onlinesim
+            # (т.е. в таблице service_onlinesim "telegram" а в services "tg")
+            key = REVERSE_SERVICES_TRANSLATION.get(service_code)
+            # Ищем объект сервиса в базе данных по ключу
+            service = await models.Service.get_service(code=key)
+
 
         except Exception as e:
             logger.warning(e)
@@ -236,10 +246,11 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         service=service,
         cost=price,
         phone_number=phone_number,
-        activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")) + timedelta(minutes=10),
+        activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=10)
     )
     service = activation.service.name
     country = activation.country.name
+    print(f'activation {activation.country.id}')
     # Отправляет пользователю информацию о сервисе и номере телефона с клавиатурой
     await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
 

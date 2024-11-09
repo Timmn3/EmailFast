@@ -7,21 +7,20 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram_dialog import DialogManager, StartMode
+from pyonlinesim import OnlineSMS
 
 from app.db import models
-from app.dialogs.bot_menu import states
-
+from app.dependencies import API_KEY_ONLINESIM
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info, send_service_info_with_keyboard
-from app.dialogs.receive_sms.states import CountryMenu, ServiceMenu
+from app.dialogs.receive_sms.states import ServiceMenu
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_TWO_MONTHS, RENT_EMAIL_SIX_MONTHS, \
-    RENT_EMAIL_YEAR
+    RENT_EMAIL_YEAR, SERVICES_TRANSLATION
 from app.services.keyboards import start_kb
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
-from app.services.qr_code import generate_qr_code
 from app.services.sms_receive import SmsReceive
 from app.services.temp_mail import TempMail
 from loguru import logger
@@ -347,36 +346,49 @@ async def request_code(call: types.CallbackQuery):
         await call.answer()
         return
 
-    # Создание объекта для получения смс
-    sms = SmsReceive()
-
-    # Получение текущего статуса активации
-    status = str(await sms.get_activation_status(activation.activation_id))
-
-    # Проверка статуса активации на ожидание кода
-    if status:  # == models.StatusResponse.STATUS_WAIT_CODE.name and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
-
-        request_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                             status=models.ActivationCode.RETRY_GET))
-        # Проверка если статус изменен на ожидание повторной отправки смс
-        if request_status == "STATUS_WAIT_RETRY ":
+    # если активация относится к service_onlinesim
+    service = activation.service.code
+    if service in SERVICES_TRANSLATION:
+        client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+        revise_response = await client.revise_order(operation_id=activation_id)
+        if revise_response.response == 1:
             await call.answer(text='ожидание повторной отправки смс', show_alert=True)
             return
-
-        # Если статус изменен на ожидание кода
-        if request_status != "STATUS_WAIT_CODE":
+        else:
             await call.answer(text='ожидание смс')
             return
 
-        # Если статус изменен на отмену
-        if request_status != "STATUS_CANCEL":
-            await call.answer(text='активация отменена')
-            return
+    else:
+        # Создание объекта для получения смс
+        sms = SmsReceive()
 
-        # Если статус изменен на успешное получение кода
-        if request_status != "STATUS_OK":
-            await call.answer(text='код получен')
-            return
+        # Получение текущего статуса активации
+        status = str(await sms.get_activation_status(activation.activation_id))
+
+        # Проверка статуса активации на ожидание кода
+        if status:  # == models.StatusResponse.STATUS_WAIT_CODE.name and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
+
+            request_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
+                                                                 status=models.ActivationCode.RETRY_GET))
+            # Проверка если статус изменен на ожидание повторной отправки смс
+            if request_status == "STATUS_WAIT_RETRY ":
+                await call.answer(text='ожидание повторной отправки смс', show_alert=True)
+                return
+
+            # Если статус изменен на ожидание кода
+            if request_status != "STATUS_WAIT_CODE":
+                await call.answer(text='ожидание смс')
+                return
+
+            # Если статус изменен на отмену
+            if request_status != "STATUS_CANCEL":
+                await call.answer(text='активация отменена')
+                return
+
+            # Если статус изменен на успешное получение кода
+            if request_status != "STATUS_OK":
+                await call.answer(text='код получен')
+                return
 
 
 @router.callback_query(F.data.startswith('cancel_service:'))
