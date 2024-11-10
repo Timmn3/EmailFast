@@ -506,8 +506,6 @@ class Service(Model):
                 )
                 await new_service.save()
 
-            print(data['name'])
-
     @classmethod
     async def get_code_by_name(cls, name: str):
         """

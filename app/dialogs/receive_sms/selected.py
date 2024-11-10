@@ -181,7 +181,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         client = OnlineSMS(api_key=API_KEY_ONLINESIM)
         try:
             # Отправляем запрос на получение номера заказа с указанием сервиса и страны
-            order_number_response = await client.order_number(service='kopilka', country=7)
+            order_number_response = await client.order_number(service=service_code, country=country_id)
             # Извлекаем уникальный идентификатор активации activation_id из ответа
             activation_id = order_number_response.get('tzid')
             # Получаем информацию о заказе по идентификатору активации и извлекаем номер телефона
