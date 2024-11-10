@@ -345,7 +345,6 @@ async def confirm_extend_email(call: types.CallbackQuery):
 @router.callback_query(F.data.startswith('request_code:'))
 @log_exceptions
 async def request_code(call: types.CallbackQuery, **kwargs):
-    logger.info(f"Получены дополнительные аргументы: {kwargs}")
     # Извлечение id активации из данных колл бека
     activation_id = int(call.data.split(':')[1])
 
@@ -366,15 +365,14 @@ async def request_code(call: types.CallbackQuery, **kwargs):
         client = OnlineSMS(api_key=API_KEY_ONLINESIM)
         try:
             revise_response = await client.revise_order(operation_id=activation_id)
-            if revise_response.response == 1:
+            if revise_response.get("response") == '1':
                 await call.answer(text='ожидание повторной отправки смс', show_alert=True)
                 return
             else:
-                await call.answer(text='активация отменена')
+                await call.answer(text='Попробуйте позже')
                 return
         except Exception as e:
             logger.warning(f'Повторный запрос смс onlinesim {e}')
-            await call.answer(text='активация отменена')
             return
 
     else:
@@ -436,8 +434,10 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         # Выбор API клиента в зависимости от типа услуги
         if service in SERVICES_TRANSLATION:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-            cancel_status = await client.finish_order(operation_id=activation_id, ban=False)
-            cancellation_successful = cancel_status.response == 1
+            cancel_status = await client.finish_order(operation_id=activation.activation_id, ban=False)
+            cancellation_successful = cancel_status.get("response") == 1
+            # Unable to finish order - когда менее 2 минут
+            # Wrong operation ID - отмена не доступна
         else:
             sms = SmsReceive()
             status = str(await sms.get_activation_status(activation.activation_id))
@@ -470,13 +470,21 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 except TelegramAPIError as e:
                     pass
         else:
+            activation.activation_expire_at = None
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save()
             await call.answer(text='Отмена больше не доступна', show_alert=True)
 
     except TelegramAPIError as e:
         logger.warning(f"Telegram server error: {e}")
     except Exception as e:
-        logger.error(f"Необработанное исключение: {e}")
-        await call.answer(text='Попробуйте позже', show_alert=True)
+        if str(e) == 'Unable to finish order':
+            await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
+        elif str(e) == 'Wrong operation ID':
+            await call.answer(text='Отмена больше не доступна', show_alert=True)
+        else:
+            logger.error(f"Необработанное исключение: {e}")
+            await call.answer(text='Ошибка при отмене номера', show_alert=True)
 
 
 @router.callback_query(F.data.startswith('continue_payment:'))
