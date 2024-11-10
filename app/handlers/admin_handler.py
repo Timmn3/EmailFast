@@ -352,9 +352,11 @@ async def add_balance(message: types.Message):
 
     await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
 
-# @router.message(Command('services'))
-# async def services(message: types.Message, state: FSMContext):
-#     await message.answer(f"services")
-#     service_data = await ServiceOnlinesim.get_service_data("Telegram")
-#     print(service_data)
+@router.message(Command('services_update'))
+async def services(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMINS:
+        return
+    await message.answer(f"services_update")
+    await add_services()
+
 
