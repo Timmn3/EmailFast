@@ -430,7 +430,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             service = activation.service.code
         except AttributeError:
             return
-
+        cancellation_successful = False
         # Выбор API клиента в зависимости от типа услуги
         if service in SERVICES_TRANSLATION:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
@@ -451,24 +451,27 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 return
 
             if status == "ACCESS_CANCEL":
-                activation.activation_expire_at = None
-                activation.status = models.StatusResponse.STATUS_CANCEL
-                await activation.save()
+                cancellation_successful = True
 
-                user = await models.User.get_user(telegram_id=call.from_user.id)
-                user.balance += activation.cost
-                await user.save()
+        if cancellation_successful:
+            activation.activation_expire_at = None
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save()
 
-                msg_text = bt.SERVICE_CANCEL.strip()
-                # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
-                if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
-                    try:
-                        await call.message.edit_text(text=msg_text)
-                        await call.message.edit_reply_markup(reply_markup=None)
-                    except TelegramAPIError as e:
-                        pass
-            else:
-                await call.answer(text='Отмена больше не доступна', show_alert=True)
+            user = await models.User.get_user(telegram_id=call.from_user.id)
+            user.balance += activation.cost
+            await user.save()
+
+            msg_text = bt.SERVICE_CANCEL.strip()
+            # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
+            if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
+                try:
+                    await call.message.edit_text(text=msg_text)
+                    await call.message.edit_reply_markup(reply_markup=None)
+                except TelegramAPIError as e:
+                    pass
+        else:
+            await call.answer(text='Отмена больше не доступна', show_alert=True)
 
     except TelegramAPIError as e:
         logger.warning(f"Telegram server error: {e}")
@@ -476,6 +479,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         if str(e) == 'Unable to finish order':
             await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
         elif str(e) == 'Wrong operation ID':
+            activation.activation_expire_at = None
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save()
             await call.answer(text='Отмена больше не доступна', show_alert=True)
         else:
             logger.error(f"Необработанное исключение: {e}")
