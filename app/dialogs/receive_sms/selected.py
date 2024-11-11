@@ -8,12 +8,11 @@ from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from pyonlinesim import OnlineSMS
-from tortoise import timezone
 from app.db import models
 from app.db.models import ServiceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
-from app.services.bot_texts import INTEREST, country_flags, sort_countries, COURSE, SERVICES_TRANSLATION, \
+from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.sms_receive import SmsReceive
@@ -313,8 +312,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         sorted_countries_with_prices = [
             {
                 "country": country,
-                "price": math.ceil(float(price) * COURSE),  # Округляем цену после умножения
-                "retail_price": int(price * 100),  # Умножаем на 100 для retail_price
+                "price": math.ceil(float(price) * INTEREST),  # Округляем цену после умножения
+                "retail_price": int(price),
                 "freePriceMap": None
             }
             for country, price in services.items()

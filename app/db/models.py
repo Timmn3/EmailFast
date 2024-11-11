@@ -360,7 +360,7 @@ class ServiceOnlinesim(Model):
         :param slug: Название сервиса для поиска.
         :return: Словарь, где ключами являются названия стран, а значениями — цены на указанный сервис.
         """
-        # ШПолучаем все записи, соответствующие slug
+        # Получаем все записи, соответствующие slug
         services = await cls.filter(slug=slug).all()
 
         # Получаем словарь country_id -> country_name из CountryOnlinesim
