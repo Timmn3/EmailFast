@@ -440,40 +440,35 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             # Wrong operation ID - отмена не доступна
         else:
             sms = SmsReceive()
-            status = str(await sms.get_activation_status(activation.activation_id))
-            cancellation_successful = (
-                status == models.StatusResponse.STATUS_WAIT_CODE.name
-                and activation.status == models.StatusResponse.STATUS_WAIT_CODE
-            )
-            if cancellation_successful:
-                cancel_status = str(await sms.set_activation_status(
-                    activation_id=activation.activation_id,
-                    status=models.ActivationCode.CANCEL
-                ))
-                cancellation_successful = cancel_status == "ACCESS_CANCEL"
+            status = str(await sms.set_activation_status(activation_id=activation.activation_id,
+                                                                status=models.ActivationCode.CANCEL))
+            if status == 'STATUS_WAIT_CODE':
+                await call.answer(text='Ожидание смс', show_alert=True)
+                return
 
-        if cancellation_successful:
-            activation.activation_expire_at = None
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
+            if status == 'EARLY_CANCEL_DENIED':
+                await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
+                return
 
-            user = await models.User.get_user(telegram_id=call.from_user.id)
-            user.balance += activation.cost
-            await user.save()
+            if status == "ACCESS_CANCEL":
+                activation.activation_expire_at = None
+                activation.status = models.StatusResponse.STATUS_CANCEL
+                await activation.save()
 
-            msg_text = bt.SERVICE_CANCEL.strip()
-            # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
-            if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
-                try:
-                    await call.message.edit_text(text=msg_text)
-                    await call.message.edit_reply_markup(reply_markup=None)
-                except TelegramAPIError as e:
-                    pass
-        else:
-            activation.activation_expire_at = None
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
-            await call.answer(text='Отмена больше не доступна', show_alert=True)
+                user = await models.User.get_user(telegram_id=call.from_user.id)
+                user.balance += activation.cost
+                await user.save()
+
+                msg_text = bt.SERVICE_CANCEL.strip()
+                # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
+                if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
+                    try:
+                        await call.message.edit_text(text=msg_text)
+                        await call.message.edit_reply_markup(reply_markup=None)
+                    except TelegramAPIError as e:
+                        pass
+            else:
+                await call.answer(text='Отмена больше не доступна', show_alert=True)
 
     except TelegramAPIError as e:
         logger.warning(f"Telegram server error: {e}")
