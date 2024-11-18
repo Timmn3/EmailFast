@@ -461,6 +461,8 @@ async def check_payment_ckassa():
 
 
 
+import re
+
 async def check_sms():
     try:
         # Получаем все активные активации
@@ -486,15 +488,26 @@ async def check_sms():
             if status.startswith(models.StatusResponse.STATUS_OK.name):
                 # Обновляем статус активации на 'STATUS_OK'
                 activation.status = models.StatusResponse.STATUS_OK
-                # смотрим какая смс в БД
+                # Смотрим какая смс в БД
                 current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
+
                 # Извлекаем текст SMS из статуса
                 sms_from_status = status.split(':')[1]
+
+                # Применяем регулярное выражение для извлечения цифр из текста
+                sms_digits = re.findall(r'\d+', sms_from_status)
+
+                if sms_digits:
+                    # Если цифры найдены, берем первое из них (или обрабатываем по-другому, если нужно)
+                    sms_from_status = sms_digits[0]
+                else:
+                    # Если цифры не найдены, присваиваем значение по умолчанию (например, 0)
+                    sms_from_status = '0'
+
                 activation.sms_text = sms_from_status
-                # Устанавливаем время истечения активации на None (активация завершена)
-                # activation.activation_expire_at = None
                 # Сохраняем изменения в базе данных
                 await activation.save()
+
                 # Загружаем связанные данные пользователя и сервиса
                 await activation.fetch_related('user', 'service')
 
@@ -526,10 +539,12 @@ async def check_sms():
             activation.user.balance += activation.cost
             # Сохраняем изменения баланса пользователя в базе данных
             await activation.user.save()
+
     except asyncio.CancelledError:
         pass
     except Exception as e:
         logger.error(e)
+
 
 
 import asyncio
