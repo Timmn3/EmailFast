@@ -10,7 +10,7 @@ from aiogram_dialog.widgets.kbd import Select, Button
 from pyonlinesim import OnlineSMS
 from app.db import models
 from app.db.models import ServiceOnlinesim
-from app.dependencies import API_KEY_ONLINESIM
+from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION
@@ -193,13 +193,28 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             # Ищем объект сервиса в базе данных по ключу
             service = await models.Service.get_service(code=key)
 
-
         except Exception as e:
             logger.warning(e)
+            error_message = str(e)
+            if "Not enough funds" in error_message:
+                for admin_id in ADMINS:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            "🚨 *Внимание, администратор!*\n\n"
+                            "❌ На сервисе *OnlineSim* недостаточно средств для выполнения операции.\n"
+                            "📅 *Время*: {time}\n"
+                            "💬 *Описание ошибки*: {error}"
+                        ).format(
+                            time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            error=error_message
+                        ),
+                        parse_mode="Markdown"
+                    )
+
             await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
             await manager.switch_to(CountryMenu.select_country)
             return
-
     else:
         sms = SmsReceive()
 
