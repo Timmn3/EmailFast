@@ -9,6 +9,7 @@ from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_pric
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
     switch_to_payment, send_payment_keyboard_anypay, on_payment_method
 from app.services import bot_texts as bt
+from app.services.bot_texts import LINK_TO_BUTTON
 from app.services.stars_pay import send_invoice_handler_stars
 
 
@@ -16,6 +17,7 @@ def personal_cabinet_window():
     return Window(
         Format(bt.PERSONAL_CABINET),
         Button(Const(bt.DEPOSIT_BTN), id='deposit', on_click=on_deposit),
+        Url(Const(bt.INSTRUCTIONS), url=Const(LINK_TO_BUTTON)),
         Url(Const(bt.SUPPORT_BTN), url=Const(dependencies.SUPPORT_URL)),
         state=states.PersonalMenu.user_info,
         getter=get_user_info

@@ -246,6 +246,8 @@ RECEIVE_ANOTHER_SMS_TO_NUMBER = '📩Принять новое SMS на этот
 
 # Personal cabinet
 DEPOSIT_BTN = '💵Пополнить баланс'
+INSTRUCTIONS = "📖 Инструкция"
+LINK_TO_BUTTON = "https://telegra.ph/Rekomendacii-dlya-priema-SMS-11-14"
 SUPPORT_BTN = '🙋‍♂️Поддержка'
 
 # Receive email
