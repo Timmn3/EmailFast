@@ -33,7 +33,6 @@ async def insert_services(country_id: int, services):
 
 
 async def add_services():
-
     # Получаем список всех стран из CountryOnlinesim
     countries = await CountryOnlinesim.all()
 
@@ -46,6 +45,11 @@ async def add_services():
             services = []
             for service in ["Telegram"]:  # Укажите нужные сервисы
                 result = await fetch_tariffs(country_id, service)
+
+                if result is None:  # Проверяем, что результат не None
+                    logger.warning(f"Получен пустой результат для страны {country_id} и сервиса {service}")
+                    continue
+
                 if "price" in result and "slug" in result:
                     services.append({
                         "price": result["price"],
@@ -58,4 +62,5 @@ async def add_services():
 
         # Добавляем или обновляем услуги для данной страны
         await insert_services(country_id, services)
+
 
