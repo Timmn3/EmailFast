@@ -13,7 +13,7 @@ from app.db.models import ServiceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
-    REVERSE_SERVICES_TRANSLATION
+    REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.sms_receive import SmsReceive
 from app.services import bot_texts as bt
@@ -154,13 +154,15 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     :param c: Объект CallbackQuery от aiogram.
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
+    await c.message.answer(text=NUMBER_REQUEST_SENT)
+
     # Получаем информацию о пользователе
     user = await models.User.get_user(c.from_user.id)
 
-    # Проверяем, прошло ли 30 секунд с последнего запроса
+    # Проверяем, прошло ли 10 секунд с последнего запроса
     if user.last_request_time is not None and (
             datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 10:
-        await c.answer(text="Пожалуйста, подождите 10 секунд перед повторным запросом.", show_alert=True)
+        await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
         return
 
     # Получаем текущее время в московском часовом поясе
@@ -194,7 +196,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             service = await models.Service.get_service(code=key)
 
         except Exception as e:
-            logger.warning(e)
             error_message = str(e)
             if "No available numbers for this service" in error_message:
                 await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
@@ -215,7 +216,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                         ),
                         parse_mode="Markdown"
                     )
-
+            logger.warning(e)
             await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
             await manager.switch_to(CountryMenu.select_country)
             return
