@@ -47,7 +47,7 @@ async def add_services():
                 result = await fetch_tariffs(country_id, service)
 
                 if result is None:  # Проверяем, что результат не None
-                    logger.warning(f"Получен пустой результат для страны {country_id} и сервиса {service}")
+                    # logger.warning(f"Получен пустой результат для страны {country_id} и сервиса {service}")
                     continue
 
                 if "price" in result and "slug" in result:

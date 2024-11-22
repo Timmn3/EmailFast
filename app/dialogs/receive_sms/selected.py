@@ -196,6 +196,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         except Exception as e:
             logger.warning(e)
             error_message = str(e)
+            if "No available numbers for this service" in error_message:
+                await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                await manager.switch_to(CountryMenu.select_country)
+                return
             if "Not enough funds" in error_message:
                 for admin_id in ADMINS:
                     await bot.send_message(
@@ -237,7 +241,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                     return
 
             except Exception as e:
-                logger.warning(f'Не удалось получить номер телефона: {e}')
+                # logger.warning(f'Не удалось получить номер телефона: {e}')
                 await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                 await manager.switch_to(CountryMenu.select_country)
                 return

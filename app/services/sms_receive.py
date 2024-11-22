@@ -146,7 +146,6 @@ class SmsReceive:
             services_data = await self.sa.get_top_countries_by_service(service)
             return services_data
         except Exception as e:
-            logger.warning('Ошибка Получает список топ стран по сервису:')
             logger.warning(e)
 
     async def get_phone_number(self, country_id: int, service_code: str, max_price: float=None):
