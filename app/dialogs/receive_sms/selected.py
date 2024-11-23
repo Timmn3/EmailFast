@@ -347,7 +347,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         # Получаем список стран для указанного сервиса
         services = await sms.get_top_country(service=service_code)
         if services is None or not services:
-            logger.warning(f"Сервисы по коду сервиса не найдены: {service_code}")
+            # logger.warning(f"Сервисы по коду сервиса не найдены: {service_code}")
             await c.answer("Извините, информация о сервисе недоступна в данный момент.")
             return
 
