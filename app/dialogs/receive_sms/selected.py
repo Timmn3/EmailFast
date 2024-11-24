@@ -241,6 +241,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                         await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                     except Exception:
                         pass
+
                     await manager.switch_to(CountryMenu.select_country)
                     return
 
