@@ -237,7 +237,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                                                                max_price=max_price)
 
                 if 'activationId' not in phone_number_data:
-                    await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                    try:
+                        await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                    except Exception:
+                        pass
                     await manager.switch_to(CountryMenu.select_country)
                     return
 

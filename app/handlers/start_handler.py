@@ -483,6 +483,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             activation.status = models.StatusResponse.STATUS_CANCEL
             await activation.save()
             await call.answer(text='Отмена больше не доступна', show_alert=True)
+        elif str(e) == 'Try again later':
+            await call.answer(text='Повторите попытку позже', show_alert=True)
         else:
             logger.error(f"Необработанное исключение: {e}")
             await call.answer(text='Ошибка при отмене номера', show_alert=True)
