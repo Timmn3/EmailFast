@@ -339,8 +339,6 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             for country, price in services.items()
         ]
 
-
-
     else:
         # Создаем экземпляр класса для получения SMS
         sms = SmsReceive()
