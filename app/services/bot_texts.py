@@ -355,7 +355,10 @@ INTEREST = 1.3
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
 SERVICES_TRANSLATION = {
     "tg": "telegram",
+    "vk": "vkcom",
 }
+
+SERVICE_ONLINESIM = ["Telegram", "ВКонтакте + Mail.ru"]
 
 # возвращает первый ключ, соответствующий значению
 REVERSE_SERVICES_TRANSLATION = {v: k for k, v in SERVICES_TRANSLATION.items()}

@@ -1,6 +1,8 @@
 from tortoise.exceptions import DoesNotExist
 from app.db.models import CountryOnlinesim, ServiceOnlinesim
 from loguru import logger
+
+from app.services.bot_texts import SERVICE_ONLINESIM
 from app.services.onlinesim.get_tariffs import fetch_tariffs
 
 
@@ -43,7 +45,7 @@ async def add_services():
         try:
             # Получаем список услуг с использованием fetch_tariffs
             services = []
-            for service in ["Telegram"]:  # Укажите нужные сервисы
+            for service in SERVICE_ONLINESIM:  # Укажите нужные сервисы
                 result = await fetch_tariffs(country_id, service)
 
                 if result is None:  # Проверяем, что результат не None
