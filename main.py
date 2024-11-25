@@ -87,14 +87,14 @@ async def main(dp: Dispatcher):
 
 
 def set_scheduled_jobs(scheduler, *args, **kwargs):
-    scheduler.add_job(check_sms, "interval", seconds=10, max_instances=3)
-    scheduler.add_job(check_email, "interval", seconds=11, max_instances=3)
-    scheduler.add_job(check_payment_ckassa, "interval", seconds=12, max_instances=3)
-    scheduler.add_job(check_payment_streampay, "interval", seconds=13, max_instances=3)
-    scheduler.add_job(check_payment_lava, "interval", seconds=14, max_instances=3)
-    scheduler.add_job(check_payment_freekassa, "interval", seconds=15, max_instances=3)
-    scheduler.add_job(check_payment_anypay, "interval", seconds=16, max_instances=3)
-    scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
+    # scheduler.add_job(check_sms, "interval", seconds=10, max_instances=3)
+    # scheduler.add_job(check_email, "interval", seconds=11, max_instances=3)
+    # scheduler.add_job(check_payment_ckassa, "interval", seconds=12, max_instances=3)
+    # scheduler.add_job(check_payment_streampay, "interval", seconds=13, max_instances=3)
+    # scheduler.add_job(check_payment_lava, "interval", seconds=14, max_instances=3)
+    # scheduler.add_job(check_payment_freekassa, "interval", seconds=15, max_instances=3)
+    # scheduler.add_job(check_payment_anypay, "interval", seconds=16, max_instances=3)
+    # scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
     scheduler.add_job(add_services, "interval", hours=1)
 
 
