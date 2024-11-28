@@ -126,6 +126,47 @@ async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_mana
     await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
 
 
+@router.message(Command("rent_number"))
+@router.message(F.text == bt.RENT_NUMBER)
+async def rent_number(message: types.Message, dialog_manager: DialogManager):
+    """
+    📞Арендовать номер
+    """
+    user = await models.User.get_user(message.from_user.id)
+
+    # Проверяем аренду номера
+    activation = await models.Rent.get_active_rent(user.id)
+
+    # проверяем подписку
+    if activation is None:
+        sub = await check_subscribe(user)
+        if not sub:
+            await send_subscribe_msg(user)
+            return
+
+    # Если номер не арендован
+        # тут нужно добавить вывод кнопок стран для аренды номера
+        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+    # Если номер уже арендован
+    else:
+        # получаем индекс страны
+        await activation.fetch_related('country')
+        # имя страны
+        country = activation.country.name
+        # здесь нужно вывести арендованные номера
+        service = await models.Service.get_service_name_by_id(service_id=activation.service_id)
+        await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
+
+
+# Обрабатываем кнопку 📞Арендовать новый номер
+@router.callback_query(F.data.startswith('rent_new_number'))
+async def rent_new_number(call: types.CallbackQuery, dialog_manager: DialogManager):
+    # тут нужно добавить вывод кнопок стран для аренды номера
+    # await dialog_manager.reset_stack()
+    # await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+    pass
+
+
 @router.message(Command("get_email"))  # Обработка команды /get_email
 @router.message(F.text == bt.RECEIVE_EMAIL_BTN)  # кнопка '📩Принять Email'
 @router.callback_query(F.data == 'receive_email')  # Обработка коллбэк-запросов с данными 'receive_email'

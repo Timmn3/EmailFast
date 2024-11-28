@@ -992,3 +992,111 @@ class PaymentLink(Model):
         :return: Список объектов ссылок на оплату.
         """
         return await cls.all()
+
+
+class Rent(Model):
+    class Meta:
+        table = "rents"
+        table_description = "Rents"
+        ordering = ["id"]
+
+    id: int = fields.BigIntField(pk=True)
+    user: User = fields.ForeignKeyField('models.User', related_name='rents')
+    rent_id: int = fields.BigIntField(unique=True, index=True)
+    country: Country = fields.ForeignKeyField('models.Country', related_name='rents')
+    service: Service = fields.ForeignKeyField('models.Service', related_name='rents')
+    cost: float = fields.FloatField()
+    phone_number: str = fields.CharField(max_length=32)
+    status: StatusResponse = fields.IntEnumField(StatusResponse, default=StatusResponse.STATUS_WAIT_CODE)
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
+    rent_expire_at: datetime = fields.DatetimeField(null=True)
+
+    @classmethod
+    async def add_rent(cls, user: User, rent_id: int, country: Country, cost: float,
+                       service: Service, phone_number: str, rent_expire_at: datetime):
+        """
+        Добавляет новую аренду в базу данных.
+
+        :param user: Объект пользователя, который инициировал аренду.
+        :param rent_id: Уникальный идентификатор аренды.
+        :param country: Объект страны, связанной с арендой.
+        :param cost: Стоимость аренды.
+        :param service: Объект сервиса, связанного с арендой.
+        :param phone_number: Номер телефона, используемый для аренды.
+        :param rent_expire_at: Время истечения аренды.
+        :return: Созданный объект аренды.
+        """
+        rent = await cls.create(
+            user=user,
+            rent_id=rent_id,
+            country=country,
+            service=service,
+            cost=cost,
+            phone_number=phone_number,
+            rent_expire_at=rent_expire_at
+        )
+        return rent
+
+    @classmethod
+    async def get_rent(cls, rent_id: int):
+        """
+        Получает аренду по её уникальному идентификатору.
+
+        :param rent_id: Уникальный идентификатор аренды.
+        :return: Объект аренды или None, если аренда не найдена.
+        """
+        return await cls.get_or_none(rent_id=rent_id)
+
+    @classmethod
+    async def get_user_rents(cls, user: User):
+        """
+        Получает все аренды пользователя.
+
+        :param user: Объект пользователя.
+        :return: Список объектов аренд, принадлежащих пользователю.
+        """
+        return await cls.filter(user=user).all()
+
+    @classmethod
+    async def get_expired_rents(cls):
+        """
+        Получает все истекшие аренды.
+
+        :return: Список объектов истекших аренд.
+        """
+        return await cls.filter(rent_expire_at__lte=timezone.now(),
+                                status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+
+    @classmethod
+    async def get_active_rents(cls):
+        """
+        Получает все активные аренды.
+
+        :return: Список объектов активных аренд.
+        """
+        return await cls.filter(rent_expire_at__gt=timezone.now()).all()
+
+    @classmethod
+    async def get_active_rent(cls, user_id: int):
+        """
+        Получает активную аренду пользователя по его user_id, если она активна.
+
+        :param user_id: Идентификатор пользователя.
+        :return: Объект аренды пользователя, если она активна, или None, если аренда не найдена или истекла.
+        """
+        utc_now = datetime.now(pytz.utc)
+        active_rents = await cls.filter(user_id=user_id, rent_expire_at__gt=utc_now).all()
+        if active_rents:
+            return active_rents[-1]
+        return None
+
+    @classmethod
+    async def delete_user_rents(cls, user_id: int):
+        """
+        Удаляет все аренды пользователя по его user_id.
+
+        :param user_id: Идентификатор пользователя.
+        :return: Количество удалённых записей.
+        """
+        deleted_count = await cls.filter(user_id=user_id).delete()
+        return deleted_count

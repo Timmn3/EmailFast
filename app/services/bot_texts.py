@@ -233,6 +233,7 @@ BACK_BTN = '« Назад'
 
 # Start menu
 RECEIVE_SMS_BTN = '📲Принять SMS'
+RENT_NUMBER = '📞Арендовать номер'
 RECEIVE_EMAIL_BTN = '📩Принять Email'
 PERSONAL_CABINET_BTN = '👤Личный кабинет'
 AFFILIATE_PROGRAM_BTN = '💰Партнерская программа'
