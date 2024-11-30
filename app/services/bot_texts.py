@@ -8,7 +8,7 @@ MAIN_MENU = """
 
 SELECT_COUNTRY = 'Выберите страну⤵️'
 SELECT_SERVICE = 'Выберите сервис⤵️'
-
+SELECT_RENTAL_PERIOD = "Выберите срок аренды⤵️"
 ENTER_COUNTRY = "Введите наименование страны на русском языке⤵️"
 ENTER_SERVICE = "Введите название необходимого сервиса"
 
@@ -352,6 +352,8 @@ CHANNEL_LINK = 'https://t.me/neuronbo'
 
 # процент, который накидывает сервис
 INTEREST = 1.3
+
+DOLLAR_RATE = 120
 
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
 SERVICES_TRANSLATION = {

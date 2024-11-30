@@ -1,0 +1,86 @@
+from aiogram import types
+from aiogram_dialog import DialogManager
+from aiogram_dialog.widgets.input import TextInput
+from aiogram_dialog.widgets.kbd import Select, Button
+from app.db import models
+from app.dialogs.rent_sms.states import RentCountryMenu
+
+
+
+# Функция для обработки нажатия кнопки поиска страны
+async def rent_on_search_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    """
+    Обрабатывает нажатие кнопки поиска страны и переводит на меню ввода страны.
+
+    :param c: Объект CallbackQuery от aiogram.
+    :param widget: Виджет Button от aiogram_dialog.
+    :param manager: Менеджер диалогов от aiogram_dialog.
+    """
+    await manager.switch_to(RentCountryMenu.enter_country)
+
+
+async def rent_back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    await manager.switch_to(RentCountryMenu.select_country)
+
+# Функция для обработки результата поиска страны
+async def rent_on_result_country(m: types.Message, widget: TextInput, manager: DialogManager, country_name: str):
+    """
+    Обрабатывает результат поиска страны по введенному названию.
+
+    :param m: Объект Message от aiogram.
+    :param widget: Виджет TextInput от aiogram_dialog.
+    :param manager: Менеджер диалогов от aiogram_dialog.
+    :param country_name: Название страны, введенное пользователем.
+    """
+    country_names = await models.CountryOnlinesim.search_countries(country_name.lower())
+    if len(country_names) == 0:
+        await manager.switch_to(RentCountryMenu.enter_country_error)
+        return
+
+    ctx = manager.current_context()
+    ctx.dialog_data['rent_search_name'] = country_names[0]
+    await manager.switch_to(RentCountryMenu.select_country)
+
+
+# Функция для обработки нажатия кнопки поиска страны
+async def rent_on_search_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    """
+    Обрабатывает нажатие кнопки поиска страны и переводит на меню ввода страны.
+
+    :param c: Объект CallbackQuery от aiogram.
+    :param widget: Виджет Button от aiogram_dialog.
+    :param manager: Менеджер диалогов от aiogram_dialog.
+    """
+    await manager.switch_to(RentCountryMenu.enter_country)
+
+
+async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, manager: DialogManager, country_index: str):
+    """
+    Обрабатывает выбор страны для аренды.
+
+    :param c: Объект CallbackQuery от aiogram.
+    :param widget: Виджет Select от aiogram_dialog.
+    :param manager: Менеджер диалогов от aiogram_dialog.
+    :param country_index: Индекс выбранной страны.
+    """
+    # Получаем список стран из текущего контекста
+    rent_countries = manager.dialog_data.get("rent_countries", [])
+
+    # Находим выбранную страну
+    selected_country = next((country for country in rent_countries if country["id"] == country_index), None)
+
+    if not selected_country:
+        await c.answer("Страна не найдена.", show_alert=True)
+        return
+
+    # Извлекаем тарифы для выбранной страны
+    tariffs = selected_country["tariffs"].get(country_index, {})
+
+    # Сохраняем данные выбранной страны и тарифы в dialog_data
+    manager.dialog_data["selected_country"] = {
+        "country": selected_country["country"],
+        "tariffs": tariffs,  # Сохраняем только нужные тарифы
+    }
+
+    # Переходим к окну с деталями
+    await manager.switch_to(RentCountryMenu.country_details)

@@ -1,5 +1,4 @@
 import aiohttp
-import asyncio
 
 from app.dependencies import API_KEY_ONLINESIM
 
@@ -9,15 +8,10 @@ class OnlineSimRentAPI:
     Класс для работы с API аренды номеров OnlineSim.
     """
 
-    BASE_URL = "https://onlinesim.ru/api/rent/tariffsRent.php"
+    BASE_URL = "https://onlinesim.ru/api/rent"
 
-    def __init__(self, api_key: str):
-        """
-        Инициализация клиента API.
-
-        :param api_key: str - API-ключ для OnlineSim.
-        """
-        self.api_key = api_key
+    def __init__(self):
+        self.api_key = API_KEY_ONLINESIM
 
     async def get_tariffs(self, country: str = None, lang: str = "ru") -> dict:
         """
@@ -37,7 +31,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(self.BASE_URL, params=params) as response:
+                async with session.get(f"{self.BASE_URL}/tariffsRent.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
                     data = await response.json()
@@ -54,17 +48,45 @@ class OnlineSimRentAPI:
             except aiohttp.ClientError as e:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")
 
+    async def rent_number(
+        self,
+        country: int,
+        days: int,
+        extension: bool = False,
+        pagination: bool = False,
+        lang: str = "ru"
+    ) -> dict:
+        """
+        Аренда номера для приема SMS.
 
-# Использование класса
-async def main():
-    api_client = OnlineSimRentAPI(api_key=API_KEY_ONLINESIM)
-    try:
-        # Получить данные о тарифах аренды
-        filtered_tariffs = await api_client.get_tariffs()
-        print(filtered_tariffs)
-    except Exception as e:
-        print("Произошла ошибка:", e)
+        :param country: int - Код страны (в формате E.164, без "+").
+        :param days: int - Начальный период аренды в днях.
+        :param extension: bool - Автопродление аренды (по умолчанию: False).
+        :param pagination: bool - Пагинация сообщений (по умолчанию: False).
+        :param lang: str - Язык ответа (по умолчанию: "ru").
+        :return: dict - Данные об арендованном номере.
+        :raises: Exception - В случае ошибки запроса.
+        """
+        params = {
+            "apikey": self.api_key,
+            "country": country,
+            "days": days,
+            "extension": str(extension).lower(),
+            "pagination": str(pagination).lower(),
+            "lang": lang
+        }
 
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{self.BASE_URL}/getRentNum.php", params=params) as response:
+                    if response.status != 200:
+                        raise Exception(f"Ошибка: {response.status}, {await response.text()}")
+                    data = await response.json()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+                    if data.get("response") != 1:
+                        raise Exception(f"Ошибка API: {data}")
+
+                    return data.get("item", {})
+
+            except aiohttp.ClientError as e:
+                raise Exception(f"Ошибка при выполнении запроса: {e}")

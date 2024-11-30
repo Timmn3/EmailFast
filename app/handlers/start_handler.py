@@ -15,6 +15,7 @@ from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info, send_service_info_with_keyboard
 from app.dialogs.receive_sms.states import ServiceMenu
+from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_TWO_MONTHS, RENT_EMAIL_SIX_MONTHS, \
     RENT_EMAIL_YEAR, SERVICES_TRANSLATION
@@ -146,7 +147,7 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
 
     # Если номер не арендован
         # тут нужно добавить вывод кнопок стран для аренды номера
-        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+        await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
     # Если номер уже арендован
     else:
         # получаем индекс страны

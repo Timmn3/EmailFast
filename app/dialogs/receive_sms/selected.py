@@ -12,6 +12,7 @@ from app.db import models
 from app.db.models import ServiceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
+from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS
 from app.services.low_balance import check_low_balance, send_low_balance_alert
@@ -138,6 +139,7 @@ async def on_result_country(m: types.Message, widget: TextInput, manager: Dialog
     ctx = manager.current_context()
     ctx.dialog_data['search_name'] = country_names[0]
     await manager.switch_to(CountryMenu.select_country)
+
 
 
 # Функция для отправки информации о сервисе
@@ -387,6 +389,9 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
 
 async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     await manager.switch_to(CountryMenu.select_country)
+
+
+
 
 
 def sort_countries_by_dict(countries_with_prices):
