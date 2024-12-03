@@ -9,7 +9,7 @@ from aiogram import Dispatcher
 
 from app.db.database import init_db
 from app.dependencies import bot
-
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import start_handler, affiliate_program, admin_handler, bot_handler
 from app.services.notify_admins import notify_wakeup_bot
@@ -55,7 +55,25 @@ async def on_unknown_state(event, dialog_manager: DialogManager):
     )
 
 
+
+
+def job_listener(event):
+    """
+    Listener для обработки ошибок, выполнения и пропусков задач.
+    """
+    if event.code == EVENT_JOB_ERROR:
+        logger.error(f"Job {event.job_id} raised an exception: {event.exception}")
+    elif event.code == EVENT_JOB_MISSED:
+        logger.warning(f"Job {event.job_id} was missed at {event.scheduled_run_time}")
+    elif event.code == EVENT_JOB_EXECUTED:
+        logger.info(f"Job {event.job_id} executed successfully at {event.scheduled_run_time}")
+
+
+
 async def main(dp: Dispatcher):
+    """
+    Основная функция запуска бота и планировщика.
+    """
     main_routers = [
         admin_handler.router,
         start_handler.router,
@@ -69,7 +87,7 @@ async def main(dp: Dispatcher):
         on_unknown_state,
         ExceptionTypeFilter(UnknownState),
     )
-    #
+
     from app.dialogs import setup_dialogs
     dp.include_routers(bot_handler.router, *main_routers)
     setup_dialogs(dp)
@@ -81,12 +99,13 @@ async def main(dp: Dispatcher):
     dp.pre_checkout_query.register(stars_pay.pre_checkout_handler)
 
     set_scheduled_jobs(scheduler)
+    scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     scheduler.start()
 
     await dp.start_polling(bot)
 
 
-def set_scheduled_jobs(scheduler, *args, **kwargs):
+def set_scheduled_jobs(scheduler):
     try:
         scheduler.add_job(check_sms, "interval", seconds=15, max_instances=3)
         scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
@@ -97,8 +116,8 @@ def set_scheduled_jobs(scheduler, *args, **kwargs):
         scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
         scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
         scheduler.add_job(add_services, "cron", hour=3, minute=0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Error while adding scheduled jobs: {e}")
 
 
     # scheduler.add_job(update_countries_and_services, "interval", minutes=30,
@@ -111,6 +130,15 @@ class SkipSpecificLogFilter(logging.Filter):
                 "Execution of job" in record.getMessage() and
                 "skipped: maximum number of running instances reached" in record.getMessage()
         )
+
+import signal
+
+def shutdown_scheduler(scheduler):
+    logger.info("Shutting down scheduler...")
+    scheduler.shutdown()
+
+signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
+signal.signal(signal.SIGINT, lambda *args: shutdown_scheduler(scheduler))  # Для Ctrl+C
 
 
 if __name__ == '__main__':
