@@ -353,7 +353,7 @@ CHANNEL_LINK = 'https://t.me/neuronbo'
 # процент, который накидывает сервис
 INTEREST = 1.3
 
-DOLLAR_RATE = 120
+DOLLAR_RATE = 78 * INTEREST
 
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
 SERVICES_TRANSLATION = {
