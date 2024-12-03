@@ -7,8 +7,8 @@ from aiogram_dialog.widgets.text import Const, Format
 
 from app.dialogs.rent_sms import states
 from app.dialogs.rent_sms.getters import get_rent_countries, get_country_details
-from app.dialogs.rent_sms.selected import rent_on_result_country, rent_on_search_country, rent_on_select_country_new, \
-    rent_back_country
+from app.dialogs.rent_sms.selected import rent_on_result_country, rent_on_select_country_new, \
+    rent_back_country, on_search_rent_country, rent_number_in_days
 from app.services import bot_texts as bt
 
 
@@ -34,7 +34,7 @@ def select_rent_window():
             width=2,
             height=5
         ),
-        Button(Const(bt.SEARCH_COUNTRY_BTN), id="rent_search_country", on_click=rent_on_search_country),
+        # Button(Const(bt.SEARCH_COUNTRY_BTN), id="rent_search_country", on_click=on_search_rent_country),
         Cancel(Const(bt.BACK_BTN)),
         state=states.RentCountryMenu.select_country,
         getter=get_rent_countries
@@ -65,7 +65,7 @@ def enter_country_error_window():
     """
     return Window(
         Const(bt.ENTER_COUNTRY_ERROR),
-        Button(Const(bt.ENTER_AGAIN_BTN), id="enter_again", on_click=rent_on_search_country),
+        Button(Const(bt.ENTER_AGAIN_BTN), id="enter_again", on_click=on_search_rent_country),
         Cancel(Const(bt.BACK_BTN)),
         state=states.RentCountryMenu.enter_country_error
     )
@@ -85,6 +85,7 @@ def country_details_window():
                 id="tariffs_scroll",
                 item_id_getter=operator.itemgetter("days"),
                 items="tariffs",
+                on_click=rent_number_in_days,
             ),
             id="tariffs_group",
             width=1,

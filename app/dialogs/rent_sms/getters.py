@@ -28,7 +28,6 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
     # Предзагрузка всех стран в память
     all_countries = await CountryOnlinesim.all().values("country_id", "name")
     country_map = {str(country["country_id"]): country["name"] for country in all_countries}
-
     # Преобразование данных с увеличением цены
     countries = []
     for country_code, days in tariffs.items():
@@ -39,7 +38,7 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
         countries.append({
             "id": country_code,
             "country": country_name,
-            "price": round(increased_price, 2),
+            "price": increased_price,
             "tariffs": tariffs,
         })
 
@@ -62,9 +61,9 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
     if not selected_country:
         return {"country": "Неизвестно", "tariffs": []}
 
-    # Получаем тарифы и увеличиваем их на DOLLAR_RATE
+    # Получаем тарифы
     tariffs = [
-        {"days": get_day_string(int(days)), "price": round(price * DOLLAR_RATE, 2)}
+        {"days": get_day_string(int(days)), "price": price}
         for days, price in selected_country["tariffs"].items()
     ]
 

@@ -52,7 +52,7 @@ class OnlineSimRentAPI:
         self,
         country: int,
         days: int,
-        extension: bool = False,
+        extension: bool = True,
         pagination: bool = False,
         lang: str = "ru"
     ) -> dict:
