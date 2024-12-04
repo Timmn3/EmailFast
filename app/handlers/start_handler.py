@@ -15,16 +15,19 @@ from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info, send_service_info_with_keyboard
 from app.dialogs.receive_sms.states import ServiceMenu
+from app.dialogs.rent_sms import states
+from app.dialogs.rent_sms.selected import rent_back_country
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_TWO_MONTHS, RENT_EMAIL_SIX_MONTHS, \
-    RENT_EMAIL_YEAR, SERVICES_TRANSLATION
+    RENT_EMAIL_YEAR, SERVICES_TRANSLATION, country_flags
 from app.services.keyboards import start_kb
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.sms_receive import SmsReceive
 from app.services.temp_mail import TempMail
 from loguru import logger
+
 
 def log_exceptions(func):
     async def wrapper(*args, **kwargs):
@@ -33,7 +36,9 @@ def log_exceptions(func):
         except Exception as e:
             logger.error(f"Ошибка в обработчике {func.__name__}: {e}")
             raise  # Возможно, чтобы повторно вызвать ошибку и не скрывать её
+
     return wrapper
+
 
 router = Router()
 
@@ -127,6 +132,51 @@ async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_mana
     await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
 
 
+async def send_rent_menu(user: "User", message: types.Message = None, callback_query: types.CallbackQuery = None):
+    """
+    Вспомогательная функция для отправки меню аренды номеров.
+    """
+    # Проверяем аренды пользователя
+    activation_list = await models.Rent.get_active_rent(user.id)
+
+    # Создаем список для вывода информации
+    rent_details = ["<i>Ваши арендованные номера⤵️</i>\n"]
+
+    # Создаем inline клавиатуру
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+
+    # Проходим по всем арендам
+    for activation in activation_list:
+        # Загружаем связанные данные о стране
+        await activation.fetch_related('country')
+        country = activation.country.name
+        # Формируем строку с флагом и номером
+        flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+        phone_number = activation.phone_number
+
+        # Формируем текст кнопки (флаг + номер)
+        button_text = f"{flag} +{phone_number}"
+
+        # Создаем кнопку с уникальным callback_data для каждого номера
+        callback_data = f"number_{activation.id}"
+
+        # Добавляем кнопку в клавиатуру
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(text=button_text, callback_data=callback_data)
+        ])
+
+    # Добавляем кнопку для аренды нового номера
+    keyboard.inline_keyboard.append([
+        types.InlineKeyboardButton(text="📞Арендовать новый номер", callback_data="new_number")
+    ])
+
+    # Отправляем сообщение с inline клавиатурой
+    if message:
+        await message.answer("\n".join(rent_details), reply_markup=keyboard)
+    else:
+        await callback_query.message.edit_text("\n".join(rent_details), reply_markup=keyboard)
+
+
 @router.message(Command("rent_number"))
 @router.message(F.text == bt.RENT_NUMBER)
 async def rent_number(message: types.Message, dialog_manager: DialogManager):
@@ -135,37 +185,107 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
     """
     user = await models.User.get_user(message.from_user.id)
 
-    # Проверяем аренду номера
-    activation = await models.Rent.get_active_rent(user.id)
+    # Проверяем подписку
+    sub = await check_subscribe(user)
+    if not sub:
+        await send_subscribe_msg(user)
+        return
 
-    # проверяем подписку
-    if activation is None:
-        sub = await check_subscribe(user)
-        if not sub:
-            await send_subscribe_msg(user)
-            return
+    # Проверяем аренды пользователя
+    activation_list = await models.Rent.get_active_rent(user.id)
 
-    # Если номер не арендован
-        # тут нужно добавить вывод кнопок стран для аренды номера
+    # если нет активных арендных номеров, то предлагаем
+    if activation_list is None:
         await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
-    # Если номер уже арендован
+        return
+
+    # Отправляем меню аренды
+    await send_rent_menu(user, message=message)
+
+
+@router.callback_query(F.data == "back_to_rent_menu")
+async def back_to_rent_menu(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
+    """
+    Обработка кнопки 'Назад', возвращающая в меню аренды номеров.
+    """
+    user = await models.User.get_user(callback_query.from_user.id)
+
+    # Отправляем меню аренды
+    await send_rent_menu(user, callback_query=callback_query)
+
+
+# Обработчик для нажатия на кнопку арендованного номера
+@router.callback_query(F.data.startswith('number_'))
+async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
+    """
+    Обработка выбора арендованного номера
+    """
+    rent_id = int(callback_query.data.split('_')[1])  # Извлекаем id аренды из callback_data
+    # Логика обработки выбранного номера
+    rented = await models.Rent.get_rent(id=rent_id)  # Получаем аренду по id
+
+    if rented:
+        # Формируем информацию о номере
+        country = await models.Rent.get_country_by_rent(id=rent_id)
+        phone_number = rented.phone_number
+        expiry_date = rented.rent_expire_at.strftime("%d.%m.%y %H:%M")  # Пример формата даты
+        flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+
+        # Текст для отправки пользователю
+        rent_details = (
+            f"<i>Ваш арендованный номер:</i> {flag} +{phone_number}\n"
+            f"<i>Страна:</i> {flag}{country}\n"
+            f"<i>Срок аренды до:</i> {expiry_date}\n"
+        )
+
+        # Создаем inline клавиатуру
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+
+        # Кнопки для управления автопродлением
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(
+                text="❌/✅ Автопродление", callback_data=f"disable_auto_renew_{rent_id}"
+            )
+        ])
+
+        # Кнопки для продления и отмены аренды
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(
+                text="🔄 Продлить аренду", callback_data=f"extend_rent_{rent_id}"
+            ),
+            types.InlineKeyboardButton(
+                text="🚫 Отменить аренду", callback_data=f"cancel_rent_{rent_id}"
+            )
+        ])
+
+        # Кнопка для возврата
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(
+                text="🔙 Назад", callback_data="back_to_rent_menu"
+            )
+        ])
+
+        # Отправляем информацию о номере и клавиатуру
+        await callback_query.message.edit_text(rent_details, reply_markup=keyboard)
+
     else:
-        # получаем индекс страны
-        await activation.fetch_related('country')
-        # имя страны
-        country = activation.country.name
-        # здесь нужно вывести арендованные номера
-        service = await models.Service.get_service_name_by_id(service_id=activation.service_id)
-        await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
+        await callback_query.answer("Номер не найден.")
 
 
-# Обрабатываем кнопку 📞Арендовать новый номер
-@router.callback_query(F.data.startswith('rent_new_number'))
-async def rent_new_number(call: types.CallbackQuery, dialog_manager: DialogManager):
-    # тут нужно добавить вывод кнопок стран для аренды номера
-    # await dialog_manager.reset_stack()
-    # await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
-    pass
+
+@router.callback_query(F.data.startswith('new_number'))
+async def rent_new_number(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
+    # Передаем только необходимые данные для восстановления
+    context_data = {
+        'chat_id': callback_query.message.chat.id,
+        'message_id': callback_query.message.message_id
+    }
+
+    # Завершаем текущий диалог или возвращаем в предыдущий
+    await dialog_manager.start(
+        states.RentCountryMenu.select_country,  # Состояние для выбора страны
+        context_data  # Передаем только нужные данные
+    )
 
 
 @router.message(Command("get_email"))  # Обработка команды /get_email
@@ -483,7 +603,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         else:
             sms = SmsReceive()
             status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                                status=models.ActivationCode.CANCEL))
+                                                         status=models.ActivationCode.CANCEL))
             if status == 'STATUS_WAIT_CODE':
                 await call.answer(text='Ожидание смс', show_alert=True)
                 return

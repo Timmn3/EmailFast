@@ -259,9 +259,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         country = await models.Country.get_country_by_id(country_id=country_id)
         service = await models.Service.get_service(code=service_code)
 
-    # Проверяем, низкий ли баланс у пользователя после списания средств
-    low_balance = await check_low_balance(user, price)
-
     # Добавляем запись об активации в базу данных
     activation = await models.Activation.add_activation(
         user=user,
@@ -281,6 +278,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     user.balance -= price
     await user.save(update_fields=['balance'])
 
+    # Проверяем, низкий ли баланс у пользователя после списания средств
+    low_balance = await check_low_balance(user, price)
     # Ждем 2 секунды перед отправкой уведомления о низком балансе, если это необходимо
     await asyncio.sleep(1)
     if low_balance:

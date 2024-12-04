@@ -3,25 +3,29 @@ from aiogram_dialog import DialogManager
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from app.db import models
+from app.dialogs.rent_sms.getters import get_day_string
 from app.dialogs.rent_sms.states import RentCountryMenu
-from app.services.bot_texts import DOLLAR_RATE
+from app.services.bot_texts import DOLLAR_RATE, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, country_flags
+from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
+from datetime import datetime, timedelta
+import pytz
+from app.services import bot_texts as bt
+import asyncio
 
 
 # Функция для обработки нажатия кнопки поиска страны
 async def rent_on_search_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
-    """
-    Обрабатывает нажатие кнопки поиска страны и переводит на меню ввода страны.
-
-    :param c: Объект CallbackQuery от aiogram.
-    :param widget: Виджет Button от aiogram_dialog.
-    :param manager: Менеджер диалогов от aiogram_dialog.
-    """
     await manager.switch_to(RentCountryMenu.enter_country)
+
+
+async def rent_on_deposit(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    await manager.switch_to(RentCountryMenu.deposit)
 
 
 async def rent_back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     await manager.switch_to(RentCountryMenu.select_country)
+
 
 # Функция для обработки результата поиска страны
 async def rent_on_result_country(m: types.Message, widget: TextInput, manager: DialogManager, country_name: str):
@@ -55,7 +59,8 @@ async def on_search_rent_country(c: types.CallbackQuery, widget: Button, manager
     await manager.switch_to(RentCountryMenu.enter_country)
 
 
-async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, manager: DialogManager, country_index: str):
+async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, manager: DialogManager,
+                                     country_index: str):
     """
     Обрабатывает выбор страны для аренды.
 
@@ -109,7 +114,33 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
 
     # Преобразуем индекс дней в число
     days = int(day_index.split()[0])
+
+    price = selected_country['tariffs'].get(str(days))
+    # Получаем информацию о пользователе
+    user = await models.User.get_user(c.from_user.id)
+
+    # Проверяем, достаточно ли у пользователя средств на балансе
+    if user.balance < price:
+        # manager.current_context().dialog_data.update({'country_id': country_id, 'service_code': service_code,
+        #                                               'service_price': price})
+        await manager.switch_to(RentCountryMenu.deposit)
+        return
+
     country_code = selected_country["rent_country_code"]  # Код страны из context
+
+    await c.message.answer(text=NUMBER_REQUEST_SENT)
+
+    # Проверяем, прошло ли 10 секунд с последнего запроса
+    if user.last_request_time is not None and (
+            datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 10:
+        await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
+        return
+
+    # Получаем текущее время в московском часовом поясе
+    current_time = datetime.now(pytz.timezone('Europe/Moscow'))
+    # Обновляем время последнего запроса
+    user.last_request_time = current_time.astimezone(pytz.utc)
+    await user.save(update_fields=['last_request_time'])
 
     # Создаем экземпляр API клиента и делаем запрос аренды
     api_client = OnlineSimRentAPI()
@@ -120,8 +151,69 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         return
 
     # Выводим результат аренды
-    if rent_result:
-        number = f"+{country_code}{number}" if (number := rent_result.get("number")) else "Неизвестно"
-        await c.answer(f"Номер: {number}", show_alert=True)
-    else:
-        await c.answer("Ошибка: не удалось арендовать номер.", show_alert=True)
+    if rent_result is None:
+        await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+        return
+
+        # Извлекаем данные активации
+    rent_id = int(rent_result.get("tzid", 0))
+    phone_number = rent_result.get("number", None)
+    country = await models.CountryOnlinesim.get_country_from_country_by_id(country_id=country_code)
+
+    if phone_number is None:
+        await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+        return
+
+    # Добавляем запись об активации в базу данных
+    activation = await models.Rent.add_rent(
+        user=user,
+        rent_id=rent_id,
+        country=country,
+        cost=price,
+        phone_number=f"{country_code}{phone_number}",
+        rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(days=days)
+    )
+
+    # Отправляем пользователю о номер телефона
+    await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)
+
+    # Списываем средства с баланса пользователя
+    # user.balance -= price
+    await user.save(update_fields=['balance'])
+
+    # Проверяем, низкий ли баланс у пользователя после списания средств
+    low_balance = await check_low_balance(user, price)
+    # Ждем 1 секунду перед отправкой уведомления о низком балансе, если это необходимо
+    await asyncio.sleep(1)
+    if low_balance:
+        await send_low_balance_alert(user)
+
+
+async def send_message_country_number(message: types.Message, activation, country, days):
+    """
+    Отправляет пользователю о номер телефона.
+
+    :param country: Страна
+    :param message: Сообщение для отправки.
+    :param activation: Объект активации.
+    :param days: Количество арендованных дней.
+    """
+
+    # Получаем флаг из словаря
+    country = country.strip()
+    flag = country_flags.get(country, "")  # Получаем флаг, если страны нет в словаре, возвращается пустая строка
+    flag_and_country = f"{flag} {country}"
+
+    # Сообщение о количестве дней аренды
+    days_text = get_day_string(days)
+    await message.answer(
+        text=bt.RENT_SUCCESS_MESSAGE.format(days=days_text)
+    )
+
+    await message.answer(
+        text=bt.NUMBER_INFO.format(
+            country=flag_and_country,
+            phone=activation.phone_number,
+        )
+    )
+

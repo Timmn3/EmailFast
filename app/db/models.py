@@ -1001,19 +1001,19 @@ class Rent(Model):
         ordering = ["id"]
 
     id: int = fields.BigIntField(pk=True)
-    user: User = fields.ForeignKeyField('models.User', related_name='rents')
+    user: "User" = fields.ForeignKeyField('models.User', related_name='rents')
     rent_id: int = fields.BigIntField(unique=True, index=True)
-    country: Country = fields.ForeignKeyField('models.Country', related_name='rents')
-    service: Service = fields.ForeignKeyField('models.Service', related_name='rents')
+    country: "Country" = fields.ForeignKeyField('models.Country', related_name='rents')
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
     status: StatusResponse = fields.IntEnumField(StatusResponse, default=StatusResponse.STATUS_WAIT_CODE)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     rent_expire_at: datetime = fields.DatetimeField(null=True)
+    autorenew: bool = fields.BooleanField(default=False)  # Поле для автопродления
 
     @classmethod
-    async def add_rent(cls, user: User, rent_id: int, country: Country, cost: float,
-                       service: Service, phone_number: str, rent_expire_at: datetime):
+    async def add_rent(cls, user: "User", rent_id: int, country: "Country", cost: float,
+                      phone_number: str, rent_expire_at: datetime, autorenew: bool = False):
         """
         Добавляет новую аренду в базу данных.
 
@@ -1021,34 +1021,34 @@ class Rent(Model):
         :param rent_id: Уникальный идентификатор аренды.
         :param country: Объект страны, связанной с арендой.
         :param cost: Стоимость аренды.
-        :param service: Объект сервиса, связанного с арендой.
         :param phone_number: Номер телефона, используемый для аренды.
         :param rent_expire_at: Время истечения аренды.
+        :param autorenew: Статус автопродления (по умолчанию False).
         :return: Созданный объект аренды.
         """
         rent = await cls.create(
             user=user,
             rent_id=rent_id,
             country=country,
-            service=service,
             cost=cost,
             phone_number=phone_number,
-            rent_expire_at=rent_expire_at
+            rent_expire_at=rent_expire_at,
+            autorenew=autorenew
         )
         return rent
 
     @classmethod
-    async def get_rent(cls, rent_id: int):
+    async def get_rent(cls, id: int):
         """
         Получает аренду по её уникальному идентификатору.
 
         :param rent_id: Уникальный идентификатор аренды.
         :return: Объект аренды или None, если аренда не найдена.
         """
-        return await cls.get_or_none(rent_id=rent_id)
+        return await cls.get_or_none(id=id)
 
     @classmethod
-    async def get_user_rents(cls, user: User):
+    async def get_user_rents(cls, user: "User"):
         """
         Получает все аренды пользователя.
 
@@ -1079,15 +1079,15 @@ class Rent(Model):
     @classmethod
     async def get_active_rent(cls, user_id: int):
         """
-        Получает активную аренду пользователя по его user_id, если она активна.
+        Получает активные аренды пользователя по его user_id, если она активна.
 
         :param user_id: Идентификатор пользователя.
-        :return: Объект аренды пользователя, если она активна, или None, если аренда не найдена или истекла.
+        :return: Объекты аренды пользователя, если она активна, или None, если аренда не найдена или истекла.
         """
         utc_now = datetime.now(pytz.utc)
         active_rents = await cls.filter(user_id=user_id, rent_expire_at__gt=utc_now).all()
         if active_rents:
-            return active_rents[-1]
+            return active_rents
         return None
 
     @classmethod
@@ -1100,3 +1100,27 @@ class Rent(Model):
         """
         deleted_count = await cls.filter(user_id=user_id).delete()
         return deleted_count
+
+    @classmethod
+    async def is_autorenew_enabled(cls, rent_id: int) -> bool:
+        """
+        Проверяет, включено ли автопродление для указанной аренды.
+
+        :param rent_id: Уникальный идентификатор аренды.
+        :return: True, если автопродление включено, иначе False.
+        """
+        rent = await cls.get_or_none(rent_id=rent_id)
+        if rent:
+            return rent.autorenew
+        return False
+
+    @classmethod
+    async def get_country_by_rent(cls, id: int) -> "Country":
+        """
+        Получает объект Country, связанный с указанной арендой.
+
+        :param id: Уникальный идентификатор аренды.
+        :return: Объект Country, связанный с арендой, или None, если аренда не найдена.
+        """
+        rent = await cls.get_or_none(id=id).prefetch_related('country')
+        return rent.country if rent else None

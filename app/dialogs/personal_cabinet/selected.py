@@ -10,6 +10,7 @@ from app.db import models
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_sms.scheduler_balance import start_balance_check
 from app.dialogs.receive_sms.states import CountryMenu
+from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services import bot_texts as bt
 from app.services.payments.anypay import AnypayAPI
 from app.services.bot_texts import FOLLOW_THE_LINK_TO_PAY
@@ -228,6 +229,11 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
             await manager.start(CountryMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
             await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
+    elif state == 'RentCountryMenu':
+        if price >= 300:
+            await manager.start(RentCountryMenu.payment_method, mode=StartMode.NORMAL, data={})
+        else:
+            await manager.start(RentCountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
     else:
         if price >= 300:
             await manager.start(PersonalMenu.payment_method, mode=StartMode.NORMAL, data={})
@@ -340,6 +346,11 @@ async def send_payment_keyboard_anypay(c: types.CallbackQuery, button: Button, m
             await manager.start(CountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
         else:
             await manager.start(CountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
+    elif state == 'RentCountryMenu':
+        if url_pattern.match(url_sbp):
+            await manager.start(RentCountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+        else:
+            await manager.start(RentCountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
     else:
         if url_pattern.match(url_sbp):
             await manager.start(PersonalMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})

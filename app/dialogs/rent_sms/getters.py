@@ -82,3 +82,8 @@ def get_day_string(days):
     else:
         return f"{days} дней"
 
+
+# Обработчик для кнопки Cancel
+async def cancel_btn(c, button, dialog_manager: DialogManager):
+    await dialog_manager.done()
+
