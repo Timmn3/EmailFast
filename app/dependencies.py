@@ -66,6 +66,7 @@ with open("aerich.ini", "w") as aerich_file:
 API_TOKEN = config.get('API_TOKEN')
 ADMINS = config.get('ADMINS', [])
 CODER = config.get('CODER')
+USER_BOT = config.get('USER_BOT')
 
 
 LAVA_SHOP_ID = config.get('LAVA_SHOP_ID')
