@@ -119,7 +119,7 @@ def set_scheduled_jobs(scheduler):
         # scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
         # scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
         scheduler.add_job(add_services, "cron", hour=3, minute=0)
-        scheduler.add_job(userbot_ping, "interval", seconds=2, max_instances=3)
+        scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
     except Exception as e:
         logger.error(f"Error while adding scheduled jobs: {e}")
 
