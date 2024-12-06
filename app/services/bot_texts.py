@@ -270,8 +270,16 @@ SUPPORT_BTN = '🙋‍♂️Поддержка'
 CHANGE_EMAIL_BTN = '🔄Сменить почтовый ящик'
 RENT_EMAIL_BTN = '📬Арендовать почтовый ящик'
 MY_RENT_EMAILS_BTN = '📨Мои ящики'
-
 EXTEND_THE_LEASE = 'Продлить аренду'
+
+# Константы для сообщений об аренде номера
+RENT_NOT_FOUND_MSG = "Аренда не найдена."
+RENT_ALREADY_CANCELED_MSG = "Аренда уже отменена."
+RENT_CANCEL_SUCCESS_MSG = "Аренда успешно отменена."
+RENT_CANCEL_FAILED_MSG = "Не удалось отменить аренду. Проверьте данные и повторите попытку."
+ERROR_NO_OPERATIONS_MSG = "Ошибка: операция уже завершена или не найдена."
+ERROR_OCCURED_MSG = "Произошла ошибка при отмене аренды. Попробуйте позже."
+
 
 # Аренда электронной почты
 RENT_EMAIL_WEEK_BTN = 'Неделя, 99₽'

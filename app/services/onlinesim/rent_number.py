@@ -49,12 +49,12 @@ class OnlineSimRentAPI:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")
 
     async def rent_number(
-        self,
-        country: int,
-        days: int,
-        extension: bool = True,
-        pagination: bool = False,
-        lang: str = "ru"
+            self,
+            country: int,
+            days: int,
+            extension: bool = True,
+            pagination: bool = False,
+            lang: str = "ru"
     ) -> dict:
         """
         Аренда номера для приема SMS.
@@ -87,6 +87,101 @@ class OnlineSimRentAPI:
                         raise Exception(f"Ошибка API: {data}")
 
                     return data.get("item", {})
+
+            except aiohttp.ClientError as e:
+                raise Exception(f"Ошибка при выполнении запроса: {e}")
+
+    async def extend_rent_state(self, tzid: int, days: int, lang: str = "ru") -> dict:
+        """
+        Продление аренды номера на указанный период.
+
+        :param tzid: int - ID операции аренды.
+        :param days: int - Период продления аренды в днях.
+        :param lang: str - Язык ответа (по умолчанию: "ru").
+        :return: dict - Данные о продлении аренды.
+        :raises: Exception - В случае ошибки запроса.
+        """
+        params = {
+            "apikey": self.api_key,
+            "tzid": tzid,
+            "days": days,
+            "lang": lang
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{self.BASE_URL}/extendRentState.php", params=params) as response:
+                    if response.status != 200:
+                        raise Exception(f"Ошибка: {response.status}, {await response.text()}")
+                    data = await response.json()
+
+                    if data.get("response") != 1:
+                        raise Exception(f"Ошибка API: {data}")
+
+                    return data.get("item", {})
+
+            except aiohttp.ClientError as e:
+                raise Exception(f"Ошибка при выполнении запроса: {e}")
+
+    async def get_rent_state(self, tzid: int = None, pagination: bool = False, lang: str = "ru") -> dict:
+        """
+        Получение списка активных арендных номеров или информации о конкретной аренде.
+
+        :param tzid: int - ID операции аренды. Если не указан, возвращается список всех активных аренд.
+        :param pagination: bool - Включение пагинации для списка сообщений (по умолчанию: False).
+        :param lang: str - Язык ответа (по умолчанию: "ru").
+        :return: dict - Список активных арендных номеров или данные конкретной аренды.
+        :raises: Exception - В случае ошибки запроса.
+        """
+        params = {
+            "apikey": self.api_key,
+            "pagination": str(pagination).lower(),
+            "lang": lang
+        }
+        if tzid is not None:
+            params["tzid"] = tzid
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{self.BASE_URL}/getRentState.php", params=params) as response:
+                    if response.status != 200:
+                        raise Exception(f"Ошибка: {response.status}, {await response.text()}")
+                    data = await response.json()
+
+                    if data.get("response") != 1:
+                        raise Exception(f"Ошибка API: {data}")
+
+                    return data.get("list", {}) if tzid is None else data
+
+            except aiohttp.ClientError as e:
+                raise Exception(f"Ошибка при выполнении запроса: {e}")
+
+    async def close_rent_num(self, tzid: int, lang: str = "ru") -> dict:
+        """
+        Закрытие аренды номера.
+
+        :param tzid: int - ID операции аренды, которую нужно закрыть.
+        :param lang: str - Язык ответа (по умолчанию: "ru").
+        :return: dict - Ответ API с подтверждением закрытия аренды.
+        :raises: Exception - В случае ошибки запроса.
+        """
+        params = {
+            "apikey": self.api_key,
+            "tzid": tzid,
+            "lang": lang
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{self.BASE_URL}/closeRentNum.php", params=params) as response:
+                    if response.status != 200:
+                        raise Exception(f"Ошибка: {response.status}, {await response.text()}")
+                    data = await response.json()
+
+                    if data.get("response") is not True:
+                        raise Exception(f"Ошибка API: {data}")
+
+                    return data
 
             except aiohttp.ClientError as e:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")

@@ -1010,10 +1010,12 @@ class Rent(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     rent_expire_at: datetime = fields.DatetimeField(null=True)
     autorenew: bool = fields.BooleanField(default=False)  # Поле для автопродления
+    is_canceled: bool = fields.BooleanField(default=False)  # Поле для отслеживания отмены аренды
 
     @classmethod
     async def add_rent(cls, user: "User", rent_id: int, country: "Country", cost: float,
-                      phone_number: str, rent_expire_at: datetime, autorenew: bool = False):
+                      phone_number: str, rent_expire_at: datetime, autorenew: bool = False,
+                      is_canceled: bool = False):
         """
         Добавляет новую аренду в базу данных.
 
@@ -1024,6 +1026,7 @@ class Rent(Model):
         :param phone_number: Номер телефона, используемый для аренды.
         :param rent_expire_at: Время истечения аренды.
         :param autorenew: Статус автопродления (по умолчанию False).
+        :param is_canceled: Статус отмены аренды (по умолчанию False).
         :return: Созданный объект аренды.
         """
         rent = await cls.create(
@@ -1033,9 +1036,11 @@ class Rent(Model):
             cost=cost,
             phone_number=phone_number,
             rent_expire_at=rent_expire_at,
-            autorenew=autorenew
+            autorenew=autorenew,
+            is_canceled=is_canceled
         )
         return rent
+
 
     @classmethod
     async def get_rent(cls, id: int):
@@ -1068,24 +1073,18 @@ class Rent(Model):
                                 status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
-    async def get_active_rents(cls):
-        """
-        Получает все активные аренды.
-
-        :return: Список объектов активных аренд.
-        """
-        return await cls.filter(rent_expire_at__gt=timezone.now()).all()
-
-    @classmethod
     async def get_active_rent(cls, user_id: int):
         """
-        Получает активные аренды пользователя по его user_id, если она активна.
+        Получает активные аренды пользователя по его user_id, если она активна и не отменена.
 
         :param user_id: Идентификатор пользователя.
-        :return: Объекты аренды пользователя, если она активна, или None, если аренда не найдена или истекла.
+        :return: Объекты аренды пользователя, если она активна и не отменена, или None, если аренда не найдена, истекла или отменена.
         """
         utc_now = datetime.now(pytz.utc)
-        active_rents = await cls.filter(user_id=user_id, rent_expire_at__gt=utc_now).all()
+
+        # Фильтруем аренды по user_id, дате окончания аренды и статусу отмены
+        active_rents = await cls.filter(user_id=user_id, rent_expire_at__gt=utc_now, is_canceled=False).all()
+
         if active_rents:
             return active_rents
         return None
