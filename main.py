@@ -11,7 +11,8 @@ from app.db.database import init_db
 from app.dependencies import bot
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.dialogs.bot_menu.states import BotMenu
-from app.handlers import start_handler, affiliate_program, admin_handler, bot_handler
+from app.handlers import (start_handler, affiliate_program, admin_handler, bot_handler, get_email_handler,
+                          receive_sms_handler, rent_number_handler)
 from app.handlers.health_check_router import health_check_router
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
@@ -81,6 +82,9 @@ async def main(dp: Dispatcher):
         start_handler.router,
         affiliate_program.router,
         health_check_router,
+        get_email_handler.router,
+        receive_sms_handler.router,
+        rent_number_handler.router,
     ]
     dp.errors.register(
         on_unknown_intent,
@@ -119,7 +123,7 @@ def set_scheduled_jobs(scheduler):
         # scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
         # scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
         scheduler.add_job(add_services, "cron", hour=3, minute=0)
-        scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
+        # scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
     except Exception as e:
         logger.error(f"Error while adding scheduled jobs: {e}")
 
