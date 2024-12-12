@@ -39,14 +39,14 @@ async def stat(message: types.Message):
     letters_count_today = await models.Letter.filter(
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)).count()
 
-    sms_count = await models.Activation.filter(status=models.StatusResponse.STATUS_OK).count()
+    sms_count = await models.Activation.filter(sms_text__isnull=False, sms_text__not="").count()
     sms_count_today = await models.Activation.filter(
-        status=models.StatusResponse.STATUS_OK,
+        sms_text__isnull=False, sms_text__not="",
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
     sms_count_month = await models.Activation.filter(
-        status=models.StatusResponse.STATUS_OK,
+        sms_text__isnull=False, sms_text__not="",
         created_at__gte=utc_now - timedelta(days=30)
     ).count()
 
