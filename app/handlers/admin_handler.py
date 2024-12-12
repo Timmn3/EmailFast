@@ -1,17 +1,16 @@
 import asyncio
 import random
 import string
-
-from app.services.bot_texts import country_flags
+from datetime import datetime, timedelta
+import pytz
 from app.services.onlinesim.service_updater import add_services
 from app.services.sms_receive import SmsReceive
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from tortoise import timezone
 from app.db import models
-from app.db.models import User, Activation, ServiceOnlinesim
+from app.db.models import Activation
 from app.dependencies import ADMINS, bot
 from app.services import bot_texts as bt
 from tabulate import tabulate
@@ -25,38 +24,38 @@ class BroadcastState(StatesGroup):
     send_message = State()
 
 
-from datetime import timedelta
-
 @router.message(Command('stat'))
 async def stat(message: types.Message):
+    utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+    print(utc_now)
     if message.from_user.id not in ADMINS:
         return
 
     users_count = await models.User.all().count()
     users_count_today = await models.User.filter(
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)).count()
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)).count()
 
     letters_count = await models.Letter.all().count()
     letters_count_today = await models.Letter.filter(
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)).count()
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)).count()
 
     sms_count = await models.Activation.filter(status=models.StatusResponse.STATUS_OK).count()
     sms_count_today = await models.Activation.filter(
         status=models.StatusResponse.STATUS_OK,
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
     sms_count_month = await models.Activation.filter(
         status=models.StatusResponse.STATUS_OK,
-        created_at__gte=timezone.now() - timedelta(days=30)
+        created_at__gte=utc_now - timedelta(days=30)
     ).count()
 
     rented_sms_total = await models.Activation.all().count()
     rented_sms_month = await models.Activation.filter(
-        created_at__gte=timezone.now() - timedelta(days=30)
+        created_at__gte=utc_now - timedelta(days=30)
     ).count()
     rented_sms_today = await models.Activation.filter(
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
     payments = await models.Payment.filter(is_success=True).all().prefetch_related('user')
@@ -72,18 +71,18 @@ async def stat(message: types.Message):
 
     payments_count_today = await models.Payment.filter(
         is_success=True,
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
     payments_amount_today = sum(await models.Payment.filter(
         is_success=True,
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).values_list('amount', flat=True))
 
     rent_email_count = await models.Mail.filter(is_paid_mail=True).all().count()
     rent_email_count_today = await models.Mail.filter(
         is_paid_mail=True,
-        created_at__gte=timezone.now().replace(hour=0, minute=0, second=0)
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
     msg_text = bt.ADMIN_STAT.format(
