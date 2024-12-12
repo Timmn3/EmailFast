@@ -1,5 +1,6 @@
 from aiogram_dialog import DialogManager
 from loguru import logger
+from sqlalchemy import false
 
 from app.db.models import CountryOnlinesim
 from app.services.bot_texts import DOLLAR_RATE
@@ -57,20 +58,24 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
     :return: dict с деталями выбранной страны.
     """
     # Данные о выбранной стране сохранены в dialog_data
-    selected_country = dialog_manager.dialog_data.get("selected_country")
-    if not selected_country:
+    try:
+        selected_country = dialog_manager.dialog_data.get("selected_country")
+        if selected_country is None:
+            selected_country = dialog_manager.start_data.get("selected_country")
+
+        # Получаем тарифы
+        tariffs = [
+            {"days": get_day_string(int(days)), "price": price}
+            for days, price in selected_country["tariffs"].items()
+        ]
+
+        return {
+            "country": selected_country["country"],
+            "tariffs": tariffs,
+        }
+    except:
         return {"country": "Неизвестно", "tariffs": []}
 
-    # Получаем тарифы
-    tariffs = [
-        {"days": get_day_string(int(days)), "price": price}
-        for days, price in selected_country["tariffs"].items()
-    ]
-
-    return {
-        "country": selected_country["country"],
-        "tariffs": tariffs,
-    }
 
 
 def get_day_string(days):

@@ -173,8 +173,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             await activation.save()
 
             user = await models.User.get_user(telegram_id=call.from_user.id)
-            user.balance += activation.cost
-            await user.save()
+            if activation.sms_text is None:
+                user.balance += activation.cost
+                await user.save()
 
             msg_text = bt.SERVICE_CANCEL.strip()
             # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости

@@ -239,6 +239,20 @@ class CountryOnlinesim(Model):
         return country
 
     @classmethod
+    async def get_country_country_onlinesim(cls, country_id: int):
+        """
+        Получает страну по её уникальному идентификатору из CountryOnlinesim.
+
+        :param country_id: Уникальный идентификатор страны.
+        :return: Объект модели CountryOnlinesim или None, если страна не найдена.
+        """
+        country_onlinesim = await cls.get_or_none(country_id=country_id)
+        if not country_onlinesim:
+            return None  # Страна не найдена в CountryOnlinesim
+
+        return country_onlinesim
+
+    @classmethod
     async def get_country_name_mapping(cls):
         """
         Получает словарь, где ключами являются идентификаторы стран, а значениями — их имена.
@@ -726,12 +740,12 @@ class Activation(Model):
     @classmethod
     async def get_expired_activations(cls):
         """
-        Получает все истекшие активации.
+        Получает все истекшие активации (аренды, чей срок истек).
 
-        :return: Список объектов истекших активаций.
+        :return: Список объектов истекших аренд.
         """
-        return await cls.filter(activation_expire_at__lte=timezone.now(),
-                                status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+        utc_now = datetime.now(pytz.utc)
+        return await cls.filter(rent_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
     async def get_active_activations(cls):
@@ -1003,9 +1017,10 @@ class Rent(Model):
     id: int = fields.BigIntField(pk=True)
     user: "User" = fields.ForeignKeyField('models.User', related_name='rents')
     rent_id: int = fields.BigIntField(unique=True, index=True)
-    country: "Country" = fields.ForeignKeyField('models.Country', related_name='rents')
+    country: "CountryOnlinesim" = fields.ForeignKeyField("models.CountryOnlinesim", related_name='rents')
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
+    sms_text: str = fields.TextField(null=True)
     status: StatusResponse = fields.IntEnumField(StatusResponse, default=StatusResponse.STATUS_WAIT_CODE)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     rent_expire_at: datetime = fields.DatetimeField(null=True)
@@ -1013,9 +1028,9 @@ class Rent(Model):
     is_canceled: bool = fields.BooleanField(default=False)  # Поле для отслеживания отмены аренды
 
     @classmethod
-    async def add_rent(cls, user: "User", rent_id: int, country: "Country", cost: float,
-                      phone_number: str, rent_expire_at: datetime, autorenew: bool = False,
-                      is_canceled: bool = False):
+    async def add_rent(cls, user: "User", rent_id: int, country: "CountryOnlinesim", cost: float,
+                       phone_number: str, rent_expire_at: datetime, sms_text: str = "",
+                       autorenew: bool = False, is_canceled: bool = False):
         """
         Добавляет новую аренду в базу данных.
 
@@ -1024,33 +1039,37 @@ class Rent(Model):
         :param country: Объект страны, связанной с арендой.
         :param cost: Стоимость аренды.
         :param phone_number: Номер телефона, используемый для аренды.
+        :param sms_text: смс сообщение.
         :param rent_expire_at: Время истечения аренды.
         :param autorenew: Статус автопродления (по умолчанию False).
         :param is_canceled: Статус отмены аренды (по умолчанию False).
         :return: Созданный объект аренды.
         """
-        rent = await cls.create(
-            user=user,
-            rent_id=rent_id,
-            country=country,
-            cost=cost,
-            phone_number=phone_number,
-            rent_expire_at=rent_expire_at,
-            autorenew=autorenew,
-            is_canceled=is_canceled
+        rent, created = await cls.update_or_create(
+            rent_id=rent_id,  # Параметр для поиска аренды
+            defaults={  # Параметры для обновления или создания аренды
+                "user": user,
+                "country": country,
+                "cost": cost,
+                "phone_number": phone_number,
+                "sms_text": sms_text,
+                "rent_expire_at": rent_expire_at,
+                "autorenew": autorenew,
+                "is_canceled": is_canceled,
+            }
         )
+        print(f"Создано ли новое состояние аренды? {'Да' if created else 'Нет'}")
         return rent
-
 
     @classmethod
     async def get_rent(cls, id: int):
         """
         Получает аренду по её уникальному идентификатору.
 
-        :param rent_id: Уникальный идентификатор аренды.
+        :param id: Уникальный идентификатор аренды.
         :return: Объект аренды или None, если аренда не найдена.
         """
-        return await cls.get_or_none(id=id)
+        return await cls.get_or_none(id=id).select_related('country')
 
     @classmethod
     async def get_user_rents(cls, user: "User"):
@@ -1069,7 +1088,8 @@ class Rent(Model):
 
         :return: Список объектов истекших аренд.
         """
-        return await cls.filter(rent_expire_at__lte=timezone.now(),
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        return await cls.filter(rent_expire_at__lte=utc_now,
                                 status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
@@ -1080,9 +1100,9 @@ class Rent(Model):
         :param user_id: Идентификатор пользователя.
         :return: Объекты аренды пользователя, если она активна и не отменена, или None, если аренда не найдена, истекла или отменена.
         """
-        utc_now = datetime.now(pytz.utc)
 
         # Фильтруем аренды по user_id, дате окончания аренды и статусу отмены
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
         active_rents = await cls.filter(user_id=user_id, rent_expire_at__gt=utc_now, is_canceled=False).all()
 
         if active_rents:
@@ -1114,12 +1134,53 @@ class Rent(Model):
         return False
 
     @classmethod
-    async def get_country_by_rent(cls, id: int) -> "Country":
+    async def get_country_by_rent(cls, id: int) -> "CountryOnlinesim":
         """
-        Получает объект Country, связанный с указанной арендой.
+        Получает объект CountryOnlinesim, связанный с указанной арендой.
 
         :param id: Уникальный идентификатор аренды.
-        :return: Объект Country, связанный с арендой, или None, если аренда не найдена.
+        :return: Объект CountryOnlinesim, связанный с арендой, или None, если аренда не найдена.
         """
         rent = await cls.get_or_none(id=id).prefetch_related('country')
         return rent.country if rent else None
+
+    @classmethod
+    async def get_all_active_rents(cls):
+        """
+        Получает список всех активных аренд, где is_canceled = False.
+
+        :return: Список объектов активных аренд.
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        print(utc_now)
+        return await cls.filter(rent_expire_at__gte=utc_now).all()
+
+    @classmethod
+    async def get_expired_activations(cls):
+        """
+        Получает все истекшие активации.
+
+        :return: Список объектов истекших активаций.
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        return await cls.filter(rent_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+
+
+    @classmethod
+    async def get_rents_ending_soon(cls):
+        """
+        Получает список всех аренд, срок действия которых заканчивается через 5 часов или меньше,
+        но не менее чем через 4 часа 50 минут.
+
+        :return: Список объектов аренды.
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        lower_bound = utc_now + timedelta(hours=4, minutes=50)
+        upper_bound = utc_now + timedelta(hours=5)
+
+        # Фильтруем аренды, которые заканчиваются в указанном промежутке времени и не отменены
+        return await cls.filter(
+            rent_expire_at__lte=upper_bound,
+            rent_expire_at__gt=lower_bound,
+            is_canceled=False
+        ).all().prefetch_related("user", "country")

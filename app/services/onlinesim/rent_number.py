@@ -61,7 +61,7 @@ class OnlineSimRentAPI:
 
         :param country: int - Код страны (в формате E.164, без "+").
         :param days: int - Начальный период аренды в днях.
-        :param extension: bool - Автопродление аренды (по умолчанию: False).
+        :param extension: bool - Автопродление аренды (по умолчанию: True).
         :param pagination: bool - Пагинация сообщений (по умолчанию: False).
         :param lang: str - Язык ответа (по умолчанию: "ru").
         :return: dict - Данные об арендованном номере.

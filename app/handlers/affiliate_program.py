@@ -59,8 +59,8 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
 
     await m.answer_photo(
         photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
-        caption=bt.AFFILIATE_PROGRAM_TEXT.format(link=link, ref_balance=user.ref_balance,
-                                                 ref_count=ref_count, ref_balance_total=user.total_ref_earnings,
+        caption=bt.AFFILIATE_PROGRAM_TEXT.format(link=link, ref_balance=round(user.ref_balance),
+                                                 ref_count=ref_count, ref_balance_total=round(user.total_ref_earnings),
                                                  payment_count=payment_count),
         reply_markup=mk
     )

@@ -9,6 +9,7 @@ from loguru import logger
 from app import dependencies
 from app.db import models
 from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
+from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
 from app.services.payments.freekassa import Freekassa
@@ -460,8 +461,8 @@ async def check_payment_ckassa():
             await send_coder(msg_text)
 
 
-
 import re
+
 
 async def check_sms():
     try:
@@ -544,7 +545,6 @@ async def check_sms():
         pass
     except Exception as e:
         logger.error(e)
-
 
 
 import asyncio
@@ -750,3 +750,115 @@ async def check_mail_expiration_and_notify():
 async def send_coder(msg_text):
     if CODER:
         await bot.send_message(chat_id=CODER, text=msg_text)
+
+
+async def check_rent_sms():
+    try:
+        # Получаем все активные активации
+        activations = await models.Rent.get_all_active_rents()
+
+        # Обрабатываем каждую активную активацию
+        for activation in activations:
+            print(activation.phone_number)
+            # Получаем состояние аренды через OnlineSimRentAPI
+            api_client = OnlineSimRentAPI()
+            rent_state = await api_client.get_rent_state(tzid=activation.rent_id)
+
+            # Проверяем, есть ли данные в 'list'
+            if rent_state.get("response") == 1 and "list" in rent_state:
+                if rent_state["list"]:  # Проверяем, что список не пуст
+                    rent_info = rent_state["list"][0]  # Обрабатываем первую запись в списке
+
+                    # Извлекаем сообщения
+                    messages = rent_info.get("messages", [])
+                    minutes = rent_info.get("time", 0)
+
+                    # Создаем словарь {service: text}
+                    service_text_map = {msg.get("service", "Unknown"): msg.get("text", "") for msg in messages}
+
+                    # Сохраняем словарь в sms_text как строку
+                    activation.sms_text = "\n".join([f"{service}: {text}" for service, text in service_text_map.items()])
+
+                    # Обновляем время аренды
+                    activation.rent_expire_at = (
+                            datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
+                            + datetime.timedelta(minutes=minutes)
+                    )
+                    await activation.save()
+
+                    if messages:
+                        # Получаем последнее сообщение
+                        last_message = messages[-1]
+                        service = last_message.get("service", "Unknown")
+                        text = last_message.get("text", "")
+
+                        # Формируем текст для отправки пользователю
+                        msg_text = f"""
+                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}
+                        Ваш код активации для сервиса <b>{service}</b>:
+                        <code>{text}</code>
+                        """
+
+                        # Отправляем сообщение пользователю в Telegram
+                        await bot.send_message(
+                            chat_id=activation.user.telegram_id,
+                            text=msg_text,
+                            parse_mode="HTML"
+                        )
+
+        # Получаем все истекшие активации
+        expired_activations = await models.Rent.get_expired_activations()
+
+        # Обрабатываем каждую истекшую активацию
+        for expired_activation in expired_activations:
+            print(" Аренда закрывается")
+            # Обновляем статус активации на 'STATUS_CANCEL'
+            # expired_activation.status = models.StatusResponse.STATUS_CANCEL
+            # expired_activation.is_canceled = True  # Исправлено: работа с отдельным объектом
+            # # Сохраняем изменения в базе данных
+            # await expired_activation.save()  # Исправлено: сохранение изменений истекшей активации
+
+            # Здесь важно, чтобы user был загружен
+            user = await expired_activation.user
+            user.balance += expired_activation.cost
+            await user.save()
+
+
+    except asyncio.CancelledError:
+        pass
+    # except Exception as e:
+    #     logger.error(e)
+
+
+async def rents_ending_soon():
+    try:
+        rents_ending = await models.Rent.get_rents_ending_soon()
+
+        # Обрабатываем каждую активную активацию
+        for ending in rents_ending:
+            # Формируем текст для отправки пользователю
+            msg_text = f"""
+                        💬 <b>Через 5 часов закончится срок аренды номера +{ending.phone_number}.
+                        Успейте продлить срок аренды или арендовать новый номер⤵️ </b>
+                        """
+            inline_kb = types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        types.InlineKeyboardButton(text='🔄Продлить аренду', callback_data='extend_lease')
+                    ],
+                    [
+                        types.InlineKeyboardButton(text='📞Арендовать новый номер', callback_data="rent_new_room")
+                    ]
+                ]
+            )
+            # Отправляем сообщение пользователю в Telegram
+            await bot.send_message(
+                chat_id=ending.user.telegram_id,
+                text=msg_text,
+                reply_markup=inline_kb
+            )
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(e)

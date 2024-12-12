@@ -4,12 +4,11 @@ from aiogram_dialog import DialogManager, StartMode
 from app.db import models
 from app.dialogs.rent_sms import states
 from app.dialogs.rent_sms.states import RentCountryMenu
-from app.services import bot_texts as bt
-from app.services.bot_texts import country_flags
+from app.services.bot_texts import country_flags, DOLLAR_RATE
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
+from app.services import bot_texts as bt
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from loguru import logger
-from app.services import bot_texts as bt
 
 router = Router()
 
@@ -76,7 +75,7 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
         keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=button_text, callback_data=callback_data)])
 
     # Добавляем кнопку для аренды нового номера
-    keyboard.inline_keyboard.append([types.InlineKeyboardButton(text="📞Арендовать новый номер", callback_data="new_number")])
+    keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")])
 
     # Отправляем сообщение с inline клавиатурой
     if message:
@@ -116,13 +115,26 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
         phone_number = rented.phone_number
         expiry_date = rented.rent_expire_at.strftime("%d.%m.%y %H:%M")  # Пример формата даты
         flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+        sms = rented.sms_text
 
         # Текст для отправки пользователю
-        rent_details = (
-            f"<i>Ваш арендованный номер:</i> {flag} +{phone_number}\n"
-            f"<i>Страна:</i> {flag}{country}\n"
-            f"<i>Срок аренды до:</i> {expiry_date}\n"
+        rent_details = bt.RENT_DETAILS.format(
+            phone_number=phone_number,
+            country=country,
+            expiry_date=expiry_date,
+            flag=flag
         )
+
+        if sms:
+            # Форматируем сообщения для вывода
+            formatted_sms = "\n".join(
+                [f"• <b>{service}:</b> {text}" for line in sms.split("\n") if
+                 (split_line := line.split(": ", 1)) and len(split_line) == 2 and (service := split_line[0]) and (
+                     text := split_line[1])]
+            )
+
+            # Добавляем блок с сообщениями
+            rent_details += f"\n\n<b>Ваши сообщения:</b>\n{formatted_sms}"
 
         # Создаем inline клавиатуру
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -175,12 +187,26 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
     phone_number = rented.phone_number
     expiry_date = rented.rent_expire_at.strftime("%d.%m.%y %H:%M")  # Пример формата даты
     flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+    sms = rented.sms_text
+
     # Текст для отправки пользователю
-    rent_details = (
-        f"<i>Ваш арендованный номер:</i> {flag} +{phone_number}\n"
-        f"<i>Страна:</i> {flag}{country}\n"
-        f"<i>Срок аренды до:</i> {expiry_date}\n"
+    rent_details = bt.RENT_DETAILS.format(
+        phone_number=phone_number,
+        country=country,
+        expiry_date=expiry_date,
+        flag=flag
     )
+
+    if sms:
+        # Форматируем сообщения для вывода
+        formatted_sms = "\n".join(
+            [f"• <b>{service}:</b> {text}" for line in sms.split("\n") if
+             (split_line := line.split(": ", 1)) and len(split_line) == 2 and (service := split_line[0]) and (
+                 text := split_line[1])]
+        )
+
+        # Добавляем блок с сообщениями
+        rent_details += f"\n\n<b>Ваши сообщения:</b>\n{formatted_sms}"
 
     # Формируем обновленные кнопки
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -219,6 +245,7 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
     await callback_query.message.edit_text(rent_details, reply_markup=keyboard)
 
 
+# 📞Арендовать новый номер
 @router.callback_query(F.data.startswith('new_number'))
 async def rent_new_number(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
     # Передаем только необходимые данные для восстановления
@@ -246,9 +273,11 @@ async def cancel_rent(callback_query: types.CallbackQuery):
     rented = await models.Rent.get_rent(id=rent_id)
     if not rented:
         await callback_query.answer(bt.RENT_NOT_FOUND_MSG, show_alert=True)
+        await callback_query.message.delete()
         return
     if rented.is_canceled:
         await callback_query.answer(bt.RENT_ALREADY_CANCELED_MSG, show_alert=True)
+        await callback_query.message.delete()
         return
 
     # Используем API для отмены аренды
@@ -261,6 +290,9 @@ async def cancel_rent(callback_query: types.CallbackQuery):
             await rented.save()  # Сохраняем изменения в базе данных
             await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
 
+            # Удаляем сообщение о текущей аренде
+            await callback_query.message.delete()
+
             # Обновляем меню аренды
             await send_rent_menu(user, callback_query=callback_query)
         else:
@@ -271,29 +303,60 @@ async def cancel_rent(callback_query: types.CallbackQuery):
         # Обрабатываем специфическую ошибку
         if "ERROR_NO_OPERATIONS" in str(e):
             await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
-        else:
-            # Логирование других ошибок
-            logger.exception(f"Ошибка при отмене аренды: {e}")
-            await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
 
+        else:
+            await callback_query.answer(bt.RENT_CANCEL_FAILED_MSG, show_alert=True)
+
+        # Удаляем сообщение о текущей аренде
+        await callback_query.message.delete()
         # В случае ошибки переводим аренду в статус отмененной
         rented.is_canceled = True
         await rented.save()  # Сохраняем изменения в базе данных
 
 
 @router.callback_query(F.data.startswith('extend_rent_'))
-async def extend_rent(callback_query: types.CallbackQuery):
+async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
     """
-    Обработка продления аренды
+    Обработка продления аренды.
     """
     rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
-    rented = await models.Rent.get_rent(id=rent_id)
+    rented = await models.Rent.get_rent(id=rent_id)  # получаем объект Rent
 
-    if not rented or rented.is_canceled:
-        await callback_query.answer("Невозможно продлить аренду: аренда отменена или не найдена.", show_alert=True)
+    # Получаем состояние аренды через OnlineSimRentAPI
+    api_client = OnlineSimRentAPI()
+    rent_state = await api_client.get_rent_state(tzid=rented.rent_id)
+
+    # Проверяем, если список пуст или extend отсутствует
+    if not rent_state or not rent_state.get("list") or not rent_state["list"]:
+        await callback_query.answer(text=bt.RENTAL_CANCELED_OR_NOT_FOUND, show_alert=True)
         return
 
-    # Логика продления аренды...
-    # (Продление аренды)
+    if "extend" not in rent_state["list"][0]:
+        await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
+        return
 
-    await callback_query.answer("Аренда успешно продлена.")
+    rent_country_code = rented.country.country_id
+    country = rented.country.name
+
+    # Извлекаем тарифы для выбранной страны
+    data = await api_client.get_tariffs()
+    tariffs = data.get(str(rent_country_code), {})
+    # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
+    if tariffs:  # Проверяем, есть ли данные
+        updated_tariffs = {days: round(price * DOLLAR_RATE) for days, price in tariffs.items()}
+    else:
+        await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
+        return
+
+    context_data = {
+            "selected_country": {
+                "rent_country_code": rent_country_code,
+                "country": country,
+                "tariffs": updated_tariffs,  # Сохраняем только нужные тарифы
+                "tzid": rented.rent_id,
+            }}
+
+    await dialog_manager.start(
+        states.RentCountryMenu.country_details,  # Состояние для выбора страны
+        context_data  # Передаем только нужные данные
+    )

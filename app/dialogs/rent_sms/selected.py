@@ -84,7 +84,6 @@ async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, man
 
     # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
     updated_tariffs = {days: round(price * DOLLAR_RATE) for days, price in tariffs.items()}
-
     # Сохраняем данные выбранной страны и тарифы в dialog_data
     manager.dialog_data["selected_country"] = {
         "rent_country_code": country_index,
@@ -98,15 +97,19 @@ async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, man
 
 async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: DialogManager, day_index: str):
     """
-    Обрабатывает выбор количества дней для аренды номера страны.
+    Обрабатывает выбор количества дней для аренды или продления аренды номера страны.
 
     :param c: Объект CallbackQuery от aiogram.
     :param widget: Виджет Select от aiogram_dialog.
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param day_index: Индекс выбранного количества дней.
     """
+    tzid = None
     # Получаем данные о выбранной стране
     selected_country = manager.dialog_data.get("selected_country")
+    if selected_country is None:
+        selected_country = manager.start_data.get("selected_country")
+        tzid = selected_country["tzid"]
 
     if not selected_country:
         await c.answer("Ошибка: данные о стране отсутствуют.", show_alert=True)
@@ -141,11 +144,14 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
     # Обновляем время последнего запроса
     user.last_request_time = current_time.astimezone(pytz.utc)
     await user.save(update_fields=['last_request_time'])
-
     # Создаем экземпляр API клиента и делаем запрос аренды
     api_client = OnlineSimRentAPI()
+
     try:
-        rent_result = await api_client.rent_number(country=int(country_code), days=days)
+        if tzid is None:
+            rent_result = await api_client.rent_number(country=int(country_code), days=days)
+        else:
+            rent_result = await api_client.extend_rent_state(tzid=tzid, days=days)
     except Exception as e:
         await c.answer(f"Ошибка при аренде: {str(e)}", show_alert=True)
         return
@@ -158,7 +164,8 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         # Извлекаем данные активации
     rent_id = int(rent_result.get("tzid", 0))
     phone_number = rent_result.get("number", None)
-    country = await models.CountryOnlinesim.get_country_from_country_by_id(country_id=country_code)
+    country = await models.CountryOnlinesim.get_country_country_onlinesim(country_id=country_code)
+    minutes = int(rent_result.get("time", 0))
 
     if phone_number is None:
         await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
@@ -171,14 +178,14 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         country=country,
         cost=price,
         phone_number=f"{country_code}{phone_number}",
-        rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(days=days)
+        rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=minutes)
     )
 
-    # Отправляем пользователю о номер телефона
+    # Отправляем пользователю сообщение о номере телефона
     await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)
 
     # Списываем средства с баланса пользователя
-    # user.balance -= price
+    user.balance -= price
     await user.save(update_fields=['balance'])
 
     # Проверяем, низкий ли баланс у пользователя после списания средств
