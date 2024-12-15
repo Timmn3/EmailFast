@@ -11,9 +11,9 @@ def start_kb():
     builder.row(
         KeyboardButton(text=bt.RECEIVE_SMS_BTN)
     )
-    builder.add(
-        KeyboardButton(text=bt.RENT_NUMBER)
-    )
+    # builder.add(
+    #     KeyboardButton(text=bt.RENT_NUMBER)
+    # )
     builder.row(
         KeyboardButton(text=bt.RECEIVE_EMAIL_BTN)
     )

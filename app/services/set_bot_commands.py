@@ -6,7 +6,7 @@ async def set_default_commands(bot: Bot):
     user_commands = [
         types.BotCommand(command="start", description="Перезапустить"),
         types.BotCommand(command="get_sms", description="Принять SMS"),
-        types.BotCommand(command="rent_number", description="Арендовать номер"),
+        # types.BotCommand(command="rent_number", description="Арендовать номер"),
         types.BotCommand(command="get_email", description="Принять Email"),
         types.BotCommand(command="account", description="Аккаунт")
     ]
