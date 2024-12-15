@@ -4,6 +4,7 @@ import string
 from datetime import datetime, timedelta
 import pytz
 from app.services.onlinesim.service_updater import add_services
+from app.services.periodic_tasks import send_coder
 from app.services.sms_receive import SmsReceive
 from aiogram import Router, types, F
 from aiogram.filters import Command
@@ -350,6 +351,9 @@ async def add_balance(message: types.Message):
     await message.answer(f"Баланс пользователя {user} пополнен на {amount}.")
 
     await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
+
+    msg_text = f" Администратор пополнил баланс пользователю {user.mention} на {amount}."
+    await send_coder(msg_text)
 
 @router.message(Command('services_update'))
 async def services(message: types.Message, state: FSMContext):

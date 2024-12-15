@@ -525,6 +525,9 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
+                    msg_text = (f'Пользователь {activation.user.id}  {activation.user.mention} '
+                                f'сервис {activation.service.name} баланс: {activation.user.balance}')
+                    await send_coder(msg_text)
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
@@ -759,7 +762,6 @@ async def check_rent_sms():
 
         # Обрабатываем каждую активную активацию
         for activation in activations:
-            print(activation.phone_number)
             # Получаем состояние аренды через OnlineSimRentAPI
             api_client = OnlineSimRentAPI()
             rent_state = await api_client.get_rent_state(tzid=activation.rent_id)
@@ -773,11 +775,15 @@ async def check_rent_sms():
                     messages = rent_info.get("messages", [])
                     minutes = rent_info.get("time", 0)
 
-                    # Создаем словарь {service: text}
-                    service_text_map = {msg.get("service", "Unknown"): msg.get("text", "") for msg in messages}
+                    # Формируем строку для сравнения
+                    new_sms_text = "\n".join([f"{msg.get('service', 'Unknown')}: {msg.get('code', '')}" for msg in messages])
 
-                    # Сохраняем словарь в sms_text как строку
-                    activation.sms_text = "\n".join([f"{service}: {text}" for service, text in service_text_map.items()])
+                    # Проверяем, отличается ли новое сообщение от текущего
+                    if activation.sms_text == new_sms_text:
+                        continue
+
+                    # Сохраняем новый текст в sms_text
+                    activation.sms_text = new_sms_text
 
                     # Обновляем время аренды
                     activation.rent_expire_at = (
@@ -787,16 +793,16 @@ async def check_rent_sms():
                     await activation.save()
 
                     if messages:
+                        activation.status = models.StatusResponse.STATUS_OK
+                        await activation.save()
                         # Получаем последнее сообщение
-                        last_message = messages[-1]
+                        last_message = messages[0]
                         service = last_message.get("service", "Unknown")
-                        text = last_message.get("text", "")
+                        text = last_message.get("code", "")
 
                         # Формируем текст для отправки пользователю
                         msg_text = f"""
-                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}
-                        Ваш код активации для сервиса <b>{service}</b>:
-                        <code>{text}</code>
+                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>:<code>{text}</code>
                         """
 
                         # Отправляем сообщение пользователю в Telegram
@@ -810,18 +816,18 @@ async def check_rent_sms():
         expired_activations = await models.Rent.get_expired_activations()
 
         # Обрабатываем каждую истекшую активацию
-        for expired_activation in expired_activations:
-            print(" Аренда закрывается")
-            # Обновляем статус активации на 'STATUS_CANCEL'
-            # expired_activation.status = models.StatusResponse.STATUS_CANCEL
-            # expired_activation.is_canceled = True  # Исправлено: работа с отдельным объектом
-            # # Сохраняем изменения в базе данных
-            # await expired_activation.save()  # Исправлено: сохранение изменений истекшей активации
-
-            # Здесь важно, чтобы user был загружен
-            user = await expired_activation.user
-            user.balance += expired_activation.cost
-            await user.save()
+        # for expired_activation in expired_activations:
+        #     print(" Аренда закрывается")
+        #     # Обновляем статус активации на 'STATUS_CANCEL'
+        #     # expired_activation.status = models.StatusResponse.STATUS_CANCEL
+        #     # expired_activation.is_canceled = True
+        #     # # Сохраняем изменения в базе данных
+        #     # await expired_activation.save()
+        #
+        #     # Здесь важно, чтобы user был загружен
+        #     user = await expired_activation.user
+        #     user.balance += expired_activation.cost
+        #     await user.save()
 
 
     except asyncio.CancelledError:

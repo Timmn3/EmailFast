@@ -1152,8 +1152,7 @@ class Rent(Model):
         :return: Список объектов активных аренд.
         """
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
-        print(utc_now)
-        return await cls.filter(rent_expire_at__gte=utc_now).all()
+        return await cls.filter(rent_expire_at__gte=utc_now).all().prefetch_related('user')
 
     @classmethod
     async def get_expired_activations(cls):
@@ -1163,7 +1162,7 @@ class Rent(Model):
         :return: Список объектов истекших активаций.
         """
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
-        return await cls.filter(rent_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+        return await cls.filter(rent_expire_at__gte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
 
     @classmethod

@@ -14,6 +14,9 @@ from loguru import logger
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from aiogram.exceptions import TelegramBadRequest
 
+from app.services.periodic_tasks import send_coder
+
+
 def payment_keyboard(amount):
     builder = InlineKeyboardBuilder()
     builder.button(text=f"Оплатить {amount} ⭐️", pay=True)
@@ -88,5 +91,9 @@ async def save_payment_to_database(user, amount):
 
     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
     user.balance += amount
+    msg_text = (f'Пополнение ckassa\n'
+                f'mention {user.mention} '
+                f'сумма {amount}')
+    await send_coder(msg_text)
     await user.save()
 
