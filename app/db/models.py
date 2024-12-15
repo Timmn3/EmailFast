@@ -745,7 +745,7 @@ class Activation(Model):
         :return: Список объектов истекших аренд.
         """
         utc_now = datetime.now(pytz.utc)
-        return await cls.filter(rent_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+        return await cls.filter(activation_expire_at=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
     async def get_active_activations(cls):
