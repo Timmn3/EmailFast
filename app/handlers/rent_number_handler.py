@@ -304,6 +304,7 @@ async def cancel_rent(callback_query: types.CallbackQuery):
     except Exception as e:
         # Обрабатываем специфическую ошибку
         if "ERROR_NO_OPERATIONS" in str(e):
+            logger.error(e)
             await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
 
         else:

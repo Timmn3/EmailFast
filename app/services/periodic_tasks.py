@@ -942,27 +942,29 @@ async def close_rent():
     rents_closes = await models.Rent.close_rent_before_end()
 
     for rent in rents_closes:
+        # Обновляем статус аренды в базе данных
+        rent.is_canceled = True
+        await rent.save()
         # Используем API для отмены аренды
         api = OnlineSimRentAPI()  # Создаем экземпляр API
         try:
             response = await api.close_rent_num(tzid=rent.rent_id)  # Передаем ID операции аренды
             if response.get("response"):
-                # Успешно отменено, обновляем статус аренды в базе данных
-                rent.is_canceled = True
-                await rent.save()  # Сохраняем изменения в базе данных
                 await bot.send_message(chat_id=rent.user.telegram_id, text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
-
             else:
                 # Если API вернул неизвестный ответ
                 msg_text = f'Неизвестный ответ закрытия аренды {response}\nпользователь {rent.user.id} номер {rent.phone_number}'
                 await send_coder(msg_text)
         except Exception as e:
-            msg_text = f'Ошибка закрытия аренды {e}\nпользователь {rent.user.id} номер {rent.phone_number}'
-            await send_coder(msg_text)
-
-            # В случае ошибки переводим аренду в статус отмененной
-            rent.is_canceled = True
-            await rent.save()  # Сохраняем изменения в базе данных
+            # Проверяем на конкретную ошибку API
+            if str(e) == "Ошибка API: {'response': '1'}":
+                await bot.send_message(chat_id=rent.user.telegram_id,
+                                       text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
+            else:
+                # Обработка остальных ошибок
+                logger.error(f'Ошибка закрытия аренды {e}\nпользователь {rent.user.id} номер {rent.phone_number}')
+                await bot.send_message(chat_id=rent.user.telegram_id,
+                                       text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
 
 
 
