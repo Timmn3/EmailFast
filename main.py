@@ -132,7 +132,7 @@ def set_scheduled_jobs(scheduler):
         # Уведомление об аренде, которая скоро завершится
         scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
         # Завершение аренды
-        scheduler.add_job(close_rent, "interval", seconds=15, max_instances=3)
+        scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
     except Exception as e:
         # Логирование ошибки
         logger.error(f"Error while adding scheduled jobs: {e}")
