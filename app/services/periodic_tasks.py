@@ -967,4 +967,30 @@ async def close_rent():
                                        text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
 
 
+async def checking_inactive_rent():
+    """
+    Проверяем все активные аренды на сервисе и если по БД какая-то из них закрыта, тогда закрываем ее принудительно
+    :return:
+    """
+    api_client = OnlineSimRentAPI()
+    rent_state = await api_client.get_rent_state()
+    # Проверяем, есть ли данные в 'list'
+    if rent_state:
+        for rent_info in rent_state:
+            # Извлекаем tzid
+            tzid = rent_info.get("tzid", 0)
+            rent = await models.Rent.inactive_rent(tzid)
+            if rent:
+                rent.status = models.StatusResponse.STATUS_CANCEL
+                await rent.save()
+                try:
+                    await api_client.close_rent_num(tzid)
+                except Exception as e:
+                    if str(e) == "Ошибка API: {'response': '1'}":
+                        continue
+
+
+
+
+
 

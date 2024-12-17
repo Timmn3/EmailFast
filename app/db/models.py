@@ -1206,3 +1206,14 @@ class Rent(Model):
         ).exclude(
             sms_text=""
         ).all().prefetch_related("user", "country")
+
+
+    @classmethod
+    async def inactive_rent(cls, tzid: int):
+        """
+        Получает аренду по её уникальному идентификатору tzid.
+
+        :param tzid: Уникальный идентификатор аренды.
+        :return: Объект аренды или None, если аренда не найдена.
+        """
+        return await cls.filter(rent_id=tzid, is_canceled=True, status=StatusResponse.STATUS_WAIT_CODE).first()
