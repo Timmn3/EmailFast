@@ -818,7 +818,6 @@ async def check_rent_sms():
 
         # Обрабатываем каждую истекшую активацию
         for expired_activation in expired_activations:
-            print(f' в течение 20 минут не воспользовался номером {expired_activation.phone_number}')
             # Обновляем статус активации на 'STATUS_CANCEL'
             expired_activation.status = models.StatusResponse.STATUS_CANCEL
             expired_activation.is_canceled = True
@@ -843,7 +842,6 @@ async def rents_ending_soon():
         # Получает список аренд, для которых срок истекает ровно через 5 часов
         rents_ending = await models.Rent.get_rents_ending_soon()
         for ending in rents_ending:
-            print(f' список заканчивающихся аренд {ending.phone_number}')
             user_id = ending.user.telegram_id
             if not ending.autorenew:
                 msg_text = f"""
@@ -944,7 +942,6 @@ async def close_rent():
     rents_closes = await models.Rent.close_rent_before_end()
 
     for rent in rents_closes:
-        print(f" закрытие аренды {rent.phone_number}")
         # Используем API для отмены аренды
         api = OnlineSimRentAPI()  # Создаем экземпляр API
         try:
