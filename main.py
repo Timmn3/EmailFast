@@ -1,12 +1,10 @@
 import logging
-
 from aiogram.filters import ExceptionTypeFilter
 from aiogram_dialog import DialogManager, StartMode, ShowMode
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from aiogram import Dispatcher
-
 from app.db.database import init_db
 from app.dependencies import bot
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
@@ -23,7 +21,6 @@ from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
 from loguru import logger
-import sys
 
 # logger.remove()
 # Добавляем обработчик для записи в файл без цветного вывода
@@ -59,8 +56,6 @@ async def on_unknown_state(event, dialog_manager: DialogManager):
     )
 
 
-
-
 def job_listener(event):
     """
     Listener для обработки ошибок, выполнения и пропусков задач.
@@ -71,7 +66,6 @@ def job_listener(event):
         logger.warning(f"Job {event.job_id} was missed at {event.scheduled_run_time}")
     elif event.code == EVENT_JOB_EXECUTED:
         logger.info(f"Job {event.job_id} executed successfully at {event.scheduled_run_time}")
-
 
 
 async def main(dp: Dispatcher):
