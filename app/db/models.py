@@ -1062,7 +1062,6 @@ class Rent(Model):
                 "days": days,  # Устанавливаем значение нового поля
             }
         )
-        print(f"Создано ли новое состояние аренды? {'Да' if created else 'Нет'}")
         return rent
 
 
@@ -1183,7 +1182,10 @@ class Rent(Model):
             rent_expire_at__lte=target_time,
             rent_expire_at__gt=utc_now,
             is_canceled=False,
-            is_notified=False  # Уведомление еще не отправлено
+            is_notified=False,
+            sms_text__isnull=False
+        ).exclude(
+            sms_text=""
         ).all().prefetch_related("user", "country")
 
     @classmethod
@@ -1194,10 +1196,13 @@ class Rent(Model):
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
         target_time = utc_now + timedelta(minutes=5)
 
-        # Фильтруем аренды, срок действия которых заканчивается через 5 часов, и уведомление еще не отправлено
+        # Фильтруем аренды, срок действия которых заканчивается через 5 минут, и уведомление еще не отправлено
         return await cls.filter(
             rent_expire_at__lte=target_time,
             rent_expire_at__gt=utc_now,
             is_canceled=False,
-            autorenew=False
+            autorenew=False,
+            sms_text__isnull=False
+        ).exclude(
+            sms_text=""
         ).all().prefetch_related("user", "country")

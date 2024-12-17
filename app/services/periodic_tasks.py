@@ -776,7 +776,6 @@ async def check_rent_sms():
                     # Извлекаем сообщения
                     messages = rent_info.get("messages", [])
                     minutes = rent_info.get("time", 0)
-
                     # Формируем строку для сравнения
                     new_sms_text = "\n".join([f"{msg.get('service', 'Unknown')}: {msg.get('code', '')}" for msg in messages])
 
@@ -804,7 +803,7 @@ async def check_rent_sms():
 
                         # Формируем текст для отправки пользователю
                         msg_text = f"""
-                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>:<code>{text}</code>
+                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>: <code>{text}</code>
                         """
 
                         # Отправляем сообщение пользователю в Telegram
@@ -814,11 +813,12 @@ async def check_rent_sms():
                             parse_mode="HTML"
                         )
 
-        # Получаем все истекшие активации
+        # Если в течение 20 минут не воспользовался номером
         expired_activations = await models.Rent.get_expired_activations()
 
         # Обрабатываем каждую истекшую активацию
         for expired_activation in expired_activations:
+            print(f' в течение 20 минут не воспользовался номером {expired_activation.phone_number}')
             # Обновляем статус активации на 'STATUS_CANCEL'
             expired_activation.status = models.StatusResponse.STATUS_CANCEL
             expired_activation.is_canceled = True
@@ -842,8 +842,9 @@ async def rents_ending_soon():
     try:
         # Получает список аренд, для которых срок истекает ровно через 5 часов
         rents_ending = await models.Rent.get_rents_ending_soon()
-
         for ending in rents_ending:
+            print(f' список заканчивающихся аренд {ending.phone_number}')
+            user_id = ending.user.telegram_id
             if not ending.autorenew:
                 msg_text = f"""
                     💬 <b>Через 5 часов закончится срок аренды номера +{ending.phone_number}.\nУспейте продлить срок аренды или арендовать новый номер⤵️</b>
@@ -861,11 +862,7 @@ async def rents_ending_soon():
                 )
 
                 # Отправляем сообщение пользователю
-                await bot.send_message(
-                    chat_id=ending.user.telegram_id,
-                    text=msg_text,
-                    reply_markup=inline_kb
-                )
+                await bot.send_message(chat_id=user_id, text=msg_text, reply_markup=inline_kb)
 
                 # Обновляем статус уведомления
                 ending.is_notified = True
@@ -876,31 +873,23 @@ async def rents_ending_soon():
                     inline_replenish = types.InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
-                                types.InlineKeyboardButton(text=bt.DEPOSIT_BTN,
-                                                           callback_data=f"top_up_balance")
+                                types.InlineKeyboardButton(text=bt.DEPOSIT_BTN, callback_data=f"top_up_balance")
                             ],
                         ]
                     )
                     # Отправляем сообщение пользователю
-                    await bot.send_message(
-                        chat_id=ending.user.telegram_id,
-                        text=bt.NOT_ENOUGH_FUNDS_FOR_RENT,
-                        reply_markup=inline_replenish
-                    )
+                    await bot.send_message(chat_id=user_id, text=bt.NOT_ENOUGH_FUNDS_FOR_RENT, reply_markup=inline_replenish)
                 else:
-                    # Обновляем статус уведомления
-                    ending.is_notified = True
-                    await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
                     # Создаем экземпляр API клиента и делаем запрос аренды
                     api_client = OnlineSimRentAPI()
                     try:
                         rent_result = await api_client.extend_rent_state(tzid=ending.rent_id, days=ending.days)
                     except Exception as e:
-                        await bot.send_message(chat_id=ending.user.telegram_id, text=f"Ошибка при аренде: {str(e)}", show_alert=True)
+                        await bot.send_message(chat_id=user_id, text=f"Ошибка при аренде: {str(e)}", show_alert=True)
                         return
 
                     if rent_result is None:
-                        await bot.send_message(chat_id=ending.user.telegram_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                        await bot.send_message(chat_id=user_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                         return
 
                     # Извлекаем данные активации
@@ -909,7 +898,7 @@ async def rents_ending_soon():
                     minutes = int(rent_result.get("time", 0))
 
                     if phone_number is None:
-                        await bot.send_message(chat_id=ending.user.telegram_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                        await bot.send_message(chat_id=user_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                         return
 
                     # Добавляем запись об активации в базу данных
@@ -921,7 +910,8 @@ async def rents_ending_soon():
                         phone_number=ending.phone_number,
                         rent_expire_at=datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
                                        + datetime.timedelta(minutes=minutes),
-                        days=ending.days
+                        days=ending.days,
+                        autorenew=ending.autorenew
                     )
 
                     # Отправляем пользователю сообщение о номере телефона
@@ -932,8 +922,8 @@ async def rents_ending_soon():
                     # Сообщение о количестве дней аренды
                     days_text = get_day_string(ending.days)
 
-                    await bot.send_message(chat_id=ending.user.telegram_id, text=bt.RENT_SUCCESS_MESSAGE.format(days=days_text))
-                    await bot.send_message(chat_id=ending.user.telegram_id,
+                    await bot.send_message(chat_id=user_id, text=bt.RENT_SUCCESS_MESSAGE.format(days=days_text))
+                    await bot.send_message(chat_id=user_id,
                                            text=bt.NUMBER_INFO.format(country=flag_and_country, phone=activation.phone_number))
 
 
@@ -949,11 +939,12 @@ async def rents_ending_soon():
 
 async def close_rent():
     """
-    Обработка закрытия аренды номера.
+    Обработка закрытия аренды номера срок действия которых заканчивается через 5 минут.
     """
     rents_closes = await models.Rent.close_rent_before_end()
 
     for rent in rents_closes:
+        print(f" закрытие аренды {rent.phone_number}")
         # Используем API для отмены аренды
         api = OnlineSimRentAPI()  # Создаем экземпляр API
         try:
@@ -967,10 +958,10 @@ async def close_rent():
             else:
                 # Если API вернул неизвестный ответ
                 msg_text = f'Неизвестный ответ закрытия аренды {response}\nпользователь {rent.user.id} номер {rent.phone_number}'
-                await bot.send_message(chat_id=CODER, text=msg_text)
+                await send_coder(msg_text)
         except Exception as e:
             msg_text = f'Ошибка закрытия аренды {e}\nпользователь {rent.user.id} номер {rent.phone_number}'
-            await bot.send_message(chat_id=CODER, text=msg_text)
+            await send_coder(msg_text)
 
             # В случае ошибки переводим аренду в статус отмененной
             rent.is_canceled = True

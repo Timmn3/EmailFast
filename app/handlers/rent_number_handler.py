@@ -176,6 +176,8 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
 
     # Переключаем значение autorenew
     rented.autorenew = not rented.autorenew
+    # Обновляем статус уведомления
+    rented.is_notified = False
     await rented.save()
 
     # Сообщаем пользователю о новом состоянии
