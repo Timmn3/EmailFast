@@ -113,28 +113,35 @@ async def main(dp: Dispatcher):
     await userbot_ping()
     await dp.start_polling(bot)
 
-
-
 def set_scheduled_jobs(scheduler):
     try:
-        # scheduler.add_job(check_sms, "interval", seconds=15, max_instances=3)
-        # scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
-        # scheduler.add_job(check_payment_ckassa, "interval", seconds=18, max_instances=3)
-        # scheduler.add_job(check_payment_streampay, "interval", seconds=19, max_instances=3)
-        # scheduler.add_job(check_payment_freekassa, "interval", seconds=22, max_instances=3)
-        # scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
-        # scheduler.add_job(add_services, "cron", hour=3, minute=0)
-        # scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
-        # scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
-        scheduler.add_job(check_rent_sms, "interval", seconds=5, max_instances=3)
+        # Проверка SMS
+        scheduler.add_job(check_sms, "interval", seconds=15, max_instances=3)
+        # Проверка Email
+        scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
+        # Проверка платежей через CKassa
+        scheduler.add_job(check_payment_ckassa, "interval", seconds=18, max_instances=3)
+        # Проверка платежей через Streampay
+        scheduler.add_job(check_payment_streampay, "interval", seconds=19, max_instances=3)
+        # Проверка платежей через FreeKassa
+        scheduler.add_job(check_payment_freekassa, "interval", seconds=22, max_instances=3)
+        # Проверка платежей через Anypay
+        scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
+        # Добавление сервисов
+        scheduler.add_job(add_services, "cron", hour=3, minute=0)
+        # Пинг userbot
+        scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
+        # Проверка истечения срока почты и уведомления
+        scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
+        # Проверка арендованных SMS
+        scheduler.add_job(check_rent_sms, "interval", seconds=15, max_instances=3)
+        # Уведомление об аренде, которая скоро завершится
         scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
+        # Завершение аренды
         scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
     except Exception as e:
+        # Логирование ошибки
         logger.error(f"Error while adding scheduled jobs: {e}")
-
-
-    # scheduler.add_job(update_countries_and_services, "interval", minutes=30,
-    #                   next_run_time=datetime.now() + timedelta(seconds=10), max_instances=3)
 
 
 class SkipSpecificLogFilter(logging.Filter):
