@@ -185,3 +185,4 @@ class OnlineSimRentAPI:
 
             except aiohttp.ClientError as e:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")
+

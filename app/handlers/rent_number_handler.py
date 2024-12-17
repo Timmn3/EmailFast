@@ -2,8 +2,8 @@ from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
 from app.db import models
-from app.dialogs.rent_sms import states
 from app.dialogs.rent_sms.states import RentCountryMenu
+from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.services.bot_texts import country_flags, DOLLAR_RATE
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services import bot_texts as bt
@@ -134,7 +134,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             )
 
             # Добавляем блок с сообщениями
-            rent_details += f"\n\n<b>Ваши сообщения:</b>\n{formatted_sms}"
+            rent_details += f"\n<b>Ваши сообщения:</b>\n{formatted_sms}"
 
         # Создаем inline клавиатуру
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -206,7 +206,7 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
         )
 
         # Добавляем блок с сообщениями
-        rent_details += f"\n\n<b>Ваши сообщения:</b>\n{formatted_sms}"
+        rent_details += f"\n<b>Ваши сообщения:</b>\n{formatted_sms}"
 
     # Формируем обновленные кнопки
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -256,7 +256,7 @@ async def rent_new_number(callback_query: types.CallbackQuery, dialog_manager: D
 
     # Завершаем текущий диалог или возвращаем в предыдущий
     await dialog_manager.start(
-        states.RentCountryMenu.select_country,  # Состояние для выбора страны
+        RentCountryMenu.select_country,  # Состояние для выбора страны
         context_data  # Передаем только нужные данные
     )
 
@@ -357,6 +357,23 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
             }}
 
     await dialog_manager.start(
-        states.RentCountryMenu.country_details,  # Состояние для выбора страны
+        RentCountryMenu.country_details,  # Состояние для выбора страны
+        context_data  # Передаем только нужные данные
+    )
+
+
+@router.callback_query(F.data.startswith('top_up_balance'))
+async def top_up_balance(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
+    # Передаем только необходимые данные
+    user = await models.User.get_user(dialog_manager.event.from_user.id)
+
+    context_data = {
+        'user_id': user.telegram_id,
+        'auto_renewal': True,
+    }
+
+    # Завершаем текущий диалог или возвращаем в предыдущий
+    await dialog_manager.start(
+        PersonalMenu.deposit,  # Состояние для выбора страны
         context_data  # Передаем только нужные данные
     )

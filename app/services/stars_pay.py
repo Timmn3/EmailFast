@@ -91,7 +91,7 @@ async def save_payment_to_database(user, amount):
 
     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
     user.balance += amount
-    msg_text = (f'Пополнение ckassa\n'
+    msg_text = (f'💲Пополнение stars⭐️\n'
                 f'mention {user.mention} '
                 f'сумма {amount}')
     await send_coder(msg_text)

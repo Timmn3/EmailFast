@@ -9,6 +9,8 @@ from loguru import logger
 from app import dependencies
 from app.db import models
 from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
+from app.dialogs.rent_sms.getters import get_day_string
+from app.services.bot_texts import country_flags
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
@@ -75,7 +77,7 @@ async def check_payment_lava():
 
                     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                     payment.user.balance += amount
-                    msg_text = (f'Пополнение Lava\n'
+                    msg_text = (f'💲Пополнение Lava\n'
                                 f'mention {payment.user.mention} '
                                 f'сумма {payment.amount}')
                     await send_coder(msg_text)
@@ -152,7 +154,7 @@ async def check_payment_freekassa():
 
                     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                     payment.user.balance += amount
-                    msg_text = (f'Пополнение freekassa\n'
+                    msg_text = (f'💲Пополнение freekassa\n'
                                 f'mention {payment.user.mention} '
                                 f'сумма {payment.amount}')
                     await send_coder(msg_text)
@@ -218,7 +220,7 @@ async def check_payment_yoomoney():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'Пополнение yoomoney\n'
+                msg_text = (f'💲Пополнение yoomoney\n'
                             f'mention {payment.user.mention} '
                             f'сумма {payment.amount}')
                 await send_coder(msg_text)
@@ -283,7 +285,7 @@ async def check_payment_anypay():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'Пополнение AnyPay\n'
+                msg_text = (f'💲Пополнение AnyPay\n'
                             f'mention {payment.user.mention} '
                             f'сумма {payment.amount}')
                 await send_coder(msg_text)
@@ -348,7 +350,7 @@ async def check_payment_streampay():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'Пополнение streampay\n'
+                msg_text = (f'💲нение streampay\n'
                             f'mention {payment.user.mention} '
                             f'сумма {payment.amount}')
                 await send_coder(msg_text)
@@ -421,7 +423,7 @@ async def check_payment_ckassa():
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса).
                 payment.user.balance += amount
                 await payment.user.save()
-                msg_text = (f'Пополнение ckassa\n'
+                msg_text = (f'💲Пополнение ckassa\n'
                             f'mention {payment.user.mention} '
                             f'сумма {payment.amount}')
                 await send_coder(msg_text)
@@ -525,7 +527,7 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    msg_text = (f'Пользователь {activation.user.id}  {activation.user.mention} '
+                    msg_text = (f'✅Пользователь {activation.user.id}  {activation.user.mention} '
                                 f'сервис {activation.service.name} баланс: {activation.user.balance}')
                     await send_coder(msg_text)
 
@@ -816,55 +818,163 @@ async def check_rent_sms():
         expired_activations = await models.Rent.get_expired_activations()
 
         # Обрабатываем каждую истекшую активацию
-        # for expired_activation in expired_activations:
-        #     print(" Аренда закрывается")
-        #     # Обновляем статус активации на 'STATUS_CANCEL'
-        #     # expired_activation.status = models.StatusResponse.STATUS_CANCEL
-        #     # expired_activation.is_canceled = True
-        #     # # Сохраняем изменения в базе данных
-        #     # await expired_activation.save()
-        #
-        #     # Здесь важно, чтобы user был загружен
-        #     user = await expired_activation.user
-        #     user.balance += expired_activation.cost
-        #     await user.save()
+        for expired_activation in expired_activations:
+            # Обновляем статус активации на 'STATUS_CANCEL'
+            expired_activation.status = models.StatusResponse.STATUS_CANCEL
+            expired_activation.is_canceled = True
+            # Сохраняем изменения в базе данных
+            await expired_activation.save()
 
+            # Здесь важно, чтобы user был загружен
+            user = await expired_activation.user
+            if expired_activation.sms_text == '':
+                user.balance += expired_activation.cost
+            await user.save()
 
-    except asyncio.CancelledError:
-        pass
-    # except Exception as e:
-    #     logger.error(e)
-
-
-async def rents_ending_soon():
-    try:
-        rents_ending = await models.Rent.get_rents_ending_soon()
-
-        # Обрабатываем каждую активную активацию
-        for ending in rents_ending:
-            # Формируем текст для отправки пользователю
-            msg_text = f"""
-                        💬 <b>Через 5 часов закончится срок аренды номера +{ending.phone_number}.
-                        Успейте продлить срок аренды или арендовать новый номер⤵️ </b>
-                        """
-            inline_kb = types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        types.InlineKeyboardButton(text='🔄Продлить аренду', callback_data='extend_lease')
-                    ],
-                    [
-                        types.InlineKeyboardButton(text='📞Арендовать новый номер', callback_data="rent_new_room")
-                    ]
-                ]
-            )
-            # Отправляем сообщение пользователю в Telegram
-            await bot.send_message(
-                chat_id=ending.user.telegram_id,
-                text=msg_text,
-                reply_markup=inline_kb
-            )
 
     except asyncio.CancelledError:
         pass
     except Exception as e:
         logger.error(e)
+
+
+async def rents_ending_soon():
+    try:
+        # Получает список аренд, для которых срок истекает ровно через 5 часов
+        rents_ending = await models.Rent.get_rents_ending_soon()
+
+        for ending in rents_ending:
+            if not ending.autorenew:
+                msg_text = f"""
+                    💬 <b>Через 5 часов закончится срок аренды номера +{ending.phone_number}.\nУспейте продлить срок аренды или арендовать новый номер⤵️</b>
+                """
+
+                inline_kb = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            types.InlineKeyboardButton(text='🔄Продлить аренду', callback_data=f"extend_rent_{ending.id}")
+                        ],
+                        [
+                            types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")
+                        ]
+                    ]
+                )
+
+                # Отправляем сообщение пользователю
+                await bot.send_message(
+                    chat_id=ending.user.telegram_id,
+                    text=msg_text,
+                    reply_markup=inline_kb
+                )
+
+                # Обновляем статус уведомления
+                ending.is_notified = True
+                await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
+
+            else:
+                if ending.user.balance < ending.cost:
+                    inline_replenish = types.InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                types.InlineKeyboardButton(text=bt.DEPOSIT_BTN,
+                                                           callback_data=f"top_up_balance")
+                            ],
+                        ]
+                    )
+                    # Отправляем сообщение пользователю
+                    await bot.send_message(
+                        chat_id=ending.user.telegram_id,
+                        text=bt.NOT_ENOUGH_FUNDS_FOR_RENT,
+                        reply_markup=inline_replenish
+                    )
+                else:
+                    # Обновляем статус уведомления
+                    ending.is_notified = True
+                    await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
+                    # Создаем экземпляр API клиента и делаем запрос аренды
+                    api_client = OnlineSimRentAPI()
+                    try:
+                        rent_result = await api_client.extend_rent_state(tzid=ending.rent_id, days=ending.days)
+                    except Exception as e:
+                        await bot.send_message(chat_id=ending.user.telegram_id, text=f"Ошибка при аренде: {str(e)}", show_alert=True)
+                        return
+
+                    if rent_result is None:
+                        await bot.send_message(chat_id=ending.user.telegram_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                        return
+
+                    # Извлекаем данные активации
+                    rent_id = int(rent_result.get("tzid", 0))
+                    phone_number = rent_result.get("number", None)
+                    minutes = int(rent_result.get("time", 0))
+
+                    if phone_number is None:
+                        await bot.send_message(chat_id=ending.user.telegram_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                        return
+
+                    # Добавляем запись об активации в базу данных
+                    activation = await models.Rent.add_rent(
+                        user=ending.user,
+                        rent_id=ending.rent_id,
+                        country=ending.country,
+                        cost=ending.cost,
+                        phone_number=ending.phone_number,
+                        rent_expire_at=datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
+                                       + datetime.timedelta(minutes=minutes),
+                        days=ending.days
+                    )
+
+                    # Отправляем пользователю сообщение о номере телефона
+                    country = activation.country.name.strip()
+                    flag = country_flags.get(country, "")  # Получаем флаг, если страны нет в словаре, возвращается пустая строка
+                    flag_and_country = f"{flag} {country}"
+
+                    # Сообщение о количестве дней аренды
+                    days_text = get_day_string(ending.days)
+
+                    await bot.send_message(chat_id=ending.user.telegram_id, text=bt.RENT_SUCCESS_MESSAGE.format(days=days_text))
+                    await bot.send_message(chat_id=ending.user.telegram_id,
+                                           text=bt.NUMBER_INFO.format(country=flag_and_country, phone=activation.phone_number))
+
+
+                    # Списываем средства с баланса пользователя
+                    ending.user.balance -= ending.cost
+                    await ending.user.save(update_fields=['balance'])
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(e)
+
+
+async def close_rent():
+    """
+    Обработка закрытия аренды номера.
+    """
+    rents_closes = await models.Rent.close_rent_before_end()
+
+    for rent in rents_closes:
+        # Используем API для отмены аренды
+        api = OnlineSimRentAPI()  # Создаем экземпляр API
+        try:
+            response = await api.close_rent_num(tzid=rent.rent_id)  # Передаем ID операции аренды
+            if response.get("response"):
+                # Успешно отменено, обновляем статус аренды в базе данных
+                rent.is_canceled = True
+                await rent.save()  # Сохраняем изменения в базе данных
+                await bot.send_message(chat_id=rent.user.telegram_id, text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
+
+            else:
+                # Если API вернул неизвестный ответ
+                msg_text = f'Неизвестный ответ закрытия аренды {response}\nпользователь {rent.user.id} номер {rent.phone_number}'
+                await bot.send_message(chat_id=CODER, text=msg_text)
+        except Exception as e:
+            msg_text = f'Ошибка закрытия аренды {e}\nпользователь {rent.user.id} номер {rent.phone_number}'
+            await bot.send_message(chat_id=CODER, text=msg_text)
+
+            # В случае ошибки переводим аренду в статус отмененной
+            rent.is_canceled = True
+            await rent.save()  # Сохраняем изменения в базе данных
+
+
+

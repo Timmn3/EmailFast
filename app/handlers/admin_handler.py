@@ -28,7 +28,6 @@ class BroadcastState(StatesGroup):
 @router.message(Command('stat'))
 async def stat(message: types.Message):
     utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
-    print(utc_now)
     if message.from_user.id not in ADMINS:
         return
 
@@ -86,6 +85,14 @@ async def stat(message: types.Message):
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
+    rented_number_total = await models.Rent.all().count()
+    rented_number_month = await models.Rent.filter(
+        created_at__gte=utc_now - timedelta(days=30)
+    ).count()
+    rented_number_today = await models.Rent.filter(
+        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
+    ).count()
+
     msg_text = bt.ADMIN_STAT.format(
         users_count=users_count,
         users_count_today=users_count_today,
@@ -107,6 +114,9 @@ async def stat(message: types.Message):
         delivered_sms_total=sms_count,
         delivered_sms_month=sms_count_month,
         delivered_sms_today=sms_count_today,
+        rented_number_total=rented_number_total,
+        rented_number_month=rented_number_month,
+        rented_number_today=rented_number_today
     )
 
     await message.answer(msg_text)

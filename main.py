@@ -18,7 +18,7 @@ from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, \
-    check_payment_ckassa, check_rent_sms
+    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -121,13 +121,14 @@ def set_scheduled_jobs(scheduler):
         # scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
         # scheduler.add_job(check_payment_ckassa, "interval", seconds=18, max_instances=3)
         # scheduler.add_job(check_payment_streampay, "interval", seconds=19, max_instances=3)
-        # # scheduler.add_job(check_payment_lava, "interval", seconds=21, max_instances=3)
         # scheduler.add_job(check_payment_freekassa, "interval", seconds=22, max_instances=3)
         # scheduler.add_job(check_payment_anypay, "interval", seconds=23, max_instances=3)
-        scheduler.add_job(check_rent_sms, "interval", seconds=10, max_instances=3)
-        # scheduler.add_job(check_mail_expiration_and_notify, "interval",minutes=20, max_instances=3)
-        scheduler.add_job(add_services, "cron", hour=3, minute=0)
+        # scheduler.add_job(add_services, "cron", hour=3, minute=0)
         # scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
+        # scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
+        scheduler.add_job(check_rent_sms, "interval", seconds=5, max_instances=3)
+        scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
+        scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
     except Exception as e:
         logger.error(f"Error while adding scheduled jobs: {e}")
 

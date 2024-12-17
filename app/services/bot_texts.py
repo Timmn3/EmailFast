@@ -53,6 +53,7 @@ RENT_DETAILS = """
 
 
 RENT_SUCCESS_MESSAGE = "✅ Номер успешно арендован на {days}"
+NUMBER_RENTAL_CLOSED = "❌ Аренда номера {number} окончена"
 
 SERVICE_CANCEL = """
 ⛔️Номер отменен
@@ -207,13 +208,19 @@ ADMIN_STAT = """
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <b>📲 Статистика SMS:</b>
-<b>Всего номеров арендовано:</b> {rented_sms_total}
+<b>Всего SMS запрошено:</b> {rented_sms_total}
 <b>За месяц:</b> {rented_sms_month}
 <b>За сегодня:</b> {rented_sms_today}
 
 <b>Доставлено SMS:</b> {delivered_sms_total}
 <b>За месяц:</b> {delivered_sms_month}
 <b>За сегодня:</b> {delivered_sms_today}
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>📞Аренда номеров:</b>
+<b>Всего арендовано номеров:</b> {rented_number_total}
+<b>За месяц:</b> {rented_number_month}
+<b>За сегодня:</b> {rented_number_today}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <b>💳 Пополнения:</b>
@@ -294,6 +301,7 @@ ERROR_NO_OPERATIONS_MSG = "Ошибка: операция уже заверше�
 ERROR_OCCURED_MSG = "Произошла ошибка при отмене аренды. Попробуйте позже."
 RENTAL_CANCELED_OR_NOT_FOUND = "Невозможно продлить аренду: аренда отменена или не найдена."
 FAILED_TO_GET_AVAILABLE_DAYS = "Не удалось получить доступные дни для продления аренды."
+NOT_ENOUGH_FUNDS_FOR_RENT = "На балансе недостаточно средств для автопродления аренды номера\nПополните баланс по кнопке ниже⤵"
 
 
 # Аренда электронной почты

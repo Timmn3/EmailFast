@@ -20,6 +20,8 @@ async def get_user_info(dialog_manager: DialogManager, **middleware_data):
 
 async def get_deposit_prices(dialog_manager: DialogManager, **middleware_data):
     user_id = dialog_manager.event.from_user.id
+    if user_id is None:
+        user_id = dialog_manager.start_data.get("user_id")
     user = await models.User.get_user(user_id)
     return {
         'prices': bt.prices_data,

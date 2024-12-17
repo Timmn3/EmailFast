@@ -239,7 +239,7 @@ class CountryOnlinesim(Model):
         return country
 
     @classmethod
-    async def get_country_country_onlinesim(cls, country_id: int):
+    async def get_country_onlinesim(cls, country_id: int):
         """
         Получает страну по её уникальному идентификатору из CountryOnlinesim.
 
@@ -1026,11 +1026,13 @@ class Rent(Model):
     rent_expire_at: datetime = fields.DatetimeField(null=True)
     autorenew: bool = fields.BooleanField(default=False)  # Поле для автопродления
     is_canceled: bool = fields.BooleanField(default=False)  # Поле для отслеживания отмены аренды
+    is_notified: bool = fields.BooleanField(default=False)  # Поле для отслеживания отправки уведомления
+    days: int = fields.IntField(default=0)  # Новое поле для отслеживания количества дней аренды
 
     @classmethod
     async def add_rent(cls, user: "User", rent_id: int, country: "CountryOnlinesim", cost: float,
                        phone_number: str, rent_expire_at: datetime, sms_text: str = "",
-                       autorenew: bool = False, is_canceled: bool = False):
+                       autorenew: bool = False, is_canceled: bool = False, days: int = 0):
         """
         Добавляет новую аренду в базу данных.
 
@@ -1039,10 +1041,11 @@ class Rent(Model):
         :param country: Объект страны, связанной с арендой.
         :param cost: Стоимость аренды.
         :param phone_number: Номер телефона, используемый для аренды.
-        :param sms_text: смс сообщение.
+        :param sms_text: СМС сообщение.
         :param rent_expire_at: Время истечения аренды.
         :param autorenew: Статус автопродления (по умолчанию False).
         :param is_canceled: Статус отмены аренды (по умолчанию False).
+        :param days: Количество дней аренды (по умолчанию 0).
         :return: Созданный объект аренды.
         """
         rent, created = await cls.update_or_create(
@@ -1056,10 +1059,12 @@ class Rent(Model):
                 "rent_expire_at": rent_expire_at,
                 "autorenew": autorenew,
                 "is_canceled": is_canceled,
+                "days": days,  # Устанавливаем значение нового поля
             }
         )
         print(f"Создано ли новое состояние аренды? {'Да' if created else 'Нет'}")
         return rent
+
 
     @classmethod
     async def get_rent(cls, id: int):
@@ -1147,7 +1152,7 @@ class Rent(Model):
     @classmethod
     async def get_all_active_rents(cls):
         """
-        Получает список всех активных аренд, где is_canceled = False.
+        Получает список всех активных аренд.
 
         :return: Список объектов активных аренд.
         """
@@ -1162,24 +1167,37 @@ class Rent(Model):
         :return: Список объектов истекших активаций.
         """
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
-        return await cls.filter(rent_expire_at__gte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
-
+        return await cls.filter(rent_expire_at__lt=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
     async def get_rents_ending_soon(cls):
         """
-        Получает список всех аренд, срок действия которых заканчивается через 5 часов или меньше,
-        но не менее чем через 4 часа 50 минут.
-
-        :return: Список объектов аренды.
+        Получает список аренд, для которых срок истекает ровно через 5 часов,
+        и уведомление еще не было отправлено.
         """
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
-        lower_bound = utc_now + timedelta(hours=4, minutes=50)
-        upper_bound = utc_now + timedelta(hours=5)
+        target_time = utc_now + timedelta(hours=5)
 
-        # Фильтруем аренды, которые заканчиваются в указанном промежутке времени и не отменены
+        # Фильтруем аренды, срок действия которых заканчивается через 5 часов, и уведомление еще не отправлено
         return await cls.filter(
-            rent_expire_at__lte=upper_bound,
-            rent_expire_at__gt=lower_bound,
-            is_canceled=False
+            rent_expire_at__lte=target_time,
+            rent_expire_at__gt=utc_now,
+            is_canceled=False,
+            is_notified=False  # Уведомление еще не отправлено
+        ).all().prefetch_related("user", "country")
+
+    @classmethod
+    async def close_rent_before_end(cls):
+        """
+        Получает список аренд, для которых срок истекает ровно через 5 минут
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        target_time = utc_now + timedelta(minutes=5)
+
+        # Фильтруем аренды, срок действия которых заканчивается через 5 часов, и уведомление еще не отправлено
+        return await cls.filter(
+            rent_expire_at__lte=target_time,
+            rent_expire_at__gt=utc_now,
+            is_canceled=False,
+            autorenew=False
         ).all().prefetch_related("user", "country")

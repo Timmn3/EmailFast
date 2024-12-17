@@ -164,7 +164,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         # Извлекаем данные активации
     rent_id = int(rent_result.get("tzid", 0))
     phone_number = rent_result.get("number", None)
-    country = await models.CountryOnlinesim.get_country_country_onlinesim(country_id=country_code)
+    country = await models.CountryOnlinesim.get_country_onlinesim(country_id=country_code)
     minutes = int(rent_result.get("time", 0))
 
     if phone_number is None:
@@ -178,7 +178,8 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         country=country,
         cost=price,
         phone_number=f"{country_code}{phone_number}",
-        rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=minutes)
+        rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=minutes),
+        days=days
     )
 
     # Отправляем пользователю сообщение о номере телефона
