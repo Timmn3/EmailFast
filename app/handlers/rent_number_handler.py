@@ -306,15 +306,15 @@ async def cancel_rent(callback_query: types.CallbackQuery):
         if "ERROR_NO_OPERATIONS" in str(e):
             logger.error(e)
             await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
-
+            # В случае ошибки переводим аренду в статус отмененной
+            rented.is_canceled = True
+            await rented.save()  # Сохраняем изменения в базе данных
         else:
             await callback_query.answer(bt.RENT_CANCEL_FAILED_MSG, show_alert=True)
 
         # Удаляем сообщение о текущей аренде
         await callback_query.message.delete()
-        # В случае ошибки переводим аренду в статус отмененной
-        rented.is_canceled = True
-        await rented.save()  # Сохраняем изменения в базе данных
+
 
 
 @router.callback_query(F.data.startswith('extend_rent_'))
