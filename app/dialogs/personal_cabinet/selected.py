@@ -11,6 +11,7 @@ from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_sms.scheduler_balance import start_balance_check
 from app.dialogs.receive_sms.states import CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
+from app.handlers.affiliate_program import send_affiliate_message
 from app.services import bot_texts as bt
 from app.services.payments.anypay import AnypayAPI
 from app.services.bot_texts import FOLLOW_THE_LINK_TO_PAY
@@ -30,6 +31,20 @@ async def on_deposit(c: types.CallbackQuery, widget: Button, manager: DialogMana
     :param manager: Объект DialogManager.
     """
     await manager.switch_to(PersonalMenu.deposit)
+
+
+async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    """
+    Обработчик кнопки "Партнерская программа".
+    Вызывает функцию send_affiliate_message с передачей сообщения из CallbackQuery.
+
+    :param c: Объект CallbackQuery.
+    :param widget: Объект Button.
+    :param manager: Объект DialogManager.
+    """
+    # Передаем сообщение из CallbackQuery в send_affiliate_message
+    await send_affiliate_message(m=c.message, user_id=c.from_user.id)
+    await c.answer()  # Уведомляем Telegram об обработке CallbackQuery
 
 
 async def on_payment_method(c: types.CallbackQuery, widget: Button, manager: DialogManager):

@@ -11,7 +11,6 @@ def main_menu_window():
     return Window(
         Const(bt.MAIN_MENU),
         Row(Button(Const(bt.RECEIVE_SMS_BTN), id='receive_sms', on_click=on_receive_sms)),
-            # Button(Const(bt.RECEIVE_EMAIL_BTN), id='receive_email', on_click=on_receive_email)),
 
         Button(Const(bt.PERSONAL_CABINET_BTN), id='personal_cabinet', on_click=on_personal_cabinet),
         Button(Const(bt.AFFILIATE_PROGRAM_BTN), id='affiliate_program', on_click=on_affiliate_program),

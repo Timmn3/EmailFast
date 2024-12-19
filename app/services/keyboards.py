@@ -17,12 +17,12 @@ def start_kb():
     builder.row(
         KeyboardButton(text=bt.RECEIVE_EMAIL_BTN)
     )
-    builder.row(
+    builder.add(
         KeyboardButton(text=bt.PERSONAL_CABINET_BTN),
     )
-    builder.row(
-        KeyboardButton(text=bt.AFFILIATE_PROGRAM_BTN)
-    )
+    # builder.row(
+    #     KeyboardButton(text=bt.AFFILIATE_PROGRAM_BTN)
+    # )
 
     return builder.as_markup(resize_keyboard=True, is_persistent=False)
 
