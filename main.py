@@ -16,7 +16,8 @@ from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, \
-    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent, auto_renewal_of_rent
+    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent, auto_renewal_of_rent, \
+    send_coder
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -106,6 +107,9 @@ async def main(dp: Dispatcher):
 
     await userbot_ping()
     await dp.start_polling(bot)
+
+    msg_text = "Версия 21.12.2024"
+    await send_coder(msg_text)
 
 def set_scheduled_jobs(scheduler):
     try:
