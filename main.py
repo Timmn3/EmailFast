@@ -106,10 +106,11 @@ async def main(dp: Dispatcher):
     scheduler.start()
 
     await userbot_ping()
-    await dp.start_polling(bot)
 
-    msg_text = "Версия 21.12.2024" # git push production master
+    msg_text = "Версия 21.12.2024"  # git push production master
     await send_coder(msg_text)
+
+    await dp.start_polling(bot)
 
 def set_scheduled_jobs(scheduler):
     try:
