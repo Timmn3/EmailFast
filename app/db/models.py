@@ -1189,6 +1189,26 @@ class Rent(Model):
         ).all().prefetch_related("user", "country")
 
     @classmethod
+    async def get_rents_expire(cls):
+        """
+        Получает список аренд, для которых срок истекает ровно через 2 часа,
+        и уведомление еще не было отправлено.
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        target_time = utc_now + timedelta(hours=2)
+
+        # Фильтруем аренды, срок действия которых заканчивается через 5 часов, и уведомление еще не отправлено
+        return await cls.filter(
+            rent_expire_at__lte=target_time,
+            rent_expire_at__gt=utc_now,
+            is_canceled=False,
+            sms_text__isnull=False
+        ).exclude(
+            sms_text=""
+        ).all().prefetch_related("user", "country")
+
+
+    @classmethod
     async def close_rent_before_end(cls):
         """
         Получает список аренд, для которых срок истекает ровно через 5 минут

@@ -16,7 +16,7 @@ from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, \
-    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent
+    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent, auto_renewal_of_rent
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -131,6 +131,8 @@ def set_scheduled_jobs(scheduler):
         scheduler.add_job(check_rent_sms, "interval", seconds=15, max_instances=3)
         # Уведомление об аренде, которая скоро завершится
         scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
+        # Автопродление аренды за 2 часа до окончания
+        scheduler.add_job(auto_renewal_of_rent, "interval", minutes=1, max_instances=3)
         # Завершение аренды
         scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
         # Проверка незавершенных аренд
