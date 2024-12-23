@@ -139,11 +139,8 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
         # Создаем inline клавиатуру
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
 
-        # Проверяем статус автопродления
-        autorenew_enabled = await models.Rent.is_autorenew_enabled(rent_id)
-
         # Кнопки для управления автопродлением
-        if autorenew_enabled:
+        if rented.autorenew:
             keyboard.inline_keyboard.append([types.InlineKeyboardButton(text="✅ Автопродление включено", callback_data=f"auto_renew_{rent_id}")])
         else:
             keyboard.inline_keyboard.append([types.InlineKeyboardButton(text="❌Автопродление выключено", callback_data=f"auto_renew_{rent_id}")])
