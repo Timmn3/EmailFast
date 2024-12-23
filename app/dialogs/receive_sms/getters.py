@@ -15,28 +15,30 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
     Возвращает:
     dict: Словарь с отфильтрованными странами и кодом услуги.
     """
-    ctx = dialog_manager.current_context()
-    countries_with_prices = ctx.start_data.get("countries_with_prices") if ctx.start_data else None
-    service_code = ctx.start_data.get("service_code")
-    search_name = ctx.dialog_data.get('search_name')
+    try:
+        ctx = dialog_manager.current_context()
+        countries_with_prices = ctx.start_data.get("countries_with_prices") if ctx.start_data else None
+        service_code = ctx.start_data.get("service_code")
+        search_name = ctx.dialog_data.get('search_name')
 
-    if countries_with_prices is not None:
-        # Фильтровать страны по поисковому имени, если оно существует.
-        if search_name:
-            filtered_countries = [{"id": idx, "country": item['country'], "price": item['price']} for idx, item in
-                                  enumerate(countries_with_prices) if item['country'] == search_name]
+        if countries_with_prices is not None:
+            # Фильтровать страны по поисковому имени, если оно существует.
+            if search_name:
+                filtered_countries = [{"id": idx, "country": item['country'], "price": item['price']} for idx, item in
+                                      enumerate(countries_with_prices) if item['country'] == search_name]
+            else:
+                filtered_countries = [{"id": idx, "country": item['country'], "price": item['price']} for idx, item in
+                                      enumerate(countries_with_prices)]
         else:
-            filtered_countries = [{"id": idx, "country": item['country'], "price": item['price']} for idx, item in
-                                  enumerate(countries_with_prices)]
-    else:
-        filtered_countries = []
+            filtered_countries = []
 
-    data = {
-        "countries": filtered_countries,
-        "service_code": service_code
-    }
-    return data
-
+        data = {
+            "countries": filtered_countries,
+            "service_code": service_code
+        }
+        return data
+    except Exception as e:
+        logger.error(e)
 
 async def get_services(dialog_manager: DialogManager, **middleware_data):
     """
