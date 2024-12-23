@@ -149,9 +149,9 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
 
     try:
         if tzid is None:
-            rent_result = await api_client.rent_number(country=int(country_code), days=days)
+            rent_result = await api_client.rent_number(country=int(country_code), days=days) # Запрос номера
         else:
-            rent_result = await api_client.extend_rent_state(tzid=tzid, days=days)
+            rent_result = await api_client.extend_rent_state(tzid=tzid, days=days) # Продление аренды
     except Exception as e:
         await c.answer(f"Ошибка при аренде: {str(e)}", show_alert=True)
         return
@@ -181,6 +181,10 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         rent_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=minutes),
         days=days
     )
+
+    # обновляем количество покупок номеров
+    activation.purchase_count += 1
+    await activation.save(update_fields=["purchase_count"])
 
     # Отправляем пользователю сообщение о номере телефона
     await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)

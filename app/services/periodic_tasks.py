@@ -821,6 +821,7 @@ async def check_rent_sms():
             # Обновляем статус активации на 'STATUS_CANCEL'
             expired_activation.status = models.StatusResponse.STATUS_CANCEL
             expired_activation.is_canceled = True
+            expired_activation.purchase_count -= 1
             # Сохраняем изменения в базе данных
             await expired_activation.save()
 

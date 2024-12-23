@@ -1027,12 +1027,14 @@ class Rent(Model):
     autorenew: bool = fields.BooleanField(default=False)  # Поле для автопродления
     is_canceled: bool = fields.BooleanField(default=False)  # Поле для отслеживания отмены аренды
     is_notified: bool = fields.BooleanField(default=False)  # Поле для отслеживания отправки уведомления
-    days: int = fields.IntField(default=0)  # Новое поле для отслеживания количества дней аренды
+    days: int = fields.IntField(default=0)  # Поле для отслеживания количества дней аренды
+    purchase_count: int = fields.IntField(default=0)  # Поле для отслеживания количества покупок
 
     @classmethod
     async def add_rent(cls, user: "User", rent_id: int, country: "CountryOnlinesim", cost: float,
                        phone_number: str, rent_expire_at: datetime, sms_text: str = "",
-                       autorenew: bool = False, is_canceled: bool = False, days: int = 0):
+                       autorenew: bool = False, is_canceled: bool = False, days: int = 0,
+                       purchase_count: int = 0):
         """
         Добавляет новую аренду в базу данных.
 
@@ -1046,6 +1048,7 @@ class Rent(Model):
         :param autorenew: Статус автопродления (по умолчанию False).
         :param is_canceled: Статус отмены аренды (по умолчанию False).
         :param days: Количество дней аренды (по умолчанию 0).
+        :param purchase_count: Счетчик покупок (по умолчанию 0).
         :return: Созданный объект аренды.
         """
         rent, created = await cls.update_or_create(
@@ -1060,6 +1063,7 @@ class Rent(Model):
                 "autorenew": autorenew,
                 "is_canceled": is_canceled,
                 "days": days,  # Устанавливаем значение нового поля
+                "purchase_count": purchase_count,  # Устанавливаем значение счетчика покупок
             }
         )
         return rent

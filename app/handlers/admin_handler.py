@@ -17,6 +17,8 @@ from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
+from tortoise.functions import Sum
+
 
 router = Router()
 
@@ -85,13 +87,21 @@ async def stat(message: types.Message):
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
-    rented_number_total = await models.Rent.all().count()
+    # Общая сумма всех покупок
+    rented_number_total = await models.Rent.all().annotate(total=Sum("purchase_count")).values("total")
+    rented_number_total = rented_number_total[0]["total"] or 0
+
+    # Сумма покупок за последние 30 дней
     rented_number_month = await models.Rent.filter(
         created_at__gte=utc_now - timedelta(days=30)
-    ).count()
+    ).annotate(total=Sum("purchase_count")).values("total")
+    rented_number_month = rented_number_month[0]["total"] or 0
+
+    # Сумма покупок за сегодняшний день
     rented_number_today = await models.Rent.filter(
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
-    ).count()
+    ).annotate(total=Sum("purchase_count")).values("total")
+    rented_number_today = rented_number_today[0]["total"] or 0
 
     msg_text = bt.ADMIN_STAT.format(
         users_count=users_count,
