@@ -221,6 +221,7 @@ ADMIN_STAT = """
 <b>Всего арендовано номеров:</b> {rented_number_total}
 <b>За месяц:</b> {rented_number_month}
 <b>За сегодня:</b> {rented_number_today}
+<b>Повторно:</b> {repeat_purchases_total}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <b>💳 Пополнения:</b>
