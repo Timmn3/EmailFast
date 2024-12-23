@@ -104,7 +104,7 @@ async def stat(message: types.Message):
 
     # Группируем по user_id и считаем количество записей для каждого пользователя
     user_purchases = await models.Rent.all().group_by("user_id").annotate(
-        total_purchases=Count("id")
+        total_purchases=Sum("purchase_count")
     ).values("user_id", "total_purchases")
 
     # Суммируем (count - 1) для каждого пользователя
