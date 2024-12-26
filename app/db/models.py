@@ -12,6 +12,7 @@ class StatusResponse(IntEnum):
     STATUS_WAIT_RESEND = 3
     STATUS_CANCEL = 4
     STATUS_OK = 5
+    STATUS_HZ = 6
 
 
 class ActivationResponse(Enum):
@@ -744,8 +745,8 @@ class Activation(Model):
 
         :return: Список объектов истекших аренд.
         """
-        utc_now = datetime.now(pytz.utc)
-        return await cls.filter(activation_expire_at=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        return await cls.filter(activation_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
     async def get_active_activations(cls):
@@ -765,7 +766,7 @@ class Activation(Model):
         :return: Объект активации пользователя, если она активна, или None, если активация не найдена или истекла.
         """
         # Получаем текущее время в UTC
-        utc_now = datetime.now(pytz.utc)
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
 
         # Получаем все активные активации пользователя
         active_activations = await cls.filter(user_id=user_id, activation_expire_at__gt=utc_now).all()

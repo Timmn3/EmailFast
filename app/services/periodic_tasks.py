@@ -471,13 +471,15 @@ async def check_sms():
         # Получаем все активные активации
         activations = await models.Activation.get_active_activations()
 
+
         # Обрабатываем каждую активную активацию
         for activation in activations:
-
+            print(activation.phone_number)
             # Получаем статус активации по её идентификатору
             if len(str(activation.activation_id)) > 9:
                 sms = SmsReceive()
                 status = str(await sms.get_activation_status(activation.activation_id))
+
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)

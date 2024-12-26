@@ -114,7 +114,7 @@ async def main(dp: Dispatcher):
 def set_scheduled_jobs(scheduler):
     try:
         # Проверка SMS
-        scheduler.add_job(check_sms, "interval", seconds=40, max_instances=3)
+        scheduler.add_job(check_sms, "interval", seconds=10, max_instances=3)
         # Проверка Email
         scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
         # Проверка платежей через CKassa
