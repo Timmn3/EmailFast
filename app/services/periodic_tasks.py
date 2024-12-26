@@ -890,6 +890,9 @@ async def auto_renewal_of_rent():
                     )
                     # Отправляем сообщение пользователю
                     await bot.send_message(chat_id=user_id, text=bt.NOT_ENOUGH_FUNDS_FOR_RENT, reply_markup=inline_replenish)
+                    # Обновляем статус уведомления
+                    ending.is_notified = True
+                    await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
                 else:
                     # Создаем экземпляр API клиента и делаем запрос аренды
                     api_client = OnlineSimRentAPI()
@@ -921,6 +924,7 @@ async def auto_renewal_of_rent():
                         phone_number=ending.phone_number,
                         rent_expire_at=datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
                                        + datetime.timedelta(minutes=minutes),
+                        is_notified=False,
                         days=ending.days,
                         autorenew=ending.autorenew
                     )
