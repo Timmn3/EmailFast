@@ -848,7 +848,7 @@ async def rents_ending_soon():
             user_id = ending.user.telegram_id
             if not ending.autorenew:
                 msg_text = f"""
-                    💬 <b>Через 5 часов закончится срок аренды номера +{ending.phone_number}.\nУспейте продлить срок аренды или арендовать новый номер⤵️</b>
+                    💬 <b>Скоро закончится срок аренды номера +{ending.phone_number}.\nУспейте продлить срок аренды или арендовать новый номер⤵️</b>
                 """
 
                 inline_kb = types.InlineKeyboardMarkup(
