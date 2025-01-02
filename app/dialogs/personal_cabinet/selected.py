@@ -111,12 +111,14 @@ async def on_other_price(c: types.CallbackQuery, widget: Button, manager: Dialog
 async def switch_state(manager: DialogManager):
     # Получаем название группы состояний
     state = manager.current_context().state
-
+    print(state)
     # Проверяем группу состояний и переключаемся на нужное состояние
     if state == 'PersonalMenu:deposit':
         await manager.switch_to(PersonalMenu.enter_amount)
     elif state == 'CountryMenu:deposit':
         await manager.switch_to(CountryMenu.enter_amount)
+    elif state == 'RentCountryMenu:deposit':
+        await manager.switch_to(RentCountryMenu.enter_amount)
 
 
 async def on_enter_other_price(m: types.Message, widget: TextInput, manager: DialogManager, price_text: str):

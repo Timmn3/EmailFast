@@ -474,7 +474,6 @@ async def check_sms():
 
         # Обрабатываем каждую активную активацию
         for activation in activations:
-            print(activation.phone_number)
             # Получаем статус активации по её идентификатору
             if len(str(activation.activation_id)) > 9:
                 sms = SmsReceive()
