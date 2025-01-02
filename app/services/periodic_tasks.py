@@ -77,10 +77,7 @@ async def check_payment_lava():
 
                     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                     payment.user.balance += amount
-                    msg_text = (f'💲Пополнение Lava\n'
-                                f'mention {payment.user.mention} '
-                                f'сумма {payment.amount}')
-                    await send_coder(msg_text)
+                    await balance_replenishment_notification(payment, "Lava")
                     await bot.send_message(chat_id=payment.user.telegram_id,
                                            text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
                     await payment.user.save()
@@ -154,10 +151,7 @@ async def check_payment_freekassa():
 
                     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                     payment.user.balance += amount
-                    msg_text = (f'💲Пополнение freekassa\n'
-                                f'mention {payment.user.mention} '
-                                f'сумма {payment.amount}')
-                    await send_coder(msg_text)
+                    await balance_replenishment_notification(payment, "freekassa")
                     await bot.send_message(chat_id=payment.user.telegram_id,
                                            text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
                     await payment.user.save()
@@ -188,12 +182,7 @@ async def check_payment_freekassa():
             except Exception as e:
                 # Логируем любые исключения, возникшие в процессе обработки платежа.
                 logger.warning(e)
-                msg_text = (f'❌freekassa \n'
-                            f'id {payment.id}\n'
-                            f'user_id {payment.user.telegram_id}\n'
-                            f'mention {payment.user.mention}\n'
-                            f'сумма {payment.amount}')
-                await send_coder(msg_text)
+                await replenishment_error_message(payment, "freekassa")
 
 
 async def check_payment_yoomoney():
@@ -220,10 +209,7 @@ async def check_payment_yoomoney():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'💲Пополнение yoomoney\n'
-                            f'mention {payment.user.mention} '
-                            f'сумма {payment.amount}')
-                await send_coder(msg_text)
+                await balance_replenishment_notification(payment, "yoomoney")
                 await payment.user.save()
                 await bot.send_message(chat_id=payment.user.telegram_id,
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
@@ -254,11 +240,7 @@ async def check_payment_yoomoney():
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
-            msg_text = (f'❌yoomoney \n'
-                        f'user_id {payment.user.telegram_id}\n'
-                        f'mention {payment.user.mention}\n'
-                        f'сумма {payment.amount}')
-            await send_coder(msg_text)
+            await replenishment_error_message(payment, "yoomoney")
 
 
 async def check_payment_anypay():
@@ -285,10 +267,7 @@ async def check_payment_anypay():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'💲Пополнение AnyPay\n'
-                            f'mention {payment.user.mention} '
-                            f'сумма {payment.amount}')
-                await send_coder(msg_text)
+                await balance_replenishment_notification(payment, "AnyPay")
                 await bot.send_message(chat_id=payment.user.telegram_id,
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
                 await payment.user.save()
@@ -319,12 +298,7 @@ async def check_payment_anypay():
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
-            msg_text = (f'❌'
-                        f'AnyPay \n'
-                        f'user_id {payment.user.telegram_id}\n'
-                        f'mention {payment.user.mention}\n'
-                        f'сумма {payment.amount}')
-            await send_coder(msg_text)
+            await replenishment_error_message(payment, "AnyPay")
 
 
 async def check_payment_streampay():
@@ -384,12 +358,7 @@ async def check_payment_streampay():
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
-            msg_text = (f'❌'
-                        f'streampay \n'
-                        f'user_id {payment.user.telegram_id}\n'
-                        f'mention {payment.user.mention}\n'
-                        f'сумма {payment.amount}')
-            await send_coder(msg_text)
+            await replenishment_error_message(payment, "streampay")
 
 
 async def check_payment_ckassa():
@@ -423,10 +392,7 @@ async def check_payment_ckassa():
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса).
                 payment.user.balance += amount
                 await payment.user.save()
-                msg_text = (f'💲Пополнение ckassa\n'
-                            f'mention {payment.user.mention} '
-                            f'сумма {payment.amount}')
-                await send_coder(msg_text)
+                await balance_replenishment_notification(payment, "ckassa")
                 # Отправляем сообщение пользователю об успешном пополнении баланса.
                 await bot.send_message(chat_id=payment.user.telegram_id,
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
@@ -455,12 +421,7 @@ async def check_payment_ckassa():
         except Exception as e:
             # Логируем любые исключения.
             logger.warning(e)
-            msg_text = (f'❌'
-                        f'CKassa \n'
-                        f'user_id {payment.user.telegram_id}\n'
-                        f'mention {payment.user.mention}\n'
-                        f'сумма {payment.amount}')
-            await send_coder(msg_text)
+            await replenishment_error_message(payment, "CKassa")
 
 
 import re
@@ -528,9 +489,7 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    msg_text = (f'✅Пользователь {activation.user.id}  {activation.user.mention} '
-                                f'сервис {activation.service.name} баланс: {activation.user.balance}')
-                    await send_coder(msg_text)
+                    await notice_of_arraignment(activation)
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
@@ -1007,7 +966,28 @@ async def checking_inactive_rent():
                         continue
 
 
+async def balance_replenishment_notification(payment, service):
+        msg_text = (f'💲Пополнение {service}\n'
+                    f'пользователь {payment.user.mention}\n'
+                    f'id {payment.user.telegram_id}\n'
+                    f'сумма {payment.amount}')
+        await send_coder(msg_text)
 
 
 
+async def replenishment_error_message(payment, service):
+    msg_text = (f'❌ ошибка\n'
+                f'{service} \n'
+                f'пользователь {payment.user.mention}\n'
+                f'id {payment.user.telegram_id}\n'
+                f'сумма {payment.amount}')
+    await send_coder(msg_text)
 
+
+async def notice_of_arraignment(activation):
+    msg_text = (f'✅ аренда\n'
+                f'{activation.service.name} \n'
+                f'пользователь {activation.user.mention}\n'
+                f'id {activation.user.telegram_id}\n'
+                f'баланс: {activation.user.balance}')
+    await send_coder(msg_text)
