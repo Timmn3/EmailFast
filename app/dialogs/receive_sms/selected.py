@@ -156,7 +156,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     :param c: Объект CallbackQuery от aiogram.
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
-    await c.message.answer(text=NUMBER_REQUEST_SENT)
 
     # Получаем информацию о пользователе
     user = await models.User.get_user(c.from_user.id)
@@ -179,6 +178,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                                                       'service_price': price})
         await manager.switch_to(CountryMenu.deposit)
         return
+
+    await c.message.answer(text=NUMBER_REQUEST_SENT)
 
     if free_price_map is None:
         client = OnlineSMS(api_key=API_KEY_ONLINESIM)
