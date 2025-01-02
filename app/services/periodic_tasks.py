@@ -324,10 +324,7 @@ async def check_payment_streampay():
 
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
-                msg_text = (f'💲нение streampay\n'
-                            f'mention {payment.user.mention} '
-                            f'сумма {payment.amount}')
-                await send_coder(msg_text)
+                await balance_replenishment_notification(payment, "streampay")
                 await bot.send_message(chat_id=payment.user.telegram_id,
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
                 await payment.user.save()
@@ -970,7 +967,8 @@ async def balance_replenishment_notification(payment, service):
         msg_text = (f'💲Пополнение {service}\n'
                     f'пользователь {payment.user.mention}\n'
                     f'id {payment.user.telegram_id}\n'
-                    f'сумма {payment.amount}')
+                    f'сумма {payment.amount}'
+                    f'баланс: {payment.user.balance}')
         await send_coder(msg_text)
 
 
@@ -980,7 +978,9 @@ async def replenishment_error_message(payment, service):
                 f'{service} \n'
                 f'пользователь {payment.user.mention}\n'
                 f'id {payment.user.telegram_id}\n'
-                f'сумма {payment.amount}')
+                f'сумма {payment.amount}'
+                f'баланс: {payment.user.balance}')
+
     await send_coder(msg_text)
 
 
@@ -989,5 +989,6 @@ async def notice_of_arraignment(activation):
                 f'{activation.service.name} \n'
                 f'пользователь {activation.user.mention}\n'
                 f'id {activation.user.telegram_id}\n'
+                f'сумма аренды {activation.cost}'
                 f'баланс: {activation.user.balance}')
     await send_coder(msg_text)

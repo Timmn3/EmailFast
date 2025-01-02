@@ -14,7 +14,7 @@ from loguru import logger
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from aiogram.exceptions import TelegramBadRequest
 
-from app.services.periodic_tasks import send_coder
+from app.services.periodic_tasks import send_coder, balance_replenishment_notification
 
 
 def payment_keyboard(amount):
@@ -92,8 +92,10 @@ async def save_payment_to_database(user, amount):
     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
     user.balance += amount
     msg_text = (f'💲Пополнение stars⭐️\n'
-                f'mention {user.mention} '
-                f'сумма {amount}')
+                f'пользователь {user.mention}\n'
+                f'id {user.telegram_id}\n'
+                f'сумма {amount}'
+                f'баланс: {user.balance}')
     await send_coder(msg_text)
     await user.save()
 
