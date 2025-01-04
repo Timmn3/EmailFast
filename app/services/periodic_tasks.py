@@ -441,10 +441,11 @@ async def check_sms():
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
-                status = ''
-                if 'msg' in order_info[0]:
+                if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
+                else:
+                    continue
 
             # Проверяем, начинается ли статус с 'STATUS_OK'
             if status.startswith(models.StatusResponse.STATUS_OK.name):
