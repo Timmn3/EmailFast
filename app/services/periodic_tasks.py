@@ -14,6 +14,7 @@ from app.services.bot_texts import country_flags
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
+from app.services.payments.cryptomus import get_paid_order_ids
 from app.services.payments.freekassa import Freekassa
 from app.services.payments.lava import LavaApi
 from app.services.payments.streampay import get_payment_status_streampay
@@ -419,6 +420,67 @@ async def check_payment_ckassa():
             # Логируем любые исключения.
             logger.warning(e)
             await replenishment_error_message(payment, "CKassa")
+
+
+async def check_payment_cryptomus():
+    # Получаем список платежей, которые нужно проверить, из базы данных.
+    payments = await models.Payment.get_cryptomus_payments()
+    # Получаем список оплаченных инвойсов
+    payments_cryptomus = get_paid_order_ids()
+    for payment in payments:
+        try:
+            print(f'payment.id {payment.id}')
+            print(f'payments_cryptomus {payments_cryptomus}')
+            # Получаем список оплаченных заказов
+            if str(payment.id) in payments_cryptomus:
+                # Отмечаем платеж как успешный в базе данных.
+                payment.is_success = True
+                await payment.save()
+
+                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
+                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    # Если бонус активен, увеличиваем сумму платежа на 10%.
+                    amount = floor(payment.amount * 1.1)
+                    # Сбрасываем срок действия бонуса.
+                    payment.user.bonus_end_at = None
+                else:
+                    # Если бонус не активен, сумма остается без изменений.
+                    amount = payment.amount
+
+                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
+                payment.user.balance += amount
+                await balance_replenishment_notification(payment, "Cryptomus")
+                await bot.send_message(chat_id=payment.user.telegram_id,
+                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                await payment.user.save()
+
+                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                if payment.user.refer_id:
+                    refer = await models.User.get_or_none(id=payment.user.refer_id)
+                    if refer:
+                        # Рассчитываем реферальный бонус как процент от суммы платежа.
+                        ref_bonus = int(dependencies.REF_BONUS) / 100
+                        ref_sum = round(payment.amount * ref_bonus, 1)
+                        refer.ref_balance += ref_sum
+                        refer.total_ref_earnings += ref_sum
+                        await refer.save()
+
+                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                    builder = InlineKeyboardBuilder()
+                    if payment.continue_data:
+                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+
+                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    await bot.send_message(
+                        chat_id=payment.user.telegram_id,
+                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        reply_markup=builder.as_markup()
+                    )
+
+        except Exception as e:
+            # Логируем любые исключения, возникшие в процессе обработки платежа.
+            logger.warning(e)
+            await replenishment_error_message(payment, "Cryptomus")
 
 
 import re

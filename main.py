@@ -17,7 +17,7 @@ from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, \
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent, auto_renewal_of_rent, \
-    send_coder
+    send_coder, check_payment_cryptomus
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -125,6 +125,8 @@ def set_scheduled_jobs(scheduler):
         scheduler.add_job(check_payment_freekassa, "interval", seconds=33, max_instances=3)
         # Проверка платежей через Anypay
         scheduler.add_job(check_payment_anypay, "interval", seconds=45, max_instances=3)
+        # Проверка платежей через cryptomus
+        scheduler.add_job(check_payment_cryptomus, "interval", seconds=20, max_instances=3)
         # Добавление сервисов
         scheduler.add_job(add_services, "cron", hour=3, minute=0)
         # Пинг userbot

@@ -37,6 +37,7 @@ class PaymentMethod(Enum):
     ANYPAY = 'anypay'
     STREAMPAY = 'streampay'
     CKASSA = 'ckassa'
+    CRYPTOMUS = 'cryptomus'
 
 
 class User(Model):
@@ -896,6 +897,16 @@ class Payment(Model):
         """
         return await cls.filter(method=PaymentMethod.ANYPAY, is_success=False,
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
+
+    @classmethod
+    async def get_cryptomus_payments(cls):
+        """
+        Получает все платежи, выполненные через метод cryptomus, которые не были успешными и были созданы в последние 1 час
+
+        :return: Список объектов платежей.
+        """
+        return await cls.filter(method=PaymentMethod.CRYPTOMUS, is_success=False,
+                                created_at__gt=timezone.now() - timedelta(hours=1)).all().prefetch_related('user')
 
     @classmethod
     async def get_streampay_payments(cls):
