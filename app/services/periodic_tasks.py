@@ -429,8 +429,6 @@ async def check_payment_cryptomus():
     payments_cryptomus = get_paid_order_ids()
     for payment in payments:
         try:
-            print(f'payment.id {payment.id}')
-            print(f'payments_cryptomus {payments_cryptomus}')
             # Получаем список оплаченных заказов
             if str(payment.id) in payments_cryptomus:
                 # Отмечаем платеж как успешный в базе данных.
