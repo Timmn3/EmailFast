@@ -1,5 +1,5 @@
 from loguru import logger
-from app.dependencies import CRYPTOMUS_API_KEY, CRYPTOMUS_MERCHANT_ID
+from app.dependencies import CRYPTOMUS_API_KEY, CRYPTOMUS_MERCHANT_ID, CRYPTOMUS_API_KEY_PAYOUT
 from datetime import datetime, timedelta
 from pyCryptomusAPI import pyCryptomusAPI
 import pytz
@@ -98,7 +98,7 @@ from typing import Optional, Dict
 # Инициализация клиента
 payout_client = CryptomusPayoutAPI(
     merchant_uuid=CRYPTOMUS_MERCHANT_ID,
-    payout_api_key=CRYPTOMUS_API_KEY,
+    payout_api_key=CRYPTOMUS_API_KEY_PAYOUT,
     print_errors=True,
     timeout=30
 )
