@@ -114,33 +114,33 @@ async def main(dp: Dispatcher):
 def set_scheduled_jobs(scheduler):
     try:
         # Проверка SMS
-        scheduler.add_job(check_sms, "interval", seconds=10, max_instances=3)
-        # Проверка Email
-        scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
-        # Проверка платежей через CKassa
-        scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=3)
-        # Проверка платежей через Streampay
-        scheduler.add_job(check_payment_streampay, "interval", seconds=28, max_instances=3)
-        # Проверка платежей через FreeKassa
-        scheduler.add_job(check_payment_freekassa, "interval", seconds=33, max_instances=3)
-        # Проверка платежей через Anypay
-        scheduler.add_job(check_payment_anypay, "interval", seconds=45, max_instances=3)
-        # Проверка платежей через cryptomus
-        scheduler.add_job(check_payment_cryptomus, "interval", seconds=20, max_instances=3)
-        # Добавление сервисов
-        scheduler.add_job(add_services, "cron", hour=3, minute=0)
-        # Пинг userbot
-        scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
-        # Проверка истечения срока почты и уведомления
-        scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
-        # Проверка арендованных SMS
-        scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=3)
-        # Уведомление об аренде, которая скоро завершится
-        scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
-        # Автопродление аренды за 2 часа до окончания
-        scheduler.add_job(auto_renewal_of_rent, "interval", minutes=1, max_instances=3)
-        # Завершение аренды
-        scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
+        # scheduler.add_job(check_sms, "interval", seconds=10, max_instances=3)
+        # # Проверка Email
+        # scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
+        # # Проверка платежей через CKassa
+        # scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=3)
+        # # Проверка платежей через Streampay
+        # scheduler.add_job(check_payment_streampay, "interval", seconds=28, max_instances=3)
+        # # Проверка платежей через FreeKassa
+        # scheduler.add_job(check_payment_freekassa, "interval", seconds=33, max_instances=3)
+        # # Проверка платежей через Anypay
+        # scheduler.add_job(check_payment_anypay, "interval", seconds=45, max_instances=3)
+        # # Проверка платежей через cryptomus
+        # scheduler.add_job(check_payment_cryptomus, "interval", seconds=20, max_instances=3)
+        # # Добавление сервисов
+        # scheduler.add_job(add_services, "cron", hour=3, minute=0)
+        # # Пинг userbot
+        # scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
+        # # Проверка истечения срока почты и уведомления
+        # scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
+        # # Проверка арендованных SMS
+        # scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=3)
+        # # Уведомление об аренде, которая скоро завершится
+        # scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
+        # # Автопродление аренды за 2 часа до окончания
+        # scheduler.add_job(auto_renewal_of_rent, "interval", minutes=1, max_instances=3)
+        # # Завершение аренды
+        # scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
         # Проверка незавершенных аренд
         scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
     except Exception as e:

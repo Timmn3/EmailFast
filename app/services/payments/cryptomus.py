@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from pyCryptomusAPI import pyCryptomusAPI
 import pytz
 
+from app.services.payments.cryptomus_payout_api import CryptomusPayoutAPI, CryptomusPayoutAPIException
+
 client = pyCryptomusAPI(
     merchant_uuid=CRYPTOMUS_MERCHANT_ID,
     payment_api_key=CRYPTOMUS_API_KEY
@@ -89,3 +91,47 @@ def get_paid_order_ids():
     invoices_dict = get_invoices_last_hour()
     paid_order_ids = [order_id for order_id, status in invoices_dict.items() if status == "paid"]
     return paid_order_ids
+
+
+from typing import Optional, Dict
+
+# Инициализация клиента
+payout_client = CryptomusPayoutAPI(
+    merchant_uuid=CRYPTOMUS_MERCHANT_ID,
+    payout_api_key=CRYPTOMUS_API_KEY,
+    print_errors=True,
+    timeout=30
+)
+
+# Создание выплаты
+async def create_a_payout(
+    amount: str,  # Сумма выплаты (ожидается строка, как в документации Cryptomus)
+    to_currency: str, # Криптовалюта выплаты
+    order_id: str,  # Уникальный ID заказа
+    address: str,  # Адрес кошелька для выплаты
+    network: str   # Блокчейн-сеть
+) -> Optional[Dict]:
+    """
+    Создает выплату через Cryptomus API.
+
+    :param amount: Сумма выплаты (в виде строки)
+    :param to_currency: Криптовалюта выплаты (в виде строки)
+    :param order_id: Уникальный идентификатор заказа
+    :param address: Адрес кошелька получателя
+    :param network: Код блокчейн-сети (например, TRON, BTC)
+    :return: Ответ от API или None в случае ошибки
+    """
+    try:
+        response = payout_client.create_payout(
+            amount=amount,
+            to_currency=to_currency,
+            order_id=order_id,
+            address=address,
+            network=network
+        )
+        print("Выплата успешно создана:", response)
+        return response
+    except CryptomusPayoutAPIException as e:
+        print(f"Ошибка создания выплаты: {e.message}")
+        return None
+

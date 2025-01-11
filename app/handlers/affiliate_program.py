@@ -1,11 +1,11 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-
 from app import dependencies
 from app.db import models
 from app.services import bot_texts as bt
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
+from app.services.payments.cryptomus import create_a_payout
 from app.services.qr_code import generate_qr_code
 
 router = Router()
@@ -19,10 +19,60 @@ back_mk = types.InlineKeyboardMarkup(
 )
 
 
+choice_cryptocurrency_kb = types.InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="USDT", callback_data='choice_cryptocurrency:USDT'),
+            types.InlineKeyboardButton(text="BTC", callback_data='choice_cryptocurrency:BTC'),
+            types.InlineKeyboardButton(text="ETH", callback_data='choice_cryptocurrency:ETH')
+        ],
+        [
+            types.InlineKeyboardButton(text="TON", callback_data='choice_cryptocurrency:TON'),
+            types.InlineKeyboardButton(text="BNB", callback_data='choice_cryptocurrency:BNB'),
+            types.InlineKeyboardButton(text="DAI", callback_data='choice_cryptocurrency:DAI')
+        ],
+        [
+            types.InlineKeyboardButton(text="TRX", callback_data='choice_cryptocurrency:TRX'),
+            types.InlineKeyboardButton(text="AVAX", callback_data='choice_cryptocurrency:AVAX')
+        ],
+    ]
+)
+
+network_selection_kb = types.InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="TRON", callback_data='network_selection:TRON'),
+            types.InlineKeyboardButton(text="TON", callback_data='network_selection:TON'),
+            types.InlineKeyboardButton(text="BTC", callback_data='network_selection:BTC')
+        ],
+        [
+            types.InlineKeyboardButton(text="BSC", callback_data='network_selection:BSC'),
+            types.InlineKeyboardButton(text="ETH", callback_data='network_selection:ETH'),
+        ]
+    ]
+)
+
+
+confirm_conclusion_btn = types.InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="☑️Подтвердить вывод", callback_data='confirm_withdrawal')
+        ],
+        [
+            types.InlineKeyboardButton(text="🔙Отменить", callback_data='cancel_withdrawal')
+        ]
+    ]
+)
+
+
 class AffiliateState(StatesGroup):
     enter_withdraw_amount = State()
     enter_withdraw_requisites = State()
 
+class ChoiceOfCryptocurrency(StatesGroup):
+    enter_amount = State()
+    enter_choice_cryptocurrency = State()
+    enter_network = State()
 
 async def send_affiliate_message(m: types.Message, user_id: int = None):
     if not user_id:
@@ -96,6 +146,12 @@ async def withdraw(call: types.CallbackQuery):
             ],
             [
                 types.InlineKeyboardButton(
+                    text=bt.ON_CRYPTOCURRENCY_BTN,
+                    callback_data='cryptocurrency'
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
                     text=bt.ON_BALANCE_BTN,
                     callback_data='on_balance'
                 )
@@ -116,9 +172,14 @@ async def on_bank_card(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(AffiliateState.enter_withdraw_amount)
     await call.message.edit_text(text=bt.ENTER_WITHDRAW_AMOUNT, reply_markup=back_mk)
 
+@router.callback_query(F.data == 'cryptocurrency')
+async def on_cryptocurrency(call: types.CallbackQuery, state: FSMContext):
+    await state.update_data(withdraw_method=call.data)
+    await state.set_state(AffiliateState.enter_withdraw_amount)
+    await call.message.edit_text(text=bt.ENTER_WITHDRAW_AMOUNT, reply_markup=back_mk)
 
 @router.callback_query(F.data == 'on_balance')
-async def on_bank_card(call: types.CallbackQuery, state: FSMContext):
+async def on_balance(call: types.CallbackQuery, state: FSMContext):
     await state.update_data(withdraw_method=call.data)
     await state.set_state(AffiliateState.enter_withdraw_amount)
     await call.message.edit_text(text=bt.ENTER_WITHDRAW_AMOUNT, reply_markup=back_mk)
@@ -138,6 +199,10 @@ async def enter_withdraw_amount(m: types.Message, state: FSMContext):
         await m.answer(text='Минимальная сумма вывода - 100₽', reply_markup=back_mk)
         return
 
+    if amount < 300 and withdraw_method == 'cryptocurrency':
+        await m.answer(text='Минимальная сумма вывода - 300₽', reply_markup=back_mk)
+        return
+
     user = await models.User.get_user(m.from_user.id)
     if user.ref_balance < amount:
         await m.answer(text='Недостаточно средств', reply_markup=back_mk)
@@ -148,12 +213,114 @@ async def enter_withdraw_amount(m: types.Message, state: FSMContext):
         await state.set_state(AffiliateState.enter_withdraw_requisites)
         await state.update_data(amount=amount)
 
+    elif withdraw_method == 'cryptocurrency':
+        await state.clear()
+        await state.set_state(ChoiceOfCryptocurrency.enter_amount)
+        await state.update_data(amount=amount)
+        await m.answer(text=f'В какой криптовалюте Вы хотите получить выплату?', reply_markup=choice_cryptocurrency_kb)
+
     elif withdraw_method == 'on_balance':
         user.ref_balance -= amount
         user.balance += amount
         await user.save()
         await m.answer(text=f'Вывод {amount}₽ на баланс бота подтвержден', reply_markup=back_mk)
         await state.clear()
+
+
+@router.callback_query(F.data.startswith('choice_cryptocurrency:'))
+async def choice_cryptocurrency(call: types.CallbackQuery, state: FSMContext):
+    # Извлечение выбранной криптовалюты из callback_data
+    cryptocurrency = call.data.split(':')[1]  # Берем вторую часть строки после "choice_cryptocurrency:"
+
+    # Обновляем данные состояния
+    await state.update_data(withdraw_cryptocurrency=cryptocurrency)
+
+    # Устанавливаем состояние
+    await state.set_state(ChoiceOfCryptocurrency.enter_choice_cryptocurrency)
+
+    # Редактируем сообщение
+    await call.message.edit_text(
+        text=f'Вы выбрали криптовалюту: {cryptocurrency}\nТеперь выберите сеть.',
+        reply_markup=network_selection_kb  # Здесь используйте вашу клавиатуру выбора сети
+    )
+
+
+@router.callback_query(F.data.startswith('network_selection:'))
+async def network_selection(call: types.CallbackQuery, state: FSMContext):
+    # Извлечение выбранной сети из callback_data
+    network = call.data.split(':')[1]
+    # Обновляем данные состояния
+    await state.update_data(withdraw_network=network)
+
+    # Устанавливаем состояние
+    await state.set_state(ChoiceOfCryptocurrency.enter_network)
+
+    # Редактируем сообщение
+    await call.message.edit_text(
+        text=f'Вы выбрали сеть: {network}\nОтправьте адрес вашего крипто-кошелька для вывода средств⤵️'
+    )
+
+@router.message(ChoiceOfCryptocurrency.enter_network)
+async def enter_wallet_address(message: types.Message, state: FSMContext):
+    # Получаем введенный пользователем текст (номер кошелька)
+    address = message.text
+    await state.update_data(address=address)
+    # Получаем все данные из состояния
+    user_data = await state.get_data()
+    currency = user_data.get('withdraw_cryptocurrency')
+    network = user_data.get('withdraw_network')
+    amount = user_data.get('amount')
+
+    await message.answer(
+        text=f'💸Ваш запрос на вывод средств:\n'
+             f'Сумма: {amount}₽\n'
+             f'Валюта: {currency}\n'
+             f'Сеть: {network}\n'
+             f'Кошелек: {address}\n'
+             f'Комиссия составит: 300₽\n\n'
+             f'Подтвердите запрос, чтобы продолжить.',
+        reply_markup=confirm_conclusion_btn
+    )
+
+@router.callback_query(F.data == 'cancel_withdrawal')
+async def cancel_withdrawal(call: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.delete()
+    await call.message.edit_text(text="Вывод средств отменен🙅‍♂️")
+
+
+@router.callback_query(F.data == 'confirm_withdrawal')
+async def confirm_withdrawal(call: types.CallbackQuery, state: FSMContext):
+    await call.message.delete()
+
+    user_data = await state.get_data()
+    user = await models.User.get_user(call.from_user.id)
+    amount = user_data.get('amount')
+    currency = user_data.get('withdraw_cryptocurrency')
+    address = user_data.get('address')
+    network = user_data.get('withdraw_network')
+
+    # создаем новый платеж в базе данных
+    payout = await models.PayOut.create_payout(
+        user=user,
+        amount=int(amount)-300,
+        currency=currency,
+        address=address,
+        network=network,
+
+    )
+
+    # Создает выплату через Cryptomus API
+    pay = await create_a_payout(amount=str(amount), to_currency=currency, order_id=payout.id, address=address, network=network)
+    if pay:
+        commission = pay.get('payer_amount', 3)  # Если ключ отсутствует, подставится 'неизвестно'
+        print(f'Комиссия составила: {commission}')
+        await call.edit_text(
+            text=f'✅Заявка на вывод средств успешно завершена!\n'
+                 f'Сумма: {amount}₽\n'
+                 f'Кошелек: {address}',
+            reply_markup=confirm_conclusion_btn
+        )
 
 
 @router.message(AffiliateState.enter_withdraw_requisites)

@@ -1255,3 +1255,42 @@ class Rent(Model):
         :return: Объект аренды или None, если аренда не найдена.
         """
         return await cls.filter(rent_id=tzid, is_canceled=True, status=StatusResponse.STATUS_WAIT_CODE).first()
+
+
+class PayOut(Model):
+    class Meta:
+        # Метаданные для модели Payment
+        table = "payout"  # Название таблицы в базе данных
+        table_description = "Payout"  # Описание таблицы
+        ordering = ["id"]  # Поле для сортировки записей по умолчанию
+
+    # Поля модели PayOut
+    id: int = fields.BigIntField(pk=True)  # Уникальный идентификатор платежа (первичный ключ)
+    user: User = fields.ForeignKeyField('models.User', related_name='payouts')  # Связь с моделью User (внешний ключ)
+    amount: float = fields.FloatField()  # Сумма выплаты
+    currency: str = fields.CharField(max_length=10)
+    address: str = fields.TextField()  # Адрес кошелька получателя
+    network:str = fields.TextField()  # Код блокчейн-сети (например, TRON, BTC)
+    created_at: datetime = fields.DatetimeField(
+        auto_now_add=True)  # Дата и время создания записи (автоматически устанавливается при создании)
+
+    @classmethod
+    async def create_payout(cls, user: User, amount: float, currency: str, address: str, network:str):
+        """
+        Создает новый платеж в базе данных.
+
+        :param user: Объект пользователя, который инициировал платеж.
+        :param amount: Сумма платежа.
+        :param currency: Валюта выплаты (в виде строки)
+        :param address: Адрес кошелька получателя
+        :param network: Код блокчейн-сети (например, TRON, BTC).
+        :return: Созданный объект платежа.
+        """
+        payment = await cls.create(
+            user=user,
+            amount=amount,
+            currency=currency,
+            address=address,
+            network=network,
+        )
+        return payment

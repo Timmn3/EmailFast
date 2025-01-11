@@ -373,6 +373,7 @@ SHARE_LINK_BTN = 'Поделиться ссылкой'
 WITHDRAW_BTN = 'Вывод средств'
 
 ON_BANK_CARD_BTN = 'На банковскую карту'
+ON_CRYPTOCURRENCY_BTN = 'Криптовалюта'
 ON_BALANCE_BTN = 'На баланс бота'
 
 # My emails
