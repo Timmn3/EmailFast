@@ -8,7 +8,8 @@ from app.services.payments.cryptomus_payout_api import CryptomusPayoutAPI, Crypt
 
 client = pyCryptomusAPI(
     merchant_uuid=CRYPTOMUS_MERCHANT_ID,
-    payment_api_key=CRYPTOMUS_API_KEY
+    payment_api_key=CRYPTOMUS_API_KEY,
+    payout_api_key=CRYPTOMUS_API_KEY_PAYOUT
 )
 
 url_bot = "https://t.me/emailfastbot"
@@ -122,16 +123,18 @@ async def create_a_payout(
     :return: Ответ от API или None в случае ошибки
     """
     try:
-        response = payout_client.create_payout(
+        response = client.create_payout(
             amount=amount,
-            to_currency=to_currency,
+            currency="RUB",
             order_id=order_id,
             address=address,
-            network=network
+            is_subtract=False,
+            network=network,
+            to_currency=to_currency
         )
-        print("Выплата успешно создана:", response)
+        logger.info("Выплата успешно создана:", response)
         return response
     except CryptomusPayoutAPIException as e:
-        print(f"Ошибка создания выплаты: {e.message}")
+        logger.error(f"Ошибка создания выплаты: {e.message}")
         return None
 

@@ -7,7 +7,7 @@ from app.services import bot_texts as bt
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.payments.cryptomus import create_a_payout
 from app.services.qr_code import generate_qr_code
-
+from loguru import logger
 router = Router()
 
 back_mk = types.InlineKeyboardMarkup(
@@ -200,7 +200,7 @@ async def enter_withdraw_amount(m: types.Message, state: FSMContext):
         return
 
     if amount < 300 and withdraw_method == 'cryptocurrency':
-        await m.answer(text='Минимальная сумма вывода - 300₽', reply_markup=back_mk)
+        await m.answer(text=f'Минимальная сумма вывода: {bt.MIN_CRYPT_AMOUNT}₽', reply_markup=back_mk)
         return
 
     user = await models.User.get_user(m.from_user.id)
@@ -272,21 +272,25 @@ async def enter_wallet_address(message: types.Message, state: FSMContext):
     amount = user_data.get('amount')
 
     await message.answer(
-        text=f'💸Ваш запрос на вывод средств:\n'
-             f'Сумма: {amount}₽\n'
-             f'Валюта: {currency}\n'
-             f'Сеть: {network}\n'
-             f'Кошелек: {address}\n'
-             f'Комиссия составит: 300₽\n\n'
-             f'Подтвердите запрос, чтобы продолжить.',
+        text=(
+            f"💸 *Ваш запрос на вывод средств:*\n\n"
+            f"💳 **Сумма:** `{amount}₽`\n"
+            f"🌍 **Валюта:** `{currency}`\n"
+            f"🔗 **Сеть:** `{network}`\n"
+            f"📥 **Кошелек:** `{address}`\n\n"
+            f"⚠️ *Обратите внимание:*\n"
+            f"При выводе средств на криптокошелёк сервис может взимать комиссию.\n\n"
+            f"✅ Подтвердите запрос, чтобы продолжить."
+        ),
+        parse_mode="Markdown",
         reply_markup=confirm_conclusion_btn
     )
 
 @router.callback_query(F.data == 'cancel_withdrawal')
 async def cancel_withdrawal(call: types.CallbackQuery, state: FSMContext):
-    await state.clear()
     await call.message.delete()
-    await call.message.edit_text(text="Вывод средств отменен🙅‍♂️")
+    await state.clear()
+    await call.message.answer(text="Вывод средств отменен🙅‍♂️")
 
 
 @router.callback_query(F.data == 'confirm_withdrawal')
@@ -303,7 +307,7 @@ async def confirm_withdrawal(call: types.CallbackQuery, state: FSMContext):
     # создаем новый платеж в базе данных
     payout = await models.PayOut.create_payout(
         user=user,
-        amount=int(amount)-300,
+        amount=amount,
         currency=currency,
         address=address,
         network=network,
@@ -312,14 +316,30 @@ async def confirm_withdrawal(call: types.CallbackQuery, state: FSMContext):
 
     # Создает выплату через Cryptomus API
     pay = await create_a_payout(amount=str(amount), to_currency=currency, order_id=payout.id, address=address, network=network)
+    # pay = {'uuid': '9e18e3b5-e3ab-4d55-8f61-d816528d9a4b', 'amount': 350.0, 'currency': 'RUB', 'network': 'tron', 'address': 'TEdewRYzTptRMjsx74PHbaf2iYfYtKndjm', 'txid': None, 'status': 'process', 'is_final': False, 'balance': 11.40881915, 'payer_currency': 'USDT', 'payer_amount': 3.4450955, 'order_id': '6', 'commission': '3.00000000', 'merchant_amount': '3.44509550'}
     if pay:
-        commission = pay.get('payer_amount', 3)  # Если ключ отсутствует, подставится 'неизвестно'
-        print(f'Комиссия составила: {commission}')
-        await call.edit_text(
-            text=f'✅Заявка на вывод средств успешно завершена!\n'
-                 f'Сумма: {amount}₽\n'
-                 f'Кошелек: {address}',
-            reply_markup=confirm_conclusion_btn
+        user.ref_balance -= amount
+        await user.save()
+        try:
+            # Получаем комиссию, по умолчанию 3
+            commission = getattr(pay, 'commission', 3)
+        except Exception as e:
+            logger.error(e)
+            commission = None  # Устанавливаем None, если произошла ошибка
+
+        # Формируем текст уведомления
+        message_text = (
+            f"✅ *Заявка на вывод средств успешно завершена!*\n\n"
+            f"💳 **Сумма:** `{amount}₽`\n"
+            f"📥 **Кошелек:** `{address}`"
+        )
+        if commission is not None:  # Если комиссия есть, добавляем её в сообщение
+            message_text += f"\n💸 **Комиссия:** `{commission}$`"
+
+        # Отправляем сообщение с парсингом Markdown
+        await call.message.answer(
+            text=message_text,
+            parse_mode="Markdown"
         )
 
 

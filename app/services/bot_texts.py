@@ -185,6 +185,7 @@ WITHDRAW_TEXT = """
 """
 ENTER_WITHDRAW_AMOUNT = "Введите сумму вывода"
 ENTER_WITHDRAW_CARD = "Отправьте реквизиты банковской карты"
+MIN_CRYPT_AMOUNT = 350 # минимальная сумма вывода в криптовалюте
 
 WITHDRAW_INFO = """
 <b>Вывод средств</b>
