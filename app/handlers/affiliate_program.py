@@ -285,6 +285,7 @@ async def enter_wallet_address(message: types.Message, state: FSMContext):
         parse_mode="Markdown",
         reply_markup=confirm_conclusion_btn
     )
+    await state.clear()
 
 @router.callback_query(F.data == 'cancel_withdrawal')
 async def cancel_withdrawal(call: types.CallbackQuery, state: FSMContext):
