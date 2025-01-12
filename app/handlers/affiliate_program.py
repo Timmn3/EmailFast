@@ -138,12 +138,12 @@ async def withdraw(call: types.CallbackQuery):
     await call.message.delete()
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                types.InlineKeyboardButton(
-                    text=bt.ON_BANK_CARD_BTN,
-                    callback_data='on_bank_card'
-                )
-            ],
+            # [
+            #     types.InlineKeyboardButton(
+            #         text=bt.ON_BANK_CARD_BTN,
+            #         callback_data='on_bank_card'
+            #     )
+            # ],
             [
                 types.InlineKeyboardButton(
                     text=bt.ON_CRYPTOCURRENCY_BTN,
