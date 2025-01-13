@@ -14,7 +14,7 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
     if not mail:
         return
 
-    paid_mails_count = await models.Mail.filter(is_paid_mail=True).count()
+    paid_mails_count = await models.Mail.filter(is_active=True, is_paid_mail=True).count()
 
     return {
         'email': mail.email,

@@ -13,8 +13,8 @@ from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_TWO_MONTHS, RENT_EMAIL_SIX_MONTHS, \
     RENT_EMAIL_YEAR
 from app.services.low_balance import check_low_balance, send_low_balance_alert
+from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
-from app.services.temp_mail import TempMail
 from loguru import logger
 router = Router()
 
@@ -52,16 +52,14 @@ async def receive_email(message: Union[types.Message, types.CallbackQuery], dial
         else:
             temp_mail = await message.answer(text=bt.CREATING_EMAIL)
 
-        # Генерируем временный почтовый адрес и добавляем новое письмо в базу данных
-        tm = TempMail()
         try:
-            email = await tm.generate_email()
+            email, token = await create_mail()
         except Exception as e:
             logger.error(e)
             await message.answer("В настоящее время сервис недоступен, попробуйте позже🙎‍♂️")
             return
 
-        mail = await models.Mail.add_mail(user, email)
+        mail = await models.Mail.add_mail(user, email, token)
 
         # Удаляем временное сообщение о создании письма
         await temp_mail.delete()

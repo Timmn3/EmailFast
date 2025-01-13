@@ -100,6 +100,8 @@ CRYPTOMUS_MERCHANT_ID = config.get('CRYPTOMUS_MERCHANT_ID')
 
 API_KEY_ONLINESIM = config.get('API_KEY_ONLINESIM')
 
+ON_SCHEDULE = config.get('ON_SCHEDULE')
+
 bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode='HTML', link_preview_is_disabled=True)

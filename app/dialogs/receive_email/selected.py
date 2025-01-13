@@ -11,6 +11,7 @@ from app.db import models
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.services.bot_texts import RENT_DATA, RENT_DATA_DISCOUNT
 from app.services.low_balance import check_low_balance, send_low_balance_alert
+from app.services.mail.temp_mail_tm import create_mail
 from app.services.temp_mail import TempMail
 from app.services import bot_texts as bt
 
@@ -53,10 +54,10 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
         await mail.save(update_fields=['is_active'])
 
     user = await models.User.get_user(c.from_user.id)
-    tm = TempMail()
-    email = await tm.generate_email()
 
-    mail = await models.Mail.add_mail(user, email)
+    email, token = await create_mail()
+
+    mail = await models.Mail.add_mail(user, email, token)
     ctx.start_data['mail_id'] = mail.id
     ctx.dialog_data['mail_id'] = mail.id
     await manager.switch_to(ReceiveEmailMenu.receive_email)
@@ -220,7 +221,7 @@ async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: Dia
     if not user:
         return
 
-    mails = await models.Mail.filter(user=user, is_paid_mail=True).all()
+    mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
     if len(mails) == 0:
         await c.answer(text='У вас нет арендованных почтовых ящиков', show_alert=True)
         return

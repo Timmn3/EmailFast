@@ -577,23 +577,27 @@ class Mail(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     expire_at: datetime = fields.DatetimeField()
     notification_sent: bool = fields.BooleanField(default=False)
+    token: str = fields.CharField(max_length=512, null=True)
 
     @classmethod
-    async def add_mail(cls, user: User, email: str):
+    async def add_mail(cls, user: User, email: str, token: str = None):
         """
         Добавляет новую почту в базу данных.
 
         :param user: Объект пользователя, которому принадлежит почта.
         :param email: Адрес электронной почты.
+        :param token: Токен для почты (по умолчанию None).
         :return: Созданный объект почты.
         """
         expire_at = timezone.now() + timedelta(minutes=30)
         mail = await cls.create(
             user=user,
             email=email,
-            expire_at=expire_at
+            expire_at=expire_at,
+            token=token
         )
         return mail
+
 
     @classmethod
     async def get_mail(cls, mail_id: str):
@@ -622,7 +626,7 @@ class Mail(Model):
 
         :return: Список объектов истекших почт.
         """
-        return await cls.filter(expire_at__lte=timezone.now()).all()
+        return await cls.filter(expire_at__lte=timezone.now(), is_active=True).all()
 
 
 class Letter(Model):

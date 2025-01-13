@@ -11,6 +11,7 @@ from app.db import models
 from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
 from app.dialogs.rent_sms.getters import get_day_string
 from app.services.bot_texts import country_flags
+from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
@@ -585,6 +586,7 @@ async def check_email():
     Исключения:
         TelegramBadRequest: В случае ошибки при отправке сообщения через Telegram API.
     """
+
     try:
         # Получаем список просроченных почтовых ящиков
         expired_emails = await models.Mail.get_expired_mails()
@@ -597,40 +599,32 @@ async def check_email():
 
         # Получаем список активных почтовых ящиков и связанных с ними пользователей
         mails = await models.Mail.filter(is_active=True).all().prefetch_related('user')
-
         for mail in mails:
-            tm = TempMail()
-            login, domain = mail.email.split('@')
-
-            # Получаем идентификаторы новых сообщений
-            message_ids = await tm.get_message_ids(login, domain)
-
-            for message_id in message_ids:
+            unread_messages = await get_unread_messages(mail.token)
+            for unread_message in unread_messages:
                 # Если ящик бесплатный и сообщений больше 10, выходим из функции
                 if not mail.is_paid_mail and len(mail.old_messages_id) > 10:
                     return
 
                 # Проверяем, было ли сообщение уже обработано
-                if message_id not in mail.old_messages_id:
-                    # Читаем новое сообщение
-                    message = await tm.read_message(login, domain, message_id)
+                if unread_message['id'] not in mail.old_messages_id:
 
                     # Обновляем список старых сообщений и сохраняем изменения
-                    mail.old_messages_id.append(message_id)
+                    mail.old_messages_id.append(unread_message['id'])
                     await mail.save()
 
                     # Сохраняем новое сообщение в базе данных
                     await models.Letter.add_letter(
                         mail=mail,
                         user=mail.user,
-                        text=message.text
+                        text=unread_message['content']
                     )
 
                     # Формируем текст уведомления для пользователя
                     msg_text = (
                         f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
-                        f'<b>От кого:</b> {message.from_}\n<b>Тема:</b> {message.subject}\n\n'
-                        f'{message.text}'
+                        f'<b>От кого:</b> {unread_message['from']}\n<b>Тема:</b> {unread_message['subject']}\n\n'
+                        f'{unread_message['content']}'
                     )
 
                     try:
