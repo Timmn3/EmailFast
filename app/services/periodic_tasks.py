@@ -623,8 +623,8 @@ async def check_email():
                     # Формируем текст уведомления для пользователя
                     msg_text = (
                         f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
-                        f'<b>От кого:</b> {unread_message['from']}\n<b>Тема:</b> {unread_message['subject']}\n\n'
-                        f'{unread_message['content']}'
+                        f'<b>От кого:</b> {unread_message["from"]}\n<b>Тема:</b> {unread_message["subject"]}\n\n'
+                        f'{unread_message["content"]}'
                     )
 
                     try:
