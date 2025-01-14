@@ -155,6 +155,10 @@ class SkipSpecificLogFilter(logging.Filter):
                 "skipped: maximum number of running instances reached" in record.getMessage()
         )
 
+class MissedJobLogFilter(logging.Filter):
+    def filter(self, record):
+        return "Job" not in record.getMessage() or "was missed" not in record.getMessage()
+
 import signal
 
 def shutdown_scheduler(scheduler):
@@ -173,6 +177,7 @@ if __name__ == '__main__':
         logger.setLevel(logging.WARNING)
         handler = logging.StreamHandler()
         handler.addFilter(SkipSpecificLogFilter())
+        handler.addFilter(MissedJobLogFilter())
         logger.addHandler(handler)
         asyncio.run(main(dp))
     except Exception as e:
