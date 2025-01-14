@@ -175,6 +175,7 @@ if __name__ == '__main__':
         logger.success("Starting")
         logger = logging.getLogger('apscheduler')
         logger.setLevel(logging.WARNING)
+        logging.getLogger('apscheduler.executors.default').setLevel(logging.WARNING)
         handler = logging.StreamHandler()
         handler.addFilter(SkipSpecificLogFilter())
         handler.addFilter(MissedJobLogFilter())
