@@ -14,6 +14,8 @@ from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 import html
+from bs4 import BeautifulSoup
+import re
 
 router = Router()
 
@@ -211,29 +213,42 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 @log_exceptions
 async def unread_message(call: types.CallbackQuery, **kwargs):
     _, message_id, mail_id = call.data.split("|")
-
     mail_id = int(mail_id)
 
-    # Загружаем объект mail из базы данных
     mail = await models.Mail.get_or_none(id=mail_id).prefetch_related("user")
-
     if not mail:
         print(f"Ошибка: Mail с id={mail_id} не найден")
         return
 
-    # Загружаем полный текст письма
     text = await fetch_full_message(mail.token, message_id)
-    text = html.escape(text)
-    # Формируем текст уведомления для пользователя
+
+    # Удаляем HTML-теги <a> и <img>
+    soup = BeautifulSoup(text, "html.parser")
+    for a in soup.find_all("a"):
+        a.decompose()
+    for img in soup.find_all("img"):
+        img.decompose()
+
+    # Получаем очищенный текст
+    cleaned_text = soup.get_text()
+
+    # Удаляем ссылки вида "https://example.com"
+    cleaned_text = re.sub(r"https?://\S+", "", cleaned_text)
+
+    # Удаляем ссылки в формате [text](https://example.com)
+    cleaned_text = re.sub(r"\[.*?\]\(https?://\S+\)", "", cleaned_text)
+
+    # Экранируем HTML
+    cleaned_text = html.escape(cleaned_text)
+
     msg_text = (
         f'📩<b>Полный текст сообщения</b> на почту: <b>{mail.email}</b>\n\n'
-        f'{text}'
+        f'{cleaned_text}'
     )
 
     if len(msg_text) <= 4096:
         await bot.send_message(chat_id=mail.user.telegram_id, text=msg_text, parse_mode="HTML")
     else:
-        # Разделение сообщения на части
         parts = await split_message(msg_text, 4096)
         for part in parts:
             await bot.send_message(chat_id=mail.user.telegram_id, text=part, parse_mode="HTML")
