@@ -2,16 +2,18 @@ from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
 from pyonlinesim import OnlineSMS
-
+from aiogram.exceptions import TelegramBadRequest
 from app.db import models
-from app.dependencies import API_KEY_ONLINESIM
+from app.dependencies import API_KEY_ONLINESIM, bot
 from app.dialogs.receive_sms.selected import send_service_info_with_keyboard
 from app.dialogs.receive_sms.states import ServiceMenu
 from app.services import bot_texts as bt
 from app.services.bot_texts import SERVICES_TRANSLATION
+from app.services.mail.receive_messages import fetch_full_message
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.sms_receive import SmsReceive
 from loguru import logger
+import html
 
 router = Router()
 
@@ -203,3 +205,54 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         else:
             logger.error(f"Необработанное исключение: {e}")
             await call.answer(text='Ошибка при отмене номера', show_alert=True)
+
+
+@router.callback_query(F.data.startswith('full_unread_message|'))
+@log_exceptions
+async def unread_message(call: types.CallbackQuery, **kwargs):
+    _, message_id, mail_id = call.data.split("|")
+
+    mail_id = int(mail_id)
+
+    # Загружаем объект mail из базы данных
+    mail = await models.Mail.get_or_none(id=mail_id).prefetch_related("user")
+
+    if not mail:
+        print(f"Ошибка: Mail с id={mail_id} не найден")
+        return
+
+    # Загружаем полный текст письма
+    text = await fetch_full_message(mail.token, message_id)
+    text = html.escape(text)
+    # Формируем текст уведомления для пользователя
+    msg_text = (
+        f'📩<b>Полный текст сообщения</b> на почту: <b>{mail.email}</b>\n\n'
+        f'{text}'
+    )
+
+    if len(msg_text) <= 4096:
+        await bot.send_message(chat_id=mail.user.telegram_id, text=msg_text, parse_mode="HTML")
+    else:
+        # Разделение сообщения на части
+        parts = await split_message(msg_text, 4096)
+        for part in parts:
+            await bot.send_message(chat_id=mail.user.telegram_id, text=part, parse_mode="HTML")
+
+
+
+async def split_message(text: str, max_length: int) -> list:
+    """Разбивает длинное сообщение на части, не превышающие max_length."""
+    lines = text.split('\n')
+    parts = []
+    current_part = ""
+
+    for line in lines:
+        if len(current_part) + len(line) + 1 > max_length:
+            parts.append(current_part)
+            current_part = ""
+        current_part += line + '\n'
+
+    if current_part:
+        parts.append(current_part)
+
+    return parts

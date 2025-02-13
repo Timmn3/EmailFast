@@ -620,6 +620,15 @@ async def check_email():
                         text=unread_message['content']
                     )
 
+                    mk = types.InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [types.InlineKeyboardButton(
+                                text=bt.GET_FULL_MESSAGE,
+                                callback_data=f"full_unread_message|{unread_message['id']}|{mail.id}"
+                            )]
+                        ]
+                    )
+
                     # Формируем текст уведомления для пользователя
                     msg_text = (
                         f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
@@ -631,7 +640,8 @@ async def check_email():
                         # Пытаемся отправить уведомление пользователю через Telegram
                         await bot.send_message(
                             chat_id=mail.user.telegram_id,
-                            text=msg_text
+                            text=msg_text,
+                            reply_markup=mk
                         )
                     except TelegramBadRequest as e:
                         # Обрабатываем исключение, если возникает ошибка при отправке сообщения

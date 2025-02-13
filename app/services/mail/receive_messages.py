@@ -23,6 +23,23 @@ async def fetch_messages(mail_token):
             return data.get('hydra:member', [])
 
 
+async def fetch_full_message(mail_token, message_id):
+    """
+    Получить полное сообщение по его ID.
+    """
+    url = f"https://api.mail.tm/messages/{message_id}"
+    headers = {
+        'Authorization': f'Bearer {mail_token}',
+        'Content-Type': 'application/json'
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            response.raise_for_status()
+            data = await response.json()
+            return data.get("text", "Нет текста в сообщении.")  # Возвращаем полный текст сообщения
+
+
 async def mark_as_read(mail_token, message_id):
     """
     Отметить письмо как прочитанное.
