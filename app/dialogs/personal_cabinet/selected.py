@@ -223,7 +223,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         )
 
         # формируем ссылку на оплату
-        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, str(payment_streampay.user.telegram_id), str(user_id))
+        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, str(payment_streampay.user.telegram_id))
         await payment_streampay.save()
     else:
         streampay_url = ''
