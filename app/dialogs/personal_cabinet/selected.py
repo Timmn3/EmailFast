@@ -163,7 +163,8 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     else:
         continue_data = None
 
-    user = await models.User.get_user(m.from_user.id)
+    user_id = m.from_user.id
+    user = await models.User.get_user(user_id)
 
     # формируем ссылку на оплату Lava
     try:
@@ -222,7 +223,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         )
 
         # формируем ссылку на оплату
-        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, str(payment_streampay.user.telegram_id))
+        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, str(payment_streampay.user.telegram_id), str(user_id))
         await payment_streampay.save()
     else:
         streampay_url = ''

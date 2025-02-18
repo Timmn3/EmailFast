@@ -297,7 +297,7 @@ async def cancel_rent(callback_query: types.CallbackQuery):
             # Удаляем сообщение о текущей аренде
             await callback_query.message.delete()
 
-            # Обновляем меню аренды
+            # Обновляем меню арендыА
             await send_rent_menu(user, callback_query=callback_query)
         else:
             # Если API вернул неизвестный ответ
