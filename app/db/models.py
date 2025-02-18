@@ -1191,6 +1191,19 @@ class Rent(Model):
         return await cls.filter(rent_expire_at__lt=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
 
     @classmethod
+    async def is_waiting_code(cls, rent_id: int) -> bool:
+        """
+        Проверяет, находится ли аренда в статусе STATUS_WAIT_CODE.
+
+        :param rent_id: ID аренды.
+        :return: True, если статус STATUS_WAIT_CODE, иначе False.
+        """
+        rent = await cls.get_or_none(rent_id=rent_id)
+        if rent and rent.status == StatusResponse.STATUS_WAIT_CODE:
+            return True
+        return False
+
+    @classmethod
     async def get_rents_ending_soon(cls):
         """
         Получает список аренд, для которых срок истекает ровно через 5 часов,

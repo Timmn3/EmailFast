@@ -2,6 +2,7 @@ from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
 from app.db import models
+from app.db.models import StatusResponse
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.services.bot_texts import country_flags, DOLLAR_RATE
@@ -281,6 +282,10 @@ async def cancel_rent(callback_query: types.CallbackQuery):
 
     # Используем API для отмены аренды
     api = OnlineSimRentAPI()  # Создаем экземпляр API
+    # Если статус аренды в ожидании, то возвращаем баланс
+    if rented.status == StatusResponse.STATUS_WAIT_CODE:
+        user.balance += rented.cost
+        await user.save()
     try:
         response = await api.close_rent_num(tzid=rented.rent_id)  # Передаем ID операции аренды
         if response.get("response"):
