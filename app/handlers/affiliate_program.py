@@ -134,7 +134,9 @@ async def affiliate_program(call: types.CallbackQuery):
 
 
 @router.callback_query(F.data == 'withdraw')
-async def withdraw(call: types.CallbackQuery):
+async def withdraw(call: types.CallbackQuery, state: FSMContext):
+    if state:
+        await state.clear()
     await call.message.delete()
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
