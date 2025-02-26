@@ -403,10 +403,10 @@ INTEREST = 1.4
 DOLLAR_RATE = 78 * 1.3
 
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
-SERVICES_TRANSLATION = {
-    "tg": "telegram",
-    "vk": "vkcom",
-}
+SERVICES_TRANSLATION = {}
+#     "tg": "telegram",
+#     "vk": "vkcom",
+# }
 
 SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coinbase', 'Bumble', 'Instagram',
                      'Facebook', 'Airbnb', 'Bitstamp', 'Huobi Global', 'Binance', 'Google (Youtube, Gmail)',

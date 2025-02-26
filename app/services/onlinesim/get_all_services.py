@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import random
 
 async def fetch_tariffs(country, services_dict):
     """
@@ -14,6 +15,9 @@ async def fetch_tariffs(country, services_dict):
         "locale_price": "RUB",
         "country": country
     }
+
+    # Добавляем случайную задержку перед каждым запросом (от 1 до 5 секунд)
+    await asyncio.sleep(random.uniform(1, 5))
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params) as response:
@@ -37,7 +41,12 @@ async def main():
     ]
 
     services_dict = {}  # Словарь для хранения slug -> service
-    tasks = [fetch_tariffs(country, services_dict) for country in country_codes]
+
+    tasks = []
+    for country in country_codes:
+        tasks.append(fetch_tariffs(country, services_dict))
+        await asyncio.sleep(random.uniform(0.5, 2))  # Задержка между запусками задач
+
     await asyncio.gather(*tasks)
 
     print(services_dict)  # Вывод словаря
