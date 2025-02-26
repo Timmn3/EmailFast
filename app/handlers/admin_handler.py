@@ -387,7 +387,8 @@ async def add_balance(message: types.Message):
 async def services(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
-    await message.answer(f"services_update")
+    await message.answer("Обновляю список сервисов...")
     await add_services()
+    await message.answer("Сервисы обновлены!")
 
 
