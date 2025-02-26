@@ -33,7 +33,7 @@ async def fetch_tariffs(country, filter_service):
 
                 # Извлечение первого значения "price" и "slug" из "services"
                 services = data.get("services", {})
-                print(services)
+
                 for service_info in services.values():
                     price = service_info.get("price")
                     slug = service_info.get("slug")
