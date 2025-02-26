@@ -1,14 +1,13 @@
 import aiohttp
 import asyncio
 
-async def fetch_tariffs(country, services_set):
+async def fetch_tariffs(country, services_dict):
     """
     Асинхронная функция для получения списка уникальных сервисов из API OnlineSim.
 
     Args:
         country (int): Код страны.
-        services_set (set): Множество для хранения уникальных сервисов.
-
+        services_dict (dict): Словарь для хранения slug -> service.
     """
     url = "https://onlinesim.io/api/getTariffs.php"
     params = {
@@ -21,10 +20,10 @@ async def fetch_tariffs(country, services_set):
             if response.status == 200:
                 data = await response.json()
                 services = data.get("services", {})
-                for service_info in services.values():
+                for slug, service_info in services.items():
                     service = service_info.get("service")
                     if service:
-                        services_set.add(service)  # Добавляем только уникальные сервисы
+                        services_dict[slug] = service
 
 async def main():
     country_codes = [
@@ -37,12 +36,11 @@ async def main():
         961, 258, 963, 81, 350, 356, 352
     ]
 
-    services_set = set()  # Множество для хранения уникальных сервисов
-    tasks = [fetch_tariffs(country, services_set) for country in country_codes]
+    services_dict = {}  # Словарь для хранения slug -> service
+    tasks = [fetch_tariffs(country, services_dict) for country in country_codes]
     await asyncio.gather(*tasks)
 
-    services_list = list(services_set)  # Преобразуем множество в список
-    print(services_list)
+    print(services_dict)  # Вывод словаря
 
 if __name__ == '__main__':
     asyncio.run(main())
