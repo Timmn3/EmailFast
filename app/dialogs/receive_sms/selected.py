@@ -100,7 +100,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
             service_code = SERVICES_TRANSLATION[service_code]
         else:
-            country_id = await models.CountrySmsActivate.get_country_id_by_name(country_name)
+            country_id = await models.CountriesSmsActivate.get_country_id_by_name(country_name)
         retail_price = selected_country.get('retail_price')
         await send_service_on_country(country_id=country_id, service_code=service_code, price=price,
                                       retail_price=retail_price, free_price_map=free_price_map, c=c, manager=manager)
@@ -131,7 +131,7 @@ async def on_result_country(m: types.Message, widget: TextInput, manager: Dialog
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param country_name: Название страны, введенное пользователем.
     """
-    country_names = await models.CountrySmsActivate.search_countries(country_name.lower())
+    country_names = await models.CountriesSmsActivate.search_countries(country_name.lower())
     if len(country_names) == 0:
         await manager.switch_to(CountryMenu.enter_country_error)
         return
@@ -257,7 +257,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         activation_id = int(phone_number_data['activationId'])
         phone_number = phone_number_data['phoneNumber']
         # Получаем информацию о стране и сервисе из базы данных
-        country = await models.CountrySmsActivate.get_country_by_id(country_id=country_id)
+        country = await models.CountriesSmsActivate.get_country_by_id(country_id=country_id)
         service = await models.ServicesSmsActivate.get_service(code=service_code)
 
     # Добавляем запись об активации в базу данных
@@ -378,7 +378,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
         # Получаем словарь с именами стран
-        country_name_mapping = await models.CountrySmsActivate.get_country_name_mapping()
+        country_name_mapping = await models.CountriesSmsActivate.get_country_name_mapping()
 
         for country in sorted_countries_with_prices:
             # Преобразуем идентификатор страны в int

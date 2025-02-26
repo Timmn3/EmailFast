@@ -678,9 +678,9 @@ async def get_services_names():
 async def update_countries_and_services():
     sms = SmsReceive()
     countries = await sms.get_countries()
-    countries_db_ids = await models.CountrySmsActivate.get_country_id_list()
+    countries_db_ids = await models.CountriesSmsActivate.get_country_id_list()
     for country in countries:
-        await models.CountrySmsActivate.get_or_create(country_id=country["id"], name=country["name"])
+        await models.CountriesSmsActivate.get_or_create(country_id=country["id"], name=country["name"])
         try:
             countries_db_ids.remove(int(country["id"]))
         except ValueError:
@@ -689,7 +689,7 @@ async def update_countries_and_services():
         await asyncio.sleep(0)
 
     for country_id in countries_db_ids:
-        country = await models.CountrySmsActivate.get_country_by_id(country_id)
+        country = await models.CountriesSmsActivate.get_country_by_id(country_id)
         await country.delete()
 
     services = await sms.get_services()
