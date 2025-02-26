@@ -398,7 +398,7 @@ prices_data = [
 CHANNEL_LINK = 'https://t.me/neuronbo'
 
 # процент, который накидывает сервис
-INTEREST = 1.4
+INTEREST = 130
 
 DOLLAR_RATE = 78 * 1.3
 
