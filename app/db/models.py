@@ -562,6 +562,164 @@ class ServicesSmsActivate(Model):
         return None
 
 
+class ServicesOnlinesim(Model):
+    class Meta:
+        table = "services_onlinesim"
+        table_description = "Services for Onlinesim"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+    slug: str = fields.CharField(max_length=128, unique=True, index=True)
+    name: str = fields.CharField(max_length=128, null=True)
+    search_names: str = fields.TextField(null=True)
+
+    @classmethod
+    async def add_service(cls, slug: str, name: str, search_names: str):
+        """
+        Добавляет новый сервис в базу данных.
+
+        :param slug: Уникальный идентификатор сервиса.
+        :param name: Название сервиса.
+        :param search_names: Поисковые названия сервиса.
+        :return: Созданный объект сервиса.
+        """
+        service = await cls.create(
+            slug=slug,
+            name=name,
+            search_names=search_names
+        )
+        return service
+
+    @classmethod
+    async def get_service(cls, slug: str):
+        """
+        Получает сервис по его уникальному идентификатору.
+
+        :param slug: Уникальный идентификатор сервиса.
+        :return: Объект сервиса или None, если сервис не найден.
+        """
+        return await cls.get_or_none(slug=slug)
+
+    @classmethod
+    async def search_service(cls, search_name: str):
+        """
+        Ищет сервисы по части названия.
+
+        :param search_name: Часть названия сервиса для поиска.
+        :return: Список объектов сервисов, соответствующих поисковому запросу.
+        """
+        return await cls.filter(search_names__icontains=search_name).all()
+
+    @classmethod
+    async def get_slugs_list(cls):
+        """
+        Получает список всех идентификаторов сервисов.
+
+        :return: Список идентификаторов сервисов.
+        """
+        return await cls.all().values_list('slug', flat=True)
+
+    @classmethod
+    async def get_services(cls):
+        """
+        Получает список всех названий сервисов.
+
+        :return: Список названий сервисов.
+        """
+        services = await cls.all().values('slug', 'name')
+        return {"services": list(services)}
+
+    @classmethod
+    async def get_all_services_data(cls):
+        """
+        Получает все данные по всем сервисам.
+
+        :return: Список словарей с данными всех сервисов.
+        """
+        services = await cls.all().values('id', 'slug', 'name', 'search_names')
+        return {"services": list(services)}
+
+    @classmethod
+    async def normalize_search_names(cls):
+        """
+        Приводит все строки search_names к нижнему регистру и записывает обратно в базу данных.
+        """
+        services = await cls.all()
+        for service in services:
+            if service.search_names:
+                normalized_search_names = service.search_names.lower()
+                service.search_names = normalized_search_names
+                await service.save()
+
+    @classmethod
+    async def update_services(cls, services_data: list):
+        """
+        Обновляет сервисы в базе данных на основе предоставленного списка данных.
+
+        :param services_data: Список словарей с данными для обновления сервисов.
+        """
+        updated_services = []
+
+        for data in services_data:
+            # Проверяем, существует ли сервис с таким slug
+            existing_service = await cls.get_or_none(slug=data['slug'])
+
+            if existing_service:
+                # Обновляем существующий сервис
+                existing_service.name = data['name']
+                existing_service.search_names = data['search_names']
+                await existing_service.save()
+                updated_services.append(existing_service)
+            else:
+                # Создаем новый объект сервиса, если slug не найден
+                new_service = cls(
+                    slug=data['slug'],
+                    name=data['name'],
+                    search_names=data['search_names'],
+                )
+                await new_service.save()
+
+    @classmethod
+    async def get_slug_by_name(cls, name: str):
+        """
+        Получает уникальный идентификатор сервиса по его имени.
+
+        :param name: Название сервиса для поиска.
+        :return: Идентификатор сервиса или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(name=name)
+        if service:
+            return service.slug
+        return None
+
+    @classmethod
+    async def get_service_by_id(cls, service_id: int):
+        """
+        Получает строку всех значений по указанному id.
+
+        :param service_id: ID сервиса.
+        :return: Строка со всеми значениями сервиса или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(id=service_id)
+        if service:
+            return f"ID: {service.id}, Slug: {service.slug}, Name: {service.name}, Search Names: {service.search_names}"
+        return None
+
+    @classmethod
+    async def get_service_name_by_id(cls, service_id: int):
+        """
+        Получает название сервиса по его ID.
+
+        :param service_id: ID сервиса.
+        :return: Название сервиса или None, если сервис не найден.
+        """
+        service = await cls.get_or_none(id=service_id)
+        if service:
+            return service.name
+        return None
+
+
+
 class Mail(Model):
     class Meta:
         table = "mails"
