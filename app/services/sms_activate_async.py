@@ -1,4 +1,6 @@
 import json
+from locale import currency
+
 import aiohttp
 from smsactivate.api import SMSActivateAPI
 from yarl import URL
@@ -315,7 +317,8 @@ class SMSActivateAPIAsync(SMSActivateAPI):
             'api_key': self.api_key,
             'action': 'getTopCountriesByService',
             'service': service,
-            'freePrice': 'true' if free_price else 'false'
+            'freePrice': 'true' if free_price else 'false',
+            # 'currency': '643' # присылает в рублях
         }
         data = await self.get_request(self.__api_url, params=payload)
         top_countries = self.response("getTopCountriesByService", data)

@@ -354,6 +354,10 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             await c.answer("Извините, информация о сервисе недоступна в данный момент.")
             return
 
+        # for service in services.values():
+        #     if isinstance(service, dict):
+        #         print(service["retail_price"])
+
         # Фильтруем данные, убирая те, у которых count равен 0
         filtered_services = services  # [service for service in services if service['count'] > 0]
 
