@@ -37,7 +37,7 @@ async def rent_on_result_country(m: types.Message, widget: TextInput, manager: D
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param country_name: Название страны, введенное пользователем.
     """
-    country_names = await models.CountryOnlinesim.search_countries(country_name.lower())
+    country_names = await models.CountriesOnlinesim.search_countries(country_name.lower())
     if len(country_names) == 0:
         await manager.switch_to(RentCountryMenu.enter_country_error)
         return
@@ -164,7 +164,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         # Извлекаем данные активации
     rent_id = int(rent_result.get("tzid", 0))
     phone_number = rent_result.get("number", None)
-    country = await models.CountryOnlinesim.get_country_onlinesim(country_id=country_code)
+    country = await models.CountriesOnlinesim.get_country_onlinesim(country_id=country_code)
     minutes = int(rent_result.get("time", 0))
 
     if phone_number is None:

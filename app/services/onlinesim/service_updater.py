@@ -1,5 +1,5 @@
 from tortoise.exceptions import DoesNotExist
-from app.db.models import CountryOnlinesim, PriceOnlinesim
+from app.db.models import CountriesOnlinesim, PriceOnlinesim
 from loguru import logger
 
 from app.services.bot_texts import SERVICE_ONLINESIM
@@ -9,7 +9,7 @@ from app.services.onlinesim.get_tariffs import fetch_tariffs
 async def insert_services(country_id: int, services):
     try:
         # Получаем экземпляр CountryOnlinesim по country_id
-        await CountryOnlinesim.get(country_id=country_id)
+        await CountriesOnlinesim.get(country_id=country_id)
     except DoesNotExist:
         return  # Прекращаем выполнение, если страна не найдена
 
@@ -36,7 +36,7 @@ async def insert_services(country_id: int, services):
 
 async def add_services():
     # Получаем список всех стран из CountryOnlinesim
-    countries = await CountryOnlinesim.all()
+    countries = await CountriesOnlinesim.all()
 
     # Проходим по каждой стране
     for country in countries:

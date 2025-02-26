@@ -97,7 +97,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
         price = selected_country['price']
         free_price_map = selected_country.get('freePriceMap')
         if free_price_map is None:
-            country_id = await models.CountryOnlinesim.get_country_id_by_name(country_name)
+            country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
             service_code = SERVICES_TRANSLATION[service_code]
         else:
             country_id = await models.CountrySmsActivate.get_country_id_by_name(country_name)
@@ -191,7 +191,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             # Получаем информацию о заказе по идентификатору активации и извлекаем номер телефона
             phone_number = (await client.get_order_info(operation_id=activation_id))[0].get('number').lstrip('+')
             # Получаем объект страны из модели Country по country_id из CountryOnlinesim
-            country = await models.CountryOnlinesim.get_country_from_country_by_id(country_id=country_id)
+            country = await models.CountriesOnlinesim.get_country_from_country_by_id(country_id=country_id)
             # Получаем название сервиса таблицы services из price_onlinesim
             # (т.е. в таблице price_onlinesim "telegram" а в services "tg")
             key = REVERSE_SERVICES_TRANSLATION.get(service_code)

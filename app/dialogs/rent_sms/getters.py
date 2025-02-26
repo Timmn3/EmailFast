@@ -2,7 +2,7 @@ from aiogram_dialog import DialogManager
 from loguru import logger
 from sqlalchemy import false
 
-from app.db.models import CountryOnlinesim
+from app.db.models import CountriesOnlinesim
 from app.services.bot_texts import DOLLAR_RATE
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 
@@ -27,7 +27,7 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
     api_client = OnlineSimRentAPI()
     tariffs = await api_client.get_tariffs()
     # Предзагрузка всех стран в память
-    all_countries = await CountryOnlinesim.all().values("country_id", "name")
+    all_countries = await CountriesOnlinesim.all().values("country_id", "name")
     country_map = {str(country["country_id"]): country["name"] for country in all_countries}
     # Преобразование данных с увеличением цены
     countries = []

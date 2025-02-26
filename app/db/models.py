@@ -96,7 +96,8 @@ class User(Model):
         return self.mention
 
 
-class CountrySmsActivate(Model):
+
+class CountriesSmsActivate(Model):
     class Meta:
         table = "countries_sms_activate"
         table_description = "Countries"
@@ -191,9 +192,9 @@ class CountrySmsActivate(Model):
         return self.name
 
 
-class CountryOnlinesim(Model):
+class CountriesOnlinesim(Model):
     class Meta:
-        table = "country_onlinesim"
+        table = "countries_onlinesim"
         table_description = "Countries for Onlinesim"
         ordering = ["id"]
 
@@ -237,7 +238,7 @@ class CountryOnlinesim(Model):
             return None  # Страна не найдена в CountryOnlinesim
 
         # Ищем страну по имени в таблице Country
-        country = await CountrySmsActivate.get_or_none(name=country_onlinesim.name)
+        country = await CountriesSmsActivate.get_or_none(name=country_onlinesim.name)
         return country
 
     @classmethod
@@ -380,7 +381,7 @@ class PriceOnlinesim(Model):
         services = await cls.filter(slug=slug).all()
 
         # Получаем словарь country_id -> country_name из CountryOnlinesim
-        country_name_mapping = await CountryOnlinesim.get_country_name_mapping()
+        country_name_mapping = await CountriesOnlinesim.get_country_name_mapping()
 
         # Формируем результат в виде словаря
         result = {}
@@ -846,7 +847,7 @@ class Activation(Model):
     id: int = fields.BigIntField(pk=True)
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
     activation_id: int = fields.BigIntField(unique=True, index=True)
-    country: CountrySmsActivate = fields.ForeignKeyField('models.CountrySmsActivate', related_name='activations')
+    country: CountriesSmsActivate = fields.ForeignKeyField('models.CountriesSmsActivate', related_name='activations')
     service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations')
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
@@ -856,7 +857,7 @@ class Activation(Model):
     activation_expire_at: datetime = fields.DatetimeField(null=True)
 
     @classmethod
-    async def add_activation(cls, user: User, activation_id: int, country: CountrySmsActivate, cost: float,
+    async def add_activation(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,
                              service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
         """
         Добавляет новую активацию в базу данных.
@@ -1191,7 +1192,7 @@ class Rent(Model):
     id: int = fields.BigIntField(pk=True)
     user: "User" = fields.ForeignKeyField('models.User', related_name='rents')
     rent_id: int = fields.BigIntField(unique=True, index=True)
-    country: "CountryOnlinesim" = fields.ForeignKeyField("models.CountryOnlinesim", related_name='rents')
+    country: "CountriesOnlinesim" = fields.ForeignKeyField("models.CountriesOnlinesim", related_name='rents')
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
     sms_text: str = fields.TextField(null=True)
@@ -1205,7 +1206,7 @@ class Rent(Model):
     purchase_count: int = fields.IntField(default=0)  # Поле для отслеживания количества покупок
 
     @classmethod
-    async def add_rent(cls, user: "User", rent_id: int, country: "CountryOnlinesim", cost: float,
+    async def add_rent(cls, user: "User", rent_id: int, country: "CountriesOnlinesim", cost: float,
                        phone_number: str, rent_expire_at: datetime, sms_text: str = "",
                        autorenew: bool = False, is_canceled: bool = False, is_notified: bool = False, days: int = 0,
                        purchase_count: int = 0):
@@ -1318,7 +1319,7 @@ class Rent(Model):
         return False
 
     @classmethod
-    async def get_country_by_rent(cls, id: int) -> "CountryOnlinesim":
+    async def get_country_by_rent(cls, id: int) -> "CountriesOnlinesim":
         """
         Получает объект CountryOnlinesim, связанный с указанной арендой.
 
