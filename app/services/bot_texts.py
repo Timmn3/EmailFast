@@ -402,7 +402,7 @@ INTEREST = 130
 
 DOLLAR_RATE = 78 * 1.3
 
-# Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы service_onlinesim
+# Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы onlinesim
 SERVICES_TRANSLATION = {}
 #     "tg": "telegram",
 #     "vk": "vkcom",

@@ -48,7 +48,7 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
     else:
         await activation.fetch_related('country')
         country = activation.country.name
-        service = await models.Service.get_service_name_by_id(service_id=activation.service_id)
+        service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
         await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
 
 
@@ -74,7 +74,7 @@ async def request_code(call: types.CallbackQuery, **kwargs):
         await call.answer()
         return
 
-    # если активация относится к service_onlinesim
+    # если активация относится к onlinesim
     try:
         service = activation.service.code
     except AttributeError:

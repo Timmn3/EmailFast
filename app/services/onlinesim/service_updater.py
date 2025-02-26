@@ -1,5 +1,5 @@
 from tortoise.exceptions import DoesNotExist
-from app.db.models import CountryOnlinesim, ServiceOnlinesim
+from app.db.models import CountryOnlinesim, PriceOnlinesim
 from loguru import logger
 
 from app.services.bot_texts import SERVICE_ONLINESIM
@@ -15,7 +15,7 @@ async def insert_services(country_id: int, services):
 
     for service in services:
         # Обновляем данные сервиса или создаем новый, если он не существует
-        updated_count = await ServiceOnlinesim.filter(
+        updated_count = await PriceOnlinesim.filter(
             service_name=service["service"],
             country=country_id
         ).update(
@@ -26,7 +26,7 @@ async def insert_services(country_id: int, services):
         # Проверяем, был ли обновлён существующий сервис
         if updated_count == 0:
             # Если сервис не был обновлён, создаем новый
-            await ServiceOnlinesim.create(
+            await PriceOnlinesim.create(
                 country=country_id,
                 price=float(service["price"]),
                 service_name=service["service"],

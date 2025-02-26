@@ -678,9 +678,9 @@ async def get_services_names():
 async def update_countries_and_services():
     sms = SmsReceive()
     countries = await sms.get_countries()
-    countries_db_ids = await models.Country.get_country_id_list()
+    countries_db_ids = await models.CountrySmsActivate.get_country_id_list()
     for country in countries:
-        await models.Country.get_or_create(country_id=country["id"], name=country["name"])
+        await models.CountrySmsActivate.get_or_create(country_id=country["id"], name=country["name"])
         try:
             countries_db_ids.remove(int(country["id"]))
         except ValueError:
@@ -689,16 +689,16 @@ async def update_countries_and_services():
         await asyncio.sleep(0)
 
     for country_id in countries_db_ids:
-        country = await models.Country.get_country_by_id(country_id)
+        country = await models.CountrySmsActivate.get_country_by_id(country_id)
         await country.delete()
 
     services = await sms.get_services()
     services_dict = await get_services_names()
-    services_db_codes = await models.Service.get_codes_list()
+    services_db_codes = await models.ServicesSmsActivate.get_codes_list()
     for service in services:
-        service_obj = await models.Service.get_service(code=service["code"])
+        service_obj = await models.ServicesSmsActivate.get_service(code=service["code"])
         if service_obj is None:
-            await models.Service.add_service(
+            await models.ServicesSmsActivate.add_service(
                 code=service["code"],
                 name=services_dict[service["code"]],
                 search_names=service["search_names"]
@@ -716,7 +716,7 @@ async def update_countries_and_services():
         await asyncio.sleep(0)
 
     for service_code in services_db_codes:
-        service = await models.Service.get_service(code=service_code)
+        service = await models.ServicesSmsActivate.get_service(code=service_code)
         await service.delete()
 
 

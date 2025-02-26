@@ -9,7 +9,7 @@ from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from pyonlinesim import OnlineSMS
 from app.db import models
-from app.db.models import ServiceOnlinesim
+from app.db.models import PriceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
@@ -56,7 +56,7 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param service_name: Название сервиса, введенное пользователем.
     """
-    services = await models.Service.search_service(service_name.lower())
+    services = await models.ServicesSmsActivate.search_service(service_name.lower())
 
     if not services:
         await manager.switch_to(ServiceMenu.enter_service_error)
@@ -100,7 +100,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             country_id = await models.CountryOnlinesim.get_country_id_by_name(country_name)
             service_code = SERVICES_TRANSLATION[service_code]
         else:
-            country_id = await models.Country.get_country_id_by_name(country_name)
+            country_id = await models.CountrySmsActivate.get_country_id_by_name(country_name)
         retail_price = selected_country.get('retail_price')
         await send_service_on_country(country_id=country_id, service_code=service_code, price=price,
                                       retail_price=retail_price, free_price_map=free_price_map, c=c, manager=manager)
@@ -131,7 +131,7 @@ async def on_result_country(m: types.Message, widget: TextInput, manager: Dialog
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param country_name: Название страны, введенное пользователем.
     """
-    country_names = await models.Country.search_countries(country_name.lower())
+    country_names = await models.CountrySmsActivate.search_countries(country_name.lower())
     if len(country_names) == 0:
         await manager.switch_to(CountryMenu.enter_country_error)
         return
@@ -192,11 +192,11 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             phone_number = (await client.get_order_info(operation_id=activation_id))[0].get('number').lstrip('+')
             # Получаем объект страны из модели Country по country_id из CountryOnlinesim
             country = await models.CountryOnlinesim.get_country_from_country_by_id(country_id=country_id)
-            # Получаем название сервиса таблицы services из service_onlinesim
-            # (т.е. в таблице service_onlinesim "telegram" а в services "tg")
+            # Получаем название сервиса таблицы services из price_onlinesim
+            # (т.е. в таблице price_onlinesim "telegram" а в services "tg")
             key = REVERSE_SERVICES_TRANSLATION.get(service_code)
             # Ищем объект сервиса в базе данных по ключу
-            service = await models.Service.get_service(code=key)
+            service = await models.ServicesSmsActivate.get_service(code=key)
 
         except Exception as e:
             error_message = str(e)
@@ -257,8 +257,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         activation_id = int(phone_number_data['activationId'])
         phone_number = phone_number_data['phoneNumber']
         # Получаем информацию о стране и сервисе из базы данных
-        country = await models.Country.get_country_by_id(country_id=country_id)
-        service = await models.Service.get_service(code=service_code)
+        country = await models.CountrySmsActivate.get_country_by_id(country_id=country_id)
+        service = await models.ServicesSmsActivate.get_service(code=service_code)
 
     # Добавляем запись об активации в базу данных
     activation = await models.Activation.add_activation(
@@ -333,7 +333,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         # переводим сервисный код в код для onlinesim
         code_onlinesim = SERVICES_TRANSLATION.get(service_code)
         # Получаем список стран для сервиса
-        services = await ServiceOnlinesim.get_service_data(code_onlinesim)
+        services = await PriceOnlinesim.get_service_data(code_onlinesim)
         sorted_countries_with_prices = [
             {
                 "country": country,
@@ -378,7 +378,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
         # Получаем словарь с именами стран
-        country_name_mapping = await models.Country.get_country_name_mapping()
+        country_name_mapping = await models.CountrySmsActivate.get_country_name_mapping()
 
         for country in sorted_countries_with_prices:
             # Преобразуем идентификатор страны в int

@@ -96,9 +96,9 @@ class User(Model):
         return self.mention
 
 
-class Country(Model):
+class CountrySmsActivate(Model):
     class Meta:
-        table = "countries"
+        table = "countries_sms_activate"
         table_description = "Countries"
         ordering = ["id"]
 
@@ -237,7 +237,7 @@ class CountryOnlinesim(Model):
             return None  # Страна не найдена в CountryOnlinesim
 
         # Ищем страну по имени в таблице Country
-        country = await Country.get_or_none(name=country_onlinesim.name)
+        country = await CountrySmsActivate.get_or_none(name=country_onlinesim.name)
         return country
 
     @classmethod
@@ -290,9 +290,9 @@ class CountryOnlinesim(Model):
         return self.name
 
 
-class ServiceOnlinesim(Model):
+class PriceOnlinesim(Model):
     class Meta:
-        table = "service_onlinesim"
+        table = "price_onlinesim"
         table_description = "Services by Country for Onlinesim"
         ordering = ["id"]
 
@@ -403,9 +403,9 @@ class ServiceOnlinesim(Model):
         return await cls.get_or_none(slug=service_code, country=country_id)
 
 
-class Service(Model):
+class ServicesSmsActivate(Model):
     class Meta:
-        table = "services"
+        table = "services_sms_activate"
         table_description = "Services"
         ordering = ["id"]
 
@@ -688,8 +688,8 @@ class Activation(Model):
     id: int = fields.BigIntField(pk=True)
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
     activation_id: int = fields.BigIntField(unique=True, index=True)
-    country: Country = fields.ForeignKeyField('models.Country', related_name='activations')
-    service: Service = fields.ForeignKeyField('models.Service', related_name='activations')
+    country: CountrySmsActivate = fields.ForeignKeyField('models.CountrySmsActivate', related_name='activations')
+    service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations')
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
     sms_text: str = fields.TextField(null=True)
@@ -698,8 +698,8 @@ class Activation(Model):
     activation_expire_at: datetime = fields.DatetimeField(null=True)
 
     @classmethod
-    async def add_activation(cls, user: User, activation_id: int, country: Country, cost: float,
-                             service: Service, phone_number: str, activation_expire_at: datetime):
+    async def add_activation(cls, user: User, activation_id: int, country: CountrySmsActivate, cost: float,
+                             service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
         """
         Добавляет новую активацию в базу данных.
 

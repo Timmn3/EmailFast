@@ -70,7 +70,7 @@ async def get_services(dialog_manager: DialogManager, **middleware_data):
 
     search_service_name = ctx.dialog_data.get("search_service_name")
     if search_service_name is not None:
-        find_services = await models.Service.search_service(search_service_name)
+        find_services = await models.ServicesSmsActivate.search_service(search_service_name)
         find_services_codes = list(map(lambda x: x.code, find_services))
     else:
         find_services_codes = None
@@ -83,7 +83,7 @@ async def get_services(dialog_manager: DialogManager, **middleware_data):
         if service['count'] < 5:
             continue
 
-        service_obj = await models.Service.get_service(code=service['code'])
+        service_obj = await models.ServicesSmsActivate.get_service(code=service['code'])
         if service_obj is None:
             continue
 
@@ -121,7 +121,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
     if services_data:
         return services_data
     else:
-        services_db = await models.Service.get_services()
+        services_db = await models.ServicesSmsActivate.get_services()
         return services_db
 
 
@@ -207,7 +207,7 @@ async def get_all_services(dialog_manager: DialogManager, **middleware_data):
     search_service_name = ctx.dialog_data.get("search_service_name")
     if search_service_name is not None:
         # Если указано имя услуги для поиска, выполняем поиск
-        find_services = await models.Service.search_service(search_service_name)
+        find_services = await models.ServicesSmsActivate.search_service(search_service_name)
         # Получаем список кодов найденных услуг
         find_services_codes = list(map(lambda x: x.code, find_services))
     else:
@@ -224,7 +224,7 @@ async def get_all_services(dialog_manager: DialogManager, **middleware_data):
             continue
 
         # Получаем объект услуги из модели Service по коду услуги
-        service_obj = await models.Service.get_service(code=service['code'])
+        service_obj = await models.ServicesSmsActivate.get_service(code=service['code'])
         if service_obj is None:
             # Если объект услуги не найден, пропускаем услугу
             continue
