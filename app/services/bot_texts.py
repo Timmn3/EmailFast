@@ -408,7 +408,15 @@ SERVICES_TRANSLATION = {
     "vk": "vkcom",
 }
 
-SERVICE_ONLINESIM = ["Telegram", "ВКонтакте + Mail.ru"]
+SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coinbase', 'Bumble', 'Instagram',
+                     'Facebook', 'Airbnb', 'Bitstamp', 'Huobi Global', 'Binance', 'Google (Youtube, Gmail)',
+                     'LINE', 'ICQ', 'HQ Trivia', 'Discord', 'TanTan', 'Jiayuan', 'WhatsApp', 'Tinder', 'ДругВокруг',
+                     'Telegram', 'Дром', 'lino_network', 'Viber', 'Apple', 'MeetMe', 'Yalla', 'Одноклассники',
+                     'Crypto.com', 'ChatGPT | OpenAI', 'ВКонтакте + Mail.ru', 'Рамблер', 'Yahoo', 'Amazon', 'Яндекс',
+                     'AOL', 'QQ', 'Hinge', 'NAVER', 'Kucoin', 'KakaoTalk', 'Microsoft', 'Мамба', 'Bolt', 'LiveScore',
+                     'eBay|Kleinanzeigen.', 'Seosprint', 'taxiMaxim', 'Steam', 'Gett', 'Gemini.com', 'Юла', 'OLX',
+                     'ftx.com', 'Happn']
+
 
 # возвращает первый ключ, соответствующий значению
 REVERSE_SERVICES_TRANSLATION = {v: k for k, v in SERVICES_TRANSLATION.items()}
