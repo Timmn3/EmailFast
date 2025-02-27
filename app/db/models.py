@@ -570,36 +570,36 @@ class ServicesOnlinesim(Model):
         ordering = ["id"]
 
     id: int = fields.IntField(pk=True)
-    slug: str = fields.CharField(max_length=128, unique=True, index=True)
+    code: str = fields.CharField(max_length=128, unique=True, index=True)
     name: str = fields.CharField(max_length=128, null=True)
     search_names: str = fields.TextField(null=True)
 
     @classmethod
-    async def add_service(cls, slug: str, name: str, search_names: str):
+    async def add_service(cls, code: str, name: str, search_names: str):
         """
         Добавляет новый сервис в базу данных.
 
-        :param slug: Уникальный идентификатор сервиса.
+        :param code: Уникальный идентификатор сервиса.
         :param name: Название сервиса.
         :param search_names: Поисковые названия сервиса.
         :return: Созданный объект сервиса.
         """
         service = await cls.create(
-            slug=slug,
+            code=code,
             name=name,
             search_names=search_names
         )
         return service
 
     @classmethod
-    async def get_service(cls, slug: str):
+    async def get_service(cls, code: str):
         """
         Получает сервис по его уникальному идентификатору.
 
-        :param slug: Уникальный идентификатор сервиса.
+        :param code: Уникальный идентификатор сервиса.
         :return: Объект сервиса или None, если сервис не найден.
         """
-        return await cls.get_or_none(slug=slug)
+        return await cls.get_or_none(code=code)
 
     @classmethod
     async def search_service(cls, search_name: str):
@@ -612,13 +612,13 @@ class ServicesOnlinesim(Model):
         return await cls.filter(search_names__icontains=search_name).all()
 
     @classmethod
-    async def get_slugs_list(cls):
+    async def get_codes_list(cls):
         """
         Получает список всех идентификаторов сервисов.
 
         :return: Список идентификаторов сервисов.
         """
-        return await cls.all().values_list('slug', flat=True)
+        return await cls.all().values_list('code', flat=True)
 
     @classmethod
     async def get_services(cls):
@@ -627,7 +627,7 @@ class ServicesOnlinesim(Model):
 
         :return: Список названий сервисов.
         """
-        services = await cls.all().values('slug', 'name')
+        services = await cls.all().values('code', 'name')
         return {"services": list(services)}
 
     @classmethod
@@ -637,7 +637,7 @@ class ServicesOnlinesim(Model):
 
         :return: Список словарей с данными всех сервисов.
         """
-        services = await cls.all().values('id', 'slug', 'name', 'search_names')
+        services = await cls.all().values('id', 'code', 'name', 'search_names')
         return {"services": list(services)}
 
     @classmethod
@@ -662,8 +662,8 @@ class ServicesOnlinesim(Model):
         updated_services = []
 
         for data in services_data:
-            # Проверяем, существует ли сервис с таким slug
-            existing_service = await cls.get_or_none(slug=data['slug'])
+            # Проверяем, существует ли сервис с таким code
+            existing_service = await cls.get_or_none(code=data['code'])
 
             if existing_service:
                 # Обновляем существующий сервис
@@ -672,16 +672,16 @@ class ServicesOnlinesim(Model):
                 await existing_service.save()
                 updated_services.append(existing_service)
             else:
-                # Создаем новый объект сервиса, если slug не найден
+                # Создаем новый объект сервиса, если code не найден
                 new_service = cls(
-                    slug=data['slug'],
+                    code=data['code'],
                     name=data['name'],
                     search_names=data['search_names'],
                 )
                 await new_service.save()
 
     @classmethod
-    async def get_slug_by_name(cls, name: str):
+    async def get_code_by_name(cls, name: str):
         """
         Получает уникальный идентификатор сервиса по его имени.
 
@@ -690,7 +690,7 @@ class ServicesOnlinesim(Model):
         """
         service = await cls.get_or_none(name=name)
         if service:
-            return service.slug
+            return service.code
         return None
 
     @classmethod
@@ -703,7 +703,7 @@ class ServicesOnlinesim(Model):
         """
         service = await cls.get_or_none(id=service_id)
         if service:
-            return f"ID: {service.id}, Slug: {service.slug}, Name: {service.name}, Search Names: {service.search_names}"
+            return f"ID: {service.id}, Code: {service.code}, Name: {service.name}, Search Names: {service.search_names}"
         return None
 
     @classmethod
@@ -1470,3 +1470,96 @@ class PayOut(Model):
             network=network,
         )
         return payment
+
+
+class AdminSettings(Model):
+    class Meta:
+        table = "admin_settings"
+        table_description = "Настройки администратора"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+    name_setting: str = fields.CharField(max_length=255, unique=True)
+    value_setting: str = fields.CharField(max_length=255)
+
+    def to_dict(self):
+        """
+        Преобразует объект настройки в словарь.
+
+        :return: Словарь с настройкой.
+        """
+        return {
+            'name_setting': self.name_setting,
+            'value_setting': self.value_setting
+        }
+
+    @classmethod
+    async def add_setting(cls, name_setting: str, value_setting: str):
+        """
+        Добавляет новую настройку в базу данных.
+
+        :param name_setting: Название настройки.
+        :param value_setting: Значение настройки.
+        :return: Созданный объект настройки.
+        """
+        setting, created = await cls.get_or_create(
+            name_setting=name_setting,
+            defaults={'value_setting': value_setting}
+        )
+        if not created:
+            return None  # Настройка уже существует
+        return setting
+
+    @classmethod
+    async def update_setting(cls, name_setting: str, value_setting: str):
+        """
+        Обновляет значение настройки.
+
+        :param name_setting: Название настройки.
+        :param value_setting: Новое значение настройки.
+        :return: Обновленный объект настройки или None, если настройка не найдена.
+        """
+        setting = await cls.get_or_none(name_setting=name_setting)
+        if setting:
+            setting.value_setting = value_setting
+            await setting.save()
+            return setting
+        return None
+
+    @classmethod
+    async def get_setting_value(cls, name_setting: str) -> str:
+        """
+        Получает значение настройки.
+
+        :param name_setting: Название настройки.
+        :return: Значение настройки или None, если настройка не найдена.
+        """
+        setting = await cls.get_or_none(name_setting=name_setting)
+        return setting.value_setting if setting else None
+
+    @classmethod
+    async def get_all_settings(cls):
+        """
+        Получает все настройки в виде списка словарей.
+
+        :return: Список всех настроек.
+        """
+        settings = await cls.all()
+        return [setting.to_dict() for setting in settings]
+
+    @classmethod
+    async def delete_setting(cls, name_setting: str):
+        """
+        Удаляет настройку из базы данных.
+
+        :param name_setting: Название настройки.
+        :return: True, если настройка была удалена, иначе False.
+        """
+        setting = await cls.get_or_none(name_setting=name_setting)
+        if setting:
+            await setting.delete()
+            return True
+        return False
+
+    def __str__(self):
+        return f"{self.name_setting}: {self.value_setting}"

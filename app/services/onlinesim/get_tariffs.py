@@ -23,7 +23,7 @@ async def fetch_tariffs(country, filter_service):
     params = {
         "locale_price": "RUB",
         "country": country,             # Переданная страна
-        "filter_service": filter_service  # Переданный фильтр по сервису
+        # "filter_service": filter_service  # Переданный фильтр по сервису
     }
 
     async with aiohttp.ClientSession() as session:
@@ -33,7 +33,6 @@ async def fetch_tariffs(country, filter_service):
 
                 # Извлечение первого значения "price" и "slug" из "services"
                 services = data.get("services", {})
-                print(services)
                 for service_info in services.values():
                     price = service_info.get("price")
                     slug = service_info.get("slug")

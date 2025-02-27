@@ -11,7 +11,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
-from app.db.models import Activation
+from app.db.models import Activation, AdminSettings
 from app.dependencies import ADMINS, bot
 from app.services import bot_texts as bt
 from tabulate import tabulate
@@ -392,3 +392,12 @@ async def services(message: types.Message, state: FSMContext):
     await message.answer("Сервисы обновлены!")
 
 
+@router.message(F.text == '#smsactivate')
+async def set_smsactivate(message: types.Message):
+    await AdminSettings.update_setting("sms_rental_service", "SMS_Activate")
+    await message.answer(text="Установлен сервис SMS_Activate")
+
+@router.message(F.text == '#onlinesim')
+async def set_smsactivate(message: types.Message):
+    await AdminSettings.update_setting("sms_rental_service", "Onlinesim")
+    await message.answer(text="Установлен сервис Onlinesim")

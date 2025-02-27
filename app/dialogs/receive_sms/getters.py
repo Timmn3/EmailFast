@@ -105,6 +105,10 @@ async def get_services(dialog_manager: DialogManager, **middleware_data):
     return data
 
 
+async def service_is_smsactivate():
+    return await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Activate"
+
+
 async def get_services_2(dialog_manager: DialogManager, **middleware_data):
     """
     Получает список всех услуг либо из контекста, либо из базы данных.
@@ -121,7 +125,10 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
     if services_data:
         return services_data
     else:
-        services_db = await models.ServicesSmsActivate.get_services()
+        if await service_is_smsactivate():
+            services_db = await models.ServicesSmsActivate.get_services()
+        else:
+            services_db = await models.ServicesOnlinesim.get_services()
         return services_db
 
 
