@@ -300,38 +300,38 @@ class PriceOnlinesim(Model):
     id = fields.IntField(pk=True)  # ID сервиса
     country = fields.IntField(max_length=255, null=False)  # Название страны без связи
     price = fields.DecimalField(max_digits=10, decimal_places=2)  # Цена сервиса
-    service_name = fields.CharField(max_length=255, null=False)  # Название сервиса
+    name = fields.CharField(max_length=255, null=False)  # Название сервиса
     code = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
 
     @classmethod
-    async def add_service(cls, country: int, price: float, service_name: str, code: str):
+    async def add_service(cls, country: int, price: float, name: str, code: str):
         service = await cls.create(
             country=country,
             price=price,
-            service_name=service_name,
+            name=name,
             code=code
         )
         return service
 
     @classmethod
-    async def get_services_by_name(cls, service_name: str):
-        return await cls.select().where(cls.service_name == service_name).dicts()
+    async def get_services_by_name(cls, name: str):
+        return await cls.select().where(cls.name == name).dicts()
 
     @classmethod
-    async def get_code_by_service_name(cls, service_name: str):
-        service = await cls.get_or_none(service_name=service_name)
+    async def get_code_by_service_name(cls, name: str):
+        service = await cls.get_or_none(name=name)
         return service.code if service else None
 
     @classmethod
-    async def update_service(cls, country: str, service_name: str, price: float):
-        service = await cls.get_or_none(service_name=service_name, country=country)
+    async def update_service(cls, country: str, name: str, price: float):
+        service = await cls.get_or_none(name=name, country=country)
         if service:
             service.price = price
             await service.save()
 
     @classmethod
-    async def get_price_by_country_and_service(cls, country: str, service_name: str):
-        service = await cls.get_or_none(country=country, service_name=service_name)
+    async def get_price_by_country_and_service(cls, country: str, name: str):
+        service = await cls.get_or_none(country=country, name=name)
         return service.price if service else None
 
     @classmethod
@@ -351,12 +351,13 @@ class PriceOnlinesim(Model):
 
     @classmethod
     async def get_all_service_names(cls):
-        return await cls.all().distinct().values_list("service_name", flat=True)
+        return await cls.all().distinct().values_list("name", flat=True)
 
     @classmethod
     async def get_all_services(cls):
-        services = await cls.all().order_by().distinct().values("code", "service_name")
+        services = await cls.all().order_by().distinct().values("code", "name")
         return {"services": list(services)}
+
 
 
 

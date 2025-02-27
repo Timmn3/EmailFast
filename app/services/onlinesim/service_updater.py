@@ -16,7 +16,7 @@ async def insert_services(country_id: int, services):
     for service in services:
         # Обновляем данные сервиса или создаем новый, если он не существует
         updated_count = await PriceOnlinesim.filter(
-            service_name=service["service"],
+            name=service["service"],
             country=country_id
         ).update(
             price=float(service["price"]),
@@ -29,7 +29,7 @@ async def insert_services(country_id: int, services):
             await PriceOnlinesim.create(
                 country=country_id,
                 price=float(service["price"]),
-                service_name=service["service"],
+                name=service["service"],
                 code=service["slug"]
             )
 

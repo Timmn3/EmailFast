@@ -128,7 +128,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
         if await service_is_smsactivate():
             services_db = await models.ServicesSmsActivate.get_services()
         else:
-            services_db = await models.ServicesOnlinesim.get_services()
+            services_db = await models.PriceOnlinesim.get_all_services()
         return services_db
 
 
