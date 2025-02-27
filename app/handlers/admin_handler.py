@@ -18,13 +18,19 @@ from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum, Count
-
+import calendar
 router = Router()
 
 
 class BroadcastState(StatesGroup):
     send_message = State()
 
+MONTHS_RU = {
+    "January": "Январь", "February": "Февраль", "March": "Март",
+    "April": "Апрель", "May": "Май", "June": "Июнь",
+    "July": "Июль", "August": "Август", "September": "Сентябрь",
+    "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+}
 
 @router.message(Command('stat'))
 async def stat(message: types.Message):
@@ -107,6 +113,35 @@ async def stat(message: types.Message):
         total_purchases=Sum("purchase_count")
     ).values("user_id", "total_purchases")
 
+    first_day_of_month = utc_now.replace(day=1, hour=0, minute=0, second=0)
+    last_month = utc_now.month - 1 if utc_now.month > 1 else 12
+    last_year = utc_now.year if utc_now.month > 1 else utc_now.year - 1
+    first_day_of_last_month = datetime(last_year, last_month, 1, tzinfo=pytz.timezone("Europe/Moscow"))
+    last_month_name = MONTHS_RU[calendar.month_name[last_month]]
+    current_month_name = MONTHS_RU[calendar.month_name[utc_now.month]]
+
+    payments_count_month = await models.Payment.filter(
+        is_success=True,
+        created_at__gte=first_day_of_month
+    ).count()
+
+    payments_count_last_month = await models.Payment.filter(
+        is_success=True,
+        created_at__gte=first_day_of_last_month,
+        created_at__lt=first_day_of_month
+    ).count()
+
+    payments_amount_month = sum(await models.Payment.filter(
+        is_success=True,
+        created_at__gte=first_day_of_month
+    ).values_list('amount', flat=True))
+
+    payments_amount_last_month = sum(await models.Payment.filter(
+        is_success=True,
+        created_at__gte=first_day_of_last_month,
+        created_at__lt=first_day_of_month
+    ).values_list('amount', flat=True))
+
     # Суммируем (count - 1) для каждого пользователя
     repeat_purchases_total = sum(user["total_purchases"] - 1 for user in user_purchases)
 
@@ -123,6 +158,10 @@ async def stat(message: types.Message):
         payments_repeat_count=payments_repeat_count,
         payments_count_today=payments_count_today,
         payments_amount_today=payments_amount_today,
+        payments_count_month=payments_count_month,
+        payments_count_last_month=payments_count_last_month,
+        payments_amount_month=payments_amount_month,
+        payments_amount_last_month=payments_amount_last_month,
         rent_email_count=rent_email_count,
         rent_email_count_today=rent_email_count_today,
         rented_sms_total=rented_sms_total,
@@ -134,7 +173,9 @@ async def stat(message: types.Message):
         rented_number_total=rented_number_total,
         rented_number_month=rented_number_month,
         rented_number_today=rented_number_today,
-        repeat_purchases_total=repeat_purchases_total
+        repeat_purchases_total=repeat_purchases_total,
+        month_name=current_month_name,
+        last_month_name=last_month_name
     )
 
     await message.answer(msg_text)
