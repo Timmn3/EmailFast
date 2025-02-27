@@ -391,7 +391,6 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     else: # если Onlinesim
         if service_code != "ot": # "любой другой"
             services = await PriceOnlinesim.get_service_data(service_code)
-            print(services)
             sorted_countries_with_prices = [
                 {
                     "country": country,

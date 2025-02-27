@@ -295,63 +295,35 @@ class PriceOnlinesim(Model):
     class Meta:
         table = "price_onlinesim"
         table_description = "Services by Country for Onlinesim"
-        ordering = ["id"]
+        ordering = []
 
     id = fields.IntField(pk=True)  # ID сервиса
     country = fields.IntField(max_length=255, null=False)  # Название страны без связи
     price = fields.DecimalField(max_digits=10, decimal_places=2)  # Цена сервиса
     service_name = fields.CharField(max_length=255, null=False)  # Название сервиса
-    slug = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
+    code = fields.CharField(max_length=50, null=False)  # Короткое название сервиса
 
     @classmethod
-    async def add_service(cls, country: int, price: float, service_name: str, slug: str):
-        """
-        Добавляет новый сервис в базу данных для указанной страны.
-
-        :param country: Название страны, к которой относится сервис.
-        :param price: Цена сервиса.
-        :param service_name: Название сервиса.
-        :param slug: Короткое название сервиса.
-        :return: Созданный объект сервиса.
-        """
+    async def add_service(cls, country: int, price: float, service_name: str, code: str):
         service = await cls.create(
             country=country,
             price=price,
             service_name=service_name,
-            slug=slug
+            code=code
         )
         return service
 
     @classmethod
     async def get_services_by_name(cls, service_name: str):
-        """
-        Получает список стран и цен для указанного сервиса.
-
-        :param service_name: Название сервиса для поиска.
-        :return: Список словарей с данными стран и цен.
-        """
         return await cls.select().where(cls.service_name == service_name).dicts()
 
     @classmethod
-    async def get_slug_by_service_name(cls, service_name: str):
-        """
-        Получает slug для указанного сервиса.
-
-        :param service_name: Название сервиса для поиска.
-        :return: Slug или None, если сервис не найден.
-        """
+    async def get_code_by_service_name(cls, service_name: str):
         service = await cls.get_or_none(service_name=service_name)
-        return service.slug if service else None
+        return service.code if service else None
 
     @classmethod
     async def update_service(cls, country: str, service_name: str, price: float):
-        """
-        Обновляет цену сервиса для указанной страны.
-
-        :param country: Название страны.
-        :param service_name: Название сервиса.
-        :param price: Новая цена сервиса.
-        """
         service = await cls.get_or_none(service_name=service_name, country=country)
         if service:
             service.price = price
@@ -359,49 +331,33 @@ class PriceOnlinesim(Model):
 
     @classmethod
     async def get_price_by_country_and_service(cls, country: str, service_name: str):
-        """
-        Получает цену для указанного сервиса в указанной стране.
-
-        :param country: Название страны.
-        :param service_name: Название сервиса.
-        :return: Цена сервиса или None, если сервис не найден.
-        """
         service = await cls.get_or_none(country=country, service_name=service_name)
         return service.price if service else None
 
     @classmethod
-    async def get_service_data(cls, slug: str) -> dict:
-        """
-        Получает данные по сервису: для каждой страны возвращает её название и цену на указанный сервис.
-
-        :param slug: Название сервиса для поиска.
-        :return: Словарь, где ключами являются названия стран, а значениями — цены на указанный сервис.
-        """
-        # Получаем все записи, соответствующие slug
-        services = await cls.filter(slug=slug).all()
-
-        # Получаем словарь country_id -> country_name из CountryOnlinesim
+    async def get_service_data(cls, code: str) -> dict:
+        services = await cls.filter(code=code).all()
         country_name_mapping = await CountriesOnlinesim.get_country_name_mapping()
-
-        # Формируем результат в виде словаря
         result = {}
         for service in services:
-            country_name = country_name_mapping.get(service.country)  # Получаем название страны по country_id
+            country_name = country_name_mapping.get(service.country)
             if country_name:
-                result[country_name] = service.price  # Добавляем в словарь
-
+                result[country_name] = service.price
         return result
 
     @classmethod
     async def get_service(cls, service_code: str, country_id: int):
-        """
-        Получает сервис по его короткому названию (slug) и стране.
+        return await cls.get_or_none(code=service_code, country=country_id)
 
-        :param service_code: Название сервиса.
-        :param country_id: ID страны.
-        :return: Объект сервиса или None, если сервис не найден.
-        """
-        return await cls.get_or_none(slug=service_code, country=country_id)
+    @classmethod
+    async def get_all_service_names(cls):
+        return await cls.all().distinct().values_list("service_name", flat=True)
+
+    @classmethod
+    async def get_all_services(cls):
+        services = await cls.all().order_by().distinct().values("code", "service_name")
+        return {"services": list(services)}
+
 
 
 class ServicesSmsActivate(Model):
