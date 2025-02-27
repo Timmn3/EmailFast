@@ -330,7 +330,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     :param c: Объект CallbackQuery от aiogram.
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
-    if True:
+    if await service_is_smsactivate():
         if service_code in SERVICES_TRANSLATION:
             # переводим сервисный код в код для onlinesim
             code_onlinesim = SERVICES_TRANSLATION.get(service_code)
