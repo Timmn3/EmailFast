@@ -23,7 +23,7 @@ async def fetch_tariffs(country, filter_service):
     params = {
         "locale_price": "RUB",
         "country": country,             # Переданная страна
-        # "filter_service": filter_service  # Переданный фильтр по сервису
+        "filter_service": filter_service  # Переданный фильтр по сервису
     }
 
     async with aiohttp.ClientSession() as session:
@@ -40,7 +40,44 @@ async def fetch_tariffs(country, filter_service):
             else:
                 return {"error": response.status, "message": await response.text()}
 
+
+async def fetch_tariffs_all(country):
+    """
+    Асинхронная функция для получения списка цен и идентификаторов услуг (slug) по указанной стране
+    и фильтру услуги через API OnlineSim.
+
+    Args:
+        country (int): Код страны, для которой нужно получить тарифы (например, 7 для России).
+
+    Returns:
+        list: Список словарей с ключами "price" и "slug", если запрос успешен.
+              Например, [{"price": "58.50", "slug": "telegram"}, {"price": "60.00", "slug": "whatsapp"}]
+        dict: Словарь с ключами "error" и "message", если запрос завершился с ошибкой.
+    """
+    url = "https://onlinesim.io/api/getTariffs.php"
+    params = {
+        "locale_price": "RUB",
+        "country": country
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+
+                services = data.get("services", {})
+                results = []
+                for service_info in services.values():
+                    price = service_info.get("price")
+                    slug = service_info.get("slug")
+                    if price and slug:
+                        results.append({"price": price, "slug": slug})
+                return results if results else None
+            else:
+                return {"error": response.status, "message": await response.text()}
+
+
 # Пример вызова функции
 if __name__ == '__main__':
-    result = asyncio.run(fetch_tariffs(7, "Telegram"))
+    result = asyncio.run(fetch_tariffs_all(7))
     print(result)
