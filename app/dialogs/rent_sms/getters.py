@@ -3,7 +3,7 @@ from loguru import logger
 from sqlalchemy import false
 
 from app.db.models import CountriesOnlinesim
-from app.services.bot_texts import DOLLAR_RATE
+from app.services.bot_texts import DOLLAR_ONLINESIM
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 
 def log_exceptions(func):
@@ -34,7 +34,7 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
     for country_code, days in tariffs.items():
         country_name = country_map.get(country_code, country_code)
         base_price = list(days.values())[0] if days else 0
-        increased_price = round(base_price * DOLLAR_RATE)
+        increased_price = round(base_price * DOLLAR_ONLINESIM)
 
         countries.append({
             "id": country_code,

@@ -5,7 +5,7 @@ from app.db import models
 from app.db.models import StatusResponse
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.dialogs.personal_cabinet.states import PersonalMenu
-from app.services.bot_texts import country_flags, DOLLAR_RATE
+from app.services.bot_texts import country_flags, DOLLAR_ONLINESIM
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services import bot_texts as bt
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
@@ -348,7 +348,7 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
     tariffs = data.get(str(rent_country_code), {})
     # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
     if tariffs:  # Проверяем, есть ли данные
-        updated_tariffs = {days: round(price * DOLLAR_RATE) for days, price in tariffs.items()}
+        updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
     else:
         await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
         return

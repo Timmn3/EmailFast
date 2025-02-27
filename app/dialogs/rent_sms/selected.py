@@ -5,7 +5,7 @@ from aiogram_dialog.widgets.kbd import Select, Button
 from app.db import models
 from app.dialogs.rent_sms.getters import get_day_string
 from app.dialogs.rent_sms.states import RentCountryMenu
-from app.services.bot_texts import DOLLAR_RATE, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, country_flags
+from app.services.bot_texts import DOLLAR_ONLINESIM, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, country_flags
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from datetime import datetime, timedelta
@@ -83,7 +83,7 @@ async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, man
     tariffs = selected_country["tariffs"].get(country_index, {})
 
     # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
-    updated_tariffs = {days: round(price * DOLLAR_RATE) for days, price in tariffs.items()}
+    updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
     # Сохраняем данные выбранной страны и тарифы в dialog_data
     manager.dialog_data["selected_country"] = {
         "rent_country_code": country_index,

@@ -398,15 +398,17 @@ prices_data = [
 CHANNEL_LINK = 'https://t.me/neuronbo'
 
 # процент, который накидывает сервис
-INTEREST = 130
+INTEREST = 1.3
 
-DOLLAR_RATE = 78 * 1.3
+DOLLAR_ONLINESIM = 78 * 1.3
+
+DOLLAR_SMS_ACTIVATE = 100 * 1.3
 
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы onlinesim
-SERVICES_TRANSLATION = {}
-#     "tg": "telegram",
-#     "vk": "vkcom",
-# }
+SERVICES_TRANSLATION = {
+    "tg": "telegram",
+    "vk": "vkcom",
+}
 
 SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coinbase', 'Bumble', 'Instagram',
                      'Facebook', 'Airbnb', 'Bitstamp', 'Huobi Global', 'Binance', 'Google (Youtube, Gmail)',
