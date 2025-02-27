@@ -14,9 +14,10 @@ async def set_default_commands(bot: Bot):
                               scope=types.BotCommandScopeAllPrivateChats())
 
     admin_commands = [
+        types.BotCommand(command="start", description="Перезапустить"),
         types.BotCommand(command="stat", description="Статистика"),
-        types.BotCommand(command="freemoney", description="Создать ссылку для пополнения"),
         types.BotCommand(command="send", description="Рассылка"),
+        types.BotCommand(command="help_admin", description="Список доступных команд"),
     ]
 
     for chat_id in ADMINS:

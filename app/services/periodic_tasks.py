@@ -1029,10 +1029,10 @@ async def checking_inactive_rent():
 
 
 async def balance_replenishment_notification(payment, service):
-        msg_text = (f'💲Пополнение {service}\n'
+        msg_text = (f'🪙Пополнение {service}\n'
                     f'пользователь {payment.user.mention}\n'
                     f'id {payment.user.telegram_id}\n'
-                    f'сумма {payment.amount}'
+                    f'сумма {payment.amount}\n'
                     f'баланс: {payment.user.balance}')
         await send_coder(msg_text)
 
@@ -1043,7 +1043,7 @@ async def replenishment_error_message(payment, service):
                 f'{service} \n'
                 f'пользователь {payment.user.mention}\n'
                 f'id {payment.user.telegram_id}\n'
-                f'сумма {payment.amount}'
+                f'сумма {payment.amount}\n'
                 f'баланс: {payment.user.balance}')
 
     await send_coder(msg_text)
@@ -1051,9 +1051,10 @@ async def replenishment_error_message(payment, service):
 
 async def notice_of_arraignment(activation):
     msg_text = (f'✅ аренда\n'
+                f'{activation.country.name} \n'
                 f'{activation.service.name} \n'
                 f'пользователь {activation.user.mention}\n'
                 f'id {activation.user.telegram_id}\n'
-                f'сумма аренды {activation.cost}'
+                f'сумма аренды {activation.cost}\n'
                 f'баланс: {activation.user.balance}')
     await send_coder(msg_text)
