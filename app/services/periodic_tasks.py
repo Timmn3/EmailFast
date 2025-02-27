@@ -1029,7 +1029,8 @@ async def checking_inactive_rent():
 
 
 async def balance_replenishment_notification(payment, service):
-        msg_text = (f'🪙Пополнение {service}\n'
+        msg_text = (f'💰💰💰\n'
+                    f'Пополнение {service}\n'
                     f'пользователь {payment.user.mention}\n'
                     f'id {payment.user.telegram_id}\n'
                     f'сумма {payment.amount}\n'
