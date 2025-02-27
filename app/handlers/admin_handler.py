@@ -433,14 +433,15 @@ async def services(message: types.Message, state: FSMContext):
     await message.answer("Сервисы обновлены!")
 
 
-@router.message(F.text == '#smsactivate')
+@router.message(Command('smsactivate'))
 async def set_smsactivate(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
     await AdminSettings.update_setting("sms_rental_service", "SMS_Activate")
     await message.answer(text="Установлен сервис SMS_Activate")
 
-@router.message(F.text == '#onlinesim')
+
+@router.message(Command('onlinesim'))
 async def set_smsactivate(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
@@ -458,8 +459,8 @@ async def help_admin(message: types.Message):
     /freemoney &lt;сумма&gt; &lt;лимит&gt; - Создать ссылку на бесплатные деньги
     /send - Рассылка сообщений
     /add_balance &lt;telegram_id&gt; &lt;сумма&gt; - Пополнение баланса пользователя
-    #smsactivate - Установить SMS_Activate
-    #onlinesim - Установить Onlinesim
+    /smsactivate - Установить SMS_Activate
+    /onlinesim - Установить Onlinesim
     """
 
     await message.answer(f"<b>Доступные команды для админов:</b>\n{commands}", parse_mode="HTML")
