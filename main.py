@@ -128,8 +128,8 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(check_payment_anypay, "interval", seconds=45, max_instances=3)
             # Проверка платежей через cryptomus
             scheduler.add_job(check_payment_cryptomus, "interval", seconds=50, max_instances=3)
-            # Добавление сервисов
-            # scheduler.add_job(add_services, "cron", hour=3, minute=0)
+            # Добавление\обновление сервисов
+            scheduler.add_job(add_services, "cron", hour=3, minute=0)
             # Пинг userbot
             scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
             # Проверка истечения срока почты и уведомления
