@@ -50,8 +50,9 @@ async def fetch_tariffs_all(country):
         country (int): Код страны, для которой нужно получить тарифы (например, 7 для России).
 
     Returns:
-        list: Список словарей с ключами "price" и "slug", если запрос успешен.
-              Например, [{"price": "58.50", "slug": "telegram"}, {"price": "60.00", "slug": "whatsapp"}]
+        list: Список словарей с ключами "price", "slug" и "service", если запрос успешен.
+              Например, [{"price": "58.50", "slug": "telegram", "service": "Telegram"},
+                         {"price": "60.00", "slug": "whatsapp", "service": "WhatsApp"}]
         dict: Словарь с ключами "error" и "message", если запрос завершился с ошибкой.
     """
     url = "https://onlinesim.io/api/getTariffs.php"
@@ -66,12 +67,15 @@ async def fetch_tariffs_all(country):
                 data = await response.json()
 
                 services = data.get("services", {})
+                print(services)  # Вывод для отладки
                 results = []
                 for service_info in services.values():
                     price = service_info.get("price")
                     slug = service_info.get("slug")
-                    if price and slug:
-                        results.append({"price": price, "slug": slug})
+                    service = service_info.get("service")  # Добавляем поле "service"
+
+                    if price and slug and service:
+                        results.append({"price": price, "slug": slug, "service": service})
                 return results if results else None
             else:
                 return {"error": response.status, "message": await response.text()}

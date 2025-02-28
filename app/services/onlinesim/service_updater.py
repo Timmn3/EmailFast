@@ -53,7 +53,7 @@ async def add_services():
                 continue
 
             services = [
-                {"price": service["price"], "service": service["slug"], "slug": service["slug"]}
+                {"price": service["price"], "service": service["service"], "slug": service["slug"]}
                 for service in result_services
             ]
         except Exception as e:
@@ -62,5 +62,4 @@ async def add_services():
 
         # Добавляем или обновляем услуги для данной страны
         await insert_services(country_id, services)
-
 
