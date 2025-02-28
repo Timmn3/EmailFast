@@ -805,7 +805,8 @@ class Activation(Model):
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
     activation_id: int = fields.BigIntField(unique=True, index=True)
     country: CountriesSmsActivate = fields.ForeignKeyField('models.CountriesSmsActivate', related_name='activations')
-    service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations')
+    service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations', null=True)
+    service_2: ServicesOnlinesim = fields.ForeignKeyField('models.ServicesOnlinesim', related_name='activations', null=True)
     cost: float = fields.FloatField()
     phone_number: str = fields.CharField(max_length=32)
     sms_text: str = fields.TextField(null=True)
@@ -814,8 +815,8 @@ class Activation(Model):
     activation_expire_at: datetime = fields.DatetimeField(null=True)
 
     @classmethod
-    async def add_activation(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,
-                             service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
+    async def add_activation_sms_activate(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,
+                                          service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
         """
         Добавляет новую активацию в базу данных.
 
@@ -838,6 +839,23 @@ class Activation(Model):
             activation_expire_at=activation_expire_at
         )
         return activation
+
+    @classmethod
+    async def add_activation_onlinesim(cls, user: User, activation_id: int, country: CountriesSmsActivate,
+                                          cost: float,
+                                          service_2: ServicesOnlinesim, phone_number: str,
+                                          activation_expire_at: datetime):
+        activation = await cls.create(
+            user=user,
+            activation_id=activation_id,
+            country=country,
+            service_2=service_2,
+            cost=cost,
+            phone_number=phone_number,
+            activation_expire_at=activation_expire_at
+        )
+        return activation
+
 
     @classmethod
     async def get_activation(cls, activation_id: int):

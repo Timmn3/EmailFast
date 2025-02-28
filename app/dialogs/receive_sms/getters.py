@@ -130,8 +130,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
         else:
             services_db = await models.PriceOnlinesim.get_all_services()
             services_db["services"].append({"code": "ot", "name": "Любой другой"})
-
-            print(services_db)
+            services_db = await models.ServicesOnlinesim.get_services()
         return services_db
 
 

@@ -5,6 +5,7 @@ from pyonlinesim import OnlineSMS
 from aiogram.exceptions import TelegramBadRequest
 from app.db import models
 from app.dependencies import API_KEY_ONLINESIM, bot
+from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.selected import send_service_info_with_keyboard
 from app.dialogs.receive_sms.states import ServiceMenu
 from app.services import bot_texts as bt
@@ -127,7 +128,7 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
 
 from aiogram.exceptions import TelegramAPIError
-
+from datetime import datetime
 
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
@@ -136,21 +137,31 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         activation_id = int(call.data.split(':')[1])
 
         # Пытаемся получить объект активации из базы данных по идентификатору
-        activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
+        if await service_is_smsactivate():
+            activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
+        else:
+            activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service_2')
 
         # Если активация не найдена, просто отвечаем на callback и выходим
         if not activation:
+            await call.answer(text='Номер автоматически отменится через 10 минут', show_alert=True)
             await call.answer()
             return
 
+        formatted_time = activation.activation_expire_at.strftime("%H:%M")
+
         # Проверяем, относится ли активация к service_onlinesim
         try:
-            service = activation.service.code
+            if await service_is_smsactivate():
+                service = activation.service.code
+            else:
+                service = activation.service_2.code
         except AttributeError:
+            await call.answer(text=f'Номер автоматически отменится в {formatted_time}', show_alert=True)
             return
         cancellation_successful = False
         # Выбор API клиента в зависимости от типа услуги
-        if service in SERVICES_TRANSLATION:
+        if service in SERVICES_TRANSLATION or not await service_is_smsactivate():
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             cancel_status = await client.finish_order(operation_id=activation.activation_id, ban=False)
             cancellation_successful = cancel_status.get("response") == 1

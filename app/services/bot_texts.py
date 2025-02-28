@@ -420,6 +420,8 @@ SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coin
                      'eBay|Kleinanzeigen.', 'Seosprint', 'taxiMaxim', 'Steam', 'Gett', 'Gemini.com', 'Юла', 'OLX',
                      'ftx.com', 'Happn']
 
+SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM = ["ot"]
+
 
 # возвращает первый ключ, соответствующий значению
 REVERSE_SERVICES_TRANSLATION = {v: k for k, v in SERVICES_TRANSLATION.items()}
