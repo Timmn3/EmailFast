@@ -40,7 +40,6 @@ async def add_services():
     """
     # Получаем список всех стран из CountryOnlinesim
     countries = await CountriesOnlinesim.all()
-    print(len(countries))
 
     # Проходим по каждой стране
     for country in countries:
