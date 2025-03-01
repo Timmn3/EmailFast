@@ -17,10 +17,8 @@ from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
-from tortoise.functions import Sum, Count
+from tortoise.functions import Sum
 import calendar
-
-from app.test_upload import load_services_from_file
 
 router = Router()
 
@@ -187,6 +185,8 @@ async def stat(message: types.Message):
 
 @router.message(Command('test_balance'))
 async def test_balance(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
     sms = SmsReceive()
     balance = await sms.get_balance()
     print(balance)
@@ -194,21 +194,27 @@ async def test_balance(message: types.Message):
 
 @router.message(Command('test_delete'))
 async def test_delete(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
     count = await Activation.delete_user_activations(message.from_user.id)
     await message.answer(f'Активации удалены {count}')
 
 
 @router.message(Command('test_db'))
 async def test(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
     await message.answer(f'тест ')
-    text = await load_services_from_file("data.txt")
-    await message.answer(text)
+    # text = await load_services_from_file("data.txt")
+    # await message.answer(text)
     return
     # await models.Service.normalize_search_names()
 
 
 @router.message(Command('test_state'))
 async def test_state(message: types.Message, dialog_manager: DialogManager):
+    if message.from_user.id not in ADMINS:
+        return
     try:
         logger.success(dialog_manager.current_context())
     except Exception as e:
