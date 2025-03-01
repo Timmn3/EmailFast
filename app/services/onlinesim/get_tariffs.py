@@ -81,7 +81,36 @@ async def fetch_tariffs_all(country):
                 return {"error": response.status, "message": await response.text()}
 
 
+import aiohttp
+import asyncio
+
+
+async def fetch_tariffs_all_countries():
+    """
+    Асинхронная функция для получения списка цен по всем странам и сервисам через API OnlineSim.
+
+    Returns:
+        dict: Словарь с ключами - кодами стран, содержащий вложенные словари с сервисами и их ценами.
+        Например:
+        {
+            "7": {"telegram": 2.65, "whatsapp": 2.4},
+            "380": {"telegram": 1.4, "whatsapp": 1.34}
+        }
+        dict: Словарь с ошибкой, если запрос завершился неудачно.
+    """
+    url = "https://onlinesim.io/api/price-list-data"
+    params = {"type": "receive", "locale_price": "RUB"}  # Добавляем параметр RUB
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data.get("list", {})  # Возвращаем только список тарифов
+            else:
+                return {"error": response.status, "message": await response.text()}
+
+
 # Пример вызова функции
 if __name__ == '__main__':
-    result = asyncio.run(fetch_tariffs_all(7))
+    result = asyncio.run(fetch_tariffs_all_countries())
     print(result)
