@@ -3,7 +3,7 @@ from app.db.models import CountriesOnlinesim, PriceOnlinesim
 from loguru import logger
 
 from app.services.bot_texts import SERVICE_ONLINESIM
-from app.services.onlinesim.get_tariffs import fetch_tariffs, fetch_tariffs_all
+from app.services.onlinesim.get_tariffs import fetch_tariffs_all
 
 
 async def insert_services(country_id: int, services):

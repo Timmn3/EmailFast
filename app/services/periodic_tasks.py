@@ -497,11 +497,13 @@ async def check_sms():
             if len(str(activation.activation_id)) > 9:
                 sms = SmsReceive()
                 status = str(await sms.get_activation_status(activation.activation_id))
+                name = activation.service.name
 
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
+                name = activation.service_2.name
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
@@ -540,7 +542,7 @@ async def check_sms():
                     msg_text = f"""
         💬<b>Новое SMS</b> на номер: +{activation.phone_number}
 
-        Ваш код активации для <b>{activation.service.name}</b>:
+        Ваш код активации для <b>{name}</b>:
         <code>{activation.sms_text}</code>
         """
                     # Отправляем сообщение пользователю в Telegram
@@ -548,7 +550,7 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    await notice_of_arraignment(activation)
+                    await notice_of_arraignment(activation, name)
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
@@ -1050,10 +1052,10 @@ async def replenishment_error_message(payment, service):
     await send_coder(msg_text)
 
 
-async def notice_of_arraignment(activation):
+async def notice_of_arraignment(activation, name):
     msg_text = (f'✅ аренда\n'
                 f'{activation.country.name} \n'
-                f'{activation.service.name} \n'
+                f'{name} \n'
                 f'пользователь {activation.user.mention}\n'
                 f'id {activation.user.telegram_id}\n'
                 f'сумма аренды {activation.cost}\n'

@@ -77,7 +77,7 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
     # если активация относится к onlinesim
     try:
-        service = activation.service.code
+        service = activation.service_2.code
     except AttributeError:
         return
     if service in SERVICES_TRANSLATION:

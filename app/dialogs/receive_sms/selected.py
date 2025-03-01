@@ -16,8 +16,9 @@ from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, DOLLAR_ONLINESIM, DOLLAR_SMS_ACTIVATE, \
-    SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM
+    SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT
 from app.services.low_balance import check_low_balance, send_low_balance_alert
+from app.services.onlinesim.get_tariffs import fetch_tariffs
 from app.services.sms_receive import SmsReceive
 from app.services import bot_texts as bt
 
@@ -177,6 +178,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     # Обновляем время последнего запроса
     user.last_request_time = current_time.astimezone(pytz.utc)
     await user.save(update_fields=['last_request_time'])
+
+    if await fetch_tariffs(country_id, service_code) is None:
+        await c.message.answer(text=NOT_NUMBERS_ALERT)
+        return
 
     # Проверяем, достаточно ли у пользователя средств на балансе
     if user.balance < price:
