@@ -82,21 +82,40 @@ async def fetch_tariffs_all(country):
 
 
 import aiohttp
-import asyncio
+
+LIST_OF_SERVICES = {
+    'groupme': 'GroupMe', 'openai': 'ChatGPT | OpenAI', 'iost': 'IOST', 'redbook': 'RedBook',
+    'binance': 'Binance', 'battle_net': 'Battle.net Blizzard', 'airbnb': 'Airbnb', 'bitget': 'Bitget',
+    'gemini': 'Gemini.com', 'netflix': 'Netflix', 'wog_ua': 'WOG.ua', 'lino_network': 'lino_network',
+    '3223': 'Facebook', 'luban': 'Luban', 'kucoinplay': 'Kucoin', 'mamba': 'Мамба', 'happn': 'Happn',
+    'amazon': 'Amazon', 'shopee': 'Shopee', 'tencentqq': 'QQ', 'imo': 'imo', 'seosprint': 'Seosprint',
+    'naver': 'NAVER', 'badoo': 'Badoo', 'hqtrivia': 'HQ Trivia', 'monese': 'monese', 'drom': 'Дром',
+    'justdating': 'JustDating', 'bitstamp': 'Bitstamp', 'gameflip': 'Gameflip', 'viber': 'Viber',
+    'weibo': 'Weibo', 'fastfriend': 'ДругВокруг', 'google': 'Google (Youtube, Gmail)', 'ctrip': 'Ctrip',
+    'jiayuan': 'Jiayuan', 'crypto': 'Crypto.com', 'kakaotalk': 'KakaoTalk', 'wolt': 'Wolt',
+    'bilibili': 'bilibili', 'hey_plus': 'HeyPlus', 'ebay': 'eBay|Kleinanzeigen.', 'linkedin': 'LinkedIn',
+    'instagram': 'Instagram', 'yalla': 'Yalla', 'apple': 'Apple', 'careem': 'Careem', 'mailru': 'Mail.ru',
+    'amap': 'amap', 'coinbase': 'Coinbase', 'blablacar': 'BlaBlaCar', 'odklru': 'Одноклассники',
+    'discord': 'Discord', 'uber': 'Uber', 'chsi': 'CHSI', 'tinder': 'Tinder', 'youla': 'Юла',
+    'meetme': 'MeetMe', 'huobi': 'Huobi Global', 'rambler': 'Рамблер', 'telegram': 'Telegram',
+    'signal': 'Signal', 'lianxin': 'Lianxin', 'whatsapp': 'WhatsApp', 'soul': 'Soul',
+    'microsoft': 'Microsoft', 'ftx': 'ftx.com', 'vkcom': 'ВКонтакте + Mail.ru',
+    'foodora': 'Foodora', 'appbonus': 'AppBonus', 'aol': 'AOL', 'bolt': 'Bolt',
+    'olx': 'OLX', 'suomi24': 'Suomi24', 'hinge': 'Hinge', 'bumble': 'Bumble', 'livescore': 'LiveScore',
+    'miliao': 'Miliao', 'beget': 'Beget', 'yahoo': 'Yahoo', 'yandex': 'Яндекс', 'steam': 'Steam',
+    'suno': 'Suno', 'lyft': 'Lyft', 'linemessenger': 'LINE', 'playerauctions': 'PlayerAuctions',
+    'snapchat': 'Snapchat', 'icq': 'ICQ', 'paopao': 'PaoPao', 'twitter': 'Twitter|X',
+    'alibaba': 'Alibaba', 'wechat': 'WeChat', 'ultra_io': 'Ultra_io', 'tiktok': 'TikTok (ТикТок)',
+    'tantan': 'TanTan', 'gett': 'Gett', 'taximaxim': 'taxiMaxim', 'bet365': 'bet365', 'jd': 'JD.com',
+    'electroneum': 'Electroneum', 'esportal': 'esportal', 'nike': 'Nike', 'whatnot': 'Whatnot',
+    'foodpanda': 'Foodpanda'
+}
 
 
 async def fetch_tariffs_all_countries():
     """
-    Асинхронная функция для получения списка цен по всем странам и сервисам через API OnlineSim.
-
-    Returns:
-        dict: Словарь с ключами - кодами стран, содержащий вложенные словари с сервисами и их ценами.
-        Например:
-        {
-            "7": {"telegram": 2.65, "whatsapp": 2.4},
-            "380": {"telegram": 1.4, "whatsapp": 1.34}
-        }
-        dict: Словарь с ошибкой, если запрос завершился неудачно.
+    Асинхронная функция для получения списка цен по всем странам и сервисам через API OnlineSim,
+    добавляя названия сервисов из LIST_OF_SERVICES.
     """
     url = "https://onlinesim.io/api/price-list-data"
     params = {"type": "receive", "locale_price": "RUB"}  # Добавляем параметр RUB
@@ -105,7 +124,20 @@ async def fetch_tariffs_all_countries():
         async with session.get(url, params=params) as response:
             if response.status == 200:
                 data = await response.json()
-                return data.get("list", {})  # Возвращаем только список тарифов
+                country_services = data.get("list", {})
+
+                formatted_data = {}
+                for country, services in country_services.items():
+                    formatted_data[country] = [
+                        {
+                            "price": price,
+                            "slug": slug,
+                            "service": LIST_OF_SERVICES.get(slug, slug.capitalize())
+                        }
+                        for slug, price in services.items()
+                    ]
+
+                return formatted_data
             else:
                 return {"error": response.status, "message": await response.text()}
 

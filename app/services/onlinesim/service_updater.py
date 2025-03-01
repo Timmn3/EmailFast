@@ -3,7 +3,7 @@ from app.db.models import CountriesOnlinesim, PriceOnlinesim
 from loguru import logger
 
 from app.services.bot_texts import SERVICE_ONLINESIM
-from app.services.onlinesim.get_tariffs import fetch_tariffs_all
+from app.services.onlinesim.get_tariffs import fetch_tariffs_all, fetch_tariffs_all_countries
 
 
 async def insert_services(country_id: int, services):
@@ -38,28 +38,20 @@ async def add_services():
     """
     Функция для получения и сохранения списка услуг для всех стран из API OnlineSim.
     """
-    # Получаем список всех стран из CountryOnlinesim
-    countries = await CountriesOnlinesim.all()
+    try:
+        # Получаем список всех услуг по всем странам одной операцией
+        all_services = await fetch_tariffs_all_countries()
 
-    # Проходим по каждой стране
-    for country in countries:
-        country_id = country.country_id  # Извлекаем country_id
+        if "error" in all_services:
+            logger.error(f"Ошибка при получении данных: {all_services['message']}")
+            return
 
-        try:
-            # Получаем список всех услуг одной операцией
-            result_services = await fetch_tariffs_all(country_id)
+        # Обновляем услуги для каждой страны
+        for country_id, services in all_services.items():
+            await insert_services(country_id, services)
 
-            if not result_services:  # Проверяем, что результат не пустой
-                continue
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении услуг: {e}")
 
-            services = [
-                {"price": service["price"], "service": service["service"], "slug": service["slug"]}
-                for service in result_services
-            ]
-        except Exception as e:
-            logger.error(f"Не удалось получить услуги для страны с id {country_id}: {e}")
-            continue  # Переходим к следующей стране, если возникла ошибка
 
-        # Добавляем или обновляем услуги для данной страны
-        await insert_services(country_id, services)
 

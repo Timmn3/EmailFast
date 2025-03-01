@@ -12,3 +12,5 @@ async def get_number(service_code, country_id):
 if __name__ == '__main__':
     result = asyncio.run(get_number("magnit", 7))
     print(result)
+
+

@@ -129,6 +129,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
             services_db = await models.ServicesSmsActivate.get_services()
         else:
             services_db = await models.PriceOnlinesim.get_all_services()
+            print(services_db)
             services_db["services"].append({"code": "ot", "name": "Любой другой"})
             # services_db = await models.ServicesOnlinesim.get_services()
         return services_db
