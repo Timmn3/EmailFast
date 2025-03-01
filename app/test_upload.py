@@ -57,7 +57,7 @@ async def load_services_from_file(filename: str):
 
             await ServicesOnlinesim.add_service(code=code, name=name_clean, search_names=search_names)
 
-        print(f"🎉 Успешно добавлено {len(unique_services)} новых сервисов!")
+        return f"🎉 Успешно добавлено {len(unique_services)} новых сервисов!"
 
     except Exception as e:
         print(f"❌ Ошибка: {e}")
