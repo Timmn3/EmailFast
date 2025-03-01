@@ -3,7 +3,7 @@ from math import ceil
 import json
 from app import dependencies
 from app.db import models
-from app.services.bot_texts import INTEREST
+from app.services.bot_texts import DOLLAR_SMS_ACTIVATE
 from app.services.sms_activate_async import SMSActivateAPIAsync
 
 from loguru import logger
@@ -76,7 +76,7 @@ class SmsReceive:
         services = []
         for service_code, service_data in services_data[str(country_id)].items():
             # Округляем стоимость до ближайшего целого числа, умноженного на процент, который накидывает сервис
-            cost = ceil(float(service_data['cost']) * INTEREST)
+            cost = ceil(float(service_data['cost']) * DOLLAR_SMS_ACTIVATE)
             services.append({
                 'code': service_code,
                 'cost': cost,

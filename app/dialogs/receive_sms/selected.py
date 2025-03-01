@@ -14,7 +14,7 @@ from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
-from app.services.bot_texts import INTEREST, country_flags, sort_countries, SERVICES_TRANSLATION, \
+from app.services.bot_texts import country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, DOLLAR_ONLINESIM, DOLLAR_SMS_ACTIVATE, \
     SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT
 from app.services.low_balance import check_low_balance, send_low_balance_alert
@@ -360,7 +360,9 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     :param c: Объект CallbackQuery от aiogram.
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
+    # если включен сервис SMSActivate
     if await service_is_smsactivate():
+        # если сервис из Onlinesim
         if service_code in SERVICES_TRANSLATION:
             # переводим сервисный код в код для onlinesim
             code_onlinesim = SERVICES_TRANSLATION.get(service_code)
@@ -369,13 +371,13 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             sorted_countries_with_prices = [
                 {
                     "country": country,
-                    "price": math.ceil(float(price) * INTEREST),  # Округляем цену после умножения
+                    "price": math.ceil(float(price) * DOLLAR_ONLINESIM),  # Округляем цену после умножения
                     "retail_price": int(price),
                     "freePriceMap": None
                 }
                 for country, price in services.items()
             ]
-
+        # если сервис из SMSActivate
         else:
             # Создаем экземпляр класса для получения SMS
             sms = SmsReceive()
@@ -424,13 +426,13 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             sorted_countries_with_prices = [
                 {
                     "country": country,
-                    "price": math.ceil(float(price) * INTEREST),  # Округляем цену после умножения
+                    "price": math.ceil(float(price) * DOLLAR_ONLINESIM),  # Округляем цену после умножения
                     "retail_price": int(price),
                     "freePriceMap": None
                 }
                 for country, price in services.items()
             ]
-
+        # если сервис из SMSActivate
         else:
             # Создаем экземпляр класса для получения SMS
             sms = SmsReceive()
