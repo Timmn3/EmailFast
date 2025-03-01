@@ -19,6 +19,9 @@ from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum, Count
 import calendar
+
+from app.test_upload import load_services_from_file
+
 router = Router()
 
 
@@ -198,6 +201,7 @@ async def test_delete(message: types.Message):
 @router.message(Command('test_db'))
 async def test(message: types.Message):
     await message.answer(f'тест ')
+    await load_services_from_file("data.txt")
     return
     # await models.Service.normalize_search_names()
 
