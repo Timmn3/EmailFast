@@ -561,12 +561,12 @@ async def check_sms():
                                     Ваш код активации:
                                     <code>{activation.sms_text}</code>
                                     """
-                    await send_coder(msg_text)
                     # Отправляем сообщение пользователю в Telegram
                     await bot.send_message(
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
+                    await notice_of_arraignment(activation, name)
 
 
         # Получаем все истекшие активации
@@ -1072,7 +1072,7 @@ async def replenishment_error_message(payment, service):
 
 async def notice_of_arraignment(activation, name):
     msg_text = (f'✅ аренда\n'
-                f'{activation.country.name} \n'
+                # f'{activation.country.name} \n'
                 f'{name} \n'
                 f'пользователь {activation.user.mention}\n'
                 f'id {activation.user.telegram_id}\n'
