@@ -4,6 +4,7 @@ import pytz
 from aiogram import types
 from tortoise.models import Model
 from tortoise import fields, timezone
+from tortoise.queryset import QuerySet
 
 
 class StatusResponse(IntEnum):
@@ -894,7 +895,9 @@ class Activation(Model):
 
         :return: Список объектов активных активаций.
         """
-        return await cls.filter(activation_expire_at__gt=timezone.now()).all()
+        # return await cls.filter(activation_expire_at__gt=timezone.now()).all()
+
+        return await cls.filter(activation_expire_at__gt=timezone.now()).select_related("service_2").all()
 
     @classmethod
     async def get_active_activation(cls, user_id: int):
@@ -935,7 +938,15 @@ class Activation(Model):
         :return: Название сервиса или None, если сервис отсутствует.
         """
         await self.fetch_related("service_2")
-        return self.service_2.name if self.service_2 else None
+        print(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")  # Выведет реальный тип
+
+        # Проверяем, не QuerySet ли это
+        if isinstance(self.service_2, list) or isinstance(self.service_2, QuerySet):
+            service_2 = self.service_2[0] if self.service_2 else None
+        else:
+            service_2 = self.service_2
+
+        return service_2.name if service_2 else None
 
 
 class Payment(Model):
