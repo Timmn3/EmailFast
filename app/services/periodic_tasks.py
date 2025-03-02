@@ -497,17 +497,16 @@ async def check_sms():
             if len(str(activation.activation_id)) > 9:
                 sms = SmsReceive()
                 status = str(await sms.get_activation_status(activation.activation_id))
-                name = activation.service.name
-
+                try:
+                    name = activation.service.name
+                except Exception:
+                    name = None
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
-                try:
-                    name = activation.service_2.name
-                except Exception:
-                    name = ''
+                name = await activation.get_service_2_name()
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'

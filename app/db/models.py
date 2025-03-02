@@ -894,7 +894,7 @@ class Activation(Model):
 
         :return: Список объектов активных активаций.
         """
-        return await cls.filter(activation_expire_at__gt=timezone.now()).select_related("service_2").all()
+        return await cls.filter(activation_expire_at__gt=timezone.now()).all()
 
     @classmethod
     async def get_active_activation(cls, user_id: int):
@@ -927,6 +927,15 @@ class Activation(Model):
         """
         deleted_count = await cls.filter(user_id=user_id).delete()
         return deleted_count
+
+    async def get_service_2_name(self) -> str | None:
+        """
+        Получает имя сервиса из ServicesOnlinesim.
+
+        :return: Название сервиса или None, если сервис отсутствует.
+        """
+        await self.fetch_related("service_2")
+        return self.service_2.name if self.service_2 else None
 
 
 class Payment(Model):
