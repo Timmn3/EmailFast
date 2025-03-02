@@ -2,10 +2,11 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum, IntEnum
 import pytz
 from aiogram import types
+from sqlalchemy.dialects.postgresql.psycopg2 import logger
 from tortoise.models import Model
 from tortoise import fields, timezone
 from tortoise.queryset import QuerySet
-
+from loguru import logger
 
 class StatusResponse(IntEnum):
     STATUS_WAIT_CODE = 1
@@ -938,7 +939,7 @@ class Activation(Model):
         :return: Название сервиса или None, если сервис отсутствует.
         """
         await self.fetch_related("service_2")
-        print(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")  # Выведет реальный тип
+        logger.debug(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")  # Выведет реальный тип
 
         # Проверяем, не QuerySet ли это
         if isinstance(self.service_2, list) or isinstance(self.service_2, QuerySet):

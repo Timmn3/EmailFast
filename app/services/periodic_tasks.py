@@ -507,7 +507,6 @@ async def check_sms():
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
                 name = await activation.get_service_2_name()
-                print(name)
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
