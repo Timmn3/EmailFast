@@ -1063,4 +1063,5 @@ async def notice_of_arraignment(activation, name):
                 f'id {activation.user.telegram_id}\n'
                 f'сумма аренды {activation.cost}\n'
                 f'баланс: {activation.user.balance}')
+    print(msg_text)
     await send_coder(msg_text)
