@@ -938,16 +938,12 @@ class Activation(Model):
 
         :return: Название сервиса или None, если сервис отсутствует.
         """
-        await self.fetch_related("service_2")
-        logger.debug(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")  # Выведет реальный тип
+        await self.refresh_from_db()  # Перегружаем объект из БД
+        await self.fetch_related("service_2")  # Загружаем связь
 
-        # Проверяем, не QuerySet ли это
-        if isinstance(self.service_2, list) or isinstance(self.service_2, QuerySet):
-            service_2 = self.service_2[0] if self.service_2 else None
-        else:
-            service_2 = self.service_2
+        logger.debug(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")
 
-        return service_2.name if service_2 else None
+        return self.service_2.name if isinstance(self.service_2, ServicesOnlinesim) else None
 
 
 class Payment(Model):
