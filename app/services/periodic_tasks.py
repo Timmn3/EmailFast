@@ -504,7 +504,10 @@ async def check_sms():
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
-                name = activation.service_2.name
+                try:
+                    name = activation.service_2.name
+                except Exception:
+                    name = ''
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
@@ -540,12 +543,20 @@ async def check_sms():
 
                 # Формируем текст сообщения для отправки пользователю если смс новая
                 if int(current_sms) != int(sms_from_status):
-                    msg_text = f"""
-        💬<b>Новое SMS</b> на номер: +{activation.phone_number}
+                    if name:
+                        msg_text = f"""
+            💬<b>Новое SMS</b> на номер: +{activation.phone_number}
+    
+            Ваш код активации для <b>{name}</b>:
+            <code>{activation.sms_text}</code>
+            """
+                    else:
+                        msg_text = f"""
+                                    💬<b>Новое SMS</b> на номер: +{activation.phone_number}
 
-        Ваш код активации для <b>{name}</b>:
-        <code>{activation.sms_text}</code>
-        """
+                                    Ваш код активации:
+                                    <code>{activation.sms_text}</code>
+                                    """
                     # Отправляем сообщение пользователю в Telegram
                     await bot.send_message(
                         chat_id=activation.user.telegram_id,
