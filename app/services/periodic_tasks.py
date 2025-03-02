@@ -506,7 +506,9 @@ async def check_sms():
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
+                logger.debug(f"DEBUG activation: {activation} (type: {type(activation)})")
                 name = await activation.get_service_2_name()
+                logger.debug(f"DEBUG name: {name} (type: {type(name)})")
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
