@@ -498,9 +498,12 @@ async def check_sms():
                 sms = SmsReceive()
                 status = str(await sms.get_activation_status(activation.activation_id))
                 try:
-                    name = activation.service.name
-                except Exception:
+                    await activation.fetch_related("service")  # Загружаем объект сервиса
+                    name = activation.service.name if activation.service else None
+                except Exception as e:
+                    logger.error(f"Ошибка при получении имени сервиса: {e}")
                     name = None
+
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
