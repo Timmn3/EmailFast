@@ -486,7 +486,6 @@ import re
 
 
 async def check_sms():
-    name = ''
     try:
         # Получаем все активные активации
         activations = await models.Activation.get_active_activations()
@@ -584,7 +583,7 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        await send_coder(f'Ошибка \n{e} name {name}')
+        await send_coder(f'Ошибка \n{e}')
         logger.error(e)
 
 
