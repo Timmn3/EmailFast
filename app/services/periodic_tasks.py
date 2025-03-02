@@ -543,7 +543,6 @@ async def check_sms():
 
                 # Формируем текст сообщения для отправки пользователю если смс новая
                 if int(current_sms) != int(sms_from_status):
-                    logger.info(f'name {name}')
                     if name:
                         msg_text = f"""
             💬<b>Новое SMS</b> на номер: +{activation.phone_number}
@@ -1074,5 +1073,4 @@ async def notice_of_arraignment(activation, name):
                 f'id {activation.user.telegram_id}\n'
                 f'сумма аренды {activation.cost}\n'
                 f'баланс: {activation.user.balance}')
-    print(msg_text)
     await send_coder(msg_text)
