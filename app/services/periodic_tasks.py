@@ -9,6 +9,7 @@ from loguru import logger
 from app import dependencies
 from app.db import models
 from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
+from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.rent_sms.getters import get_day_string
 from app.services.bot_texts import country_flags
 from app.services.mail.receive_messages import get_unread_messages
@@ -539,7 +540,10 @@ async def check_sms():
                 await activation.save()
 
                 # Загружаем связанные данные пользователя и сервиса
-                await activation.fetch_related('user', 'service')
+                if await service_is_smsactivate():
+                    await activation.fetch_related('user', 'service')
+                else:
+                    await activation.fetch_related('user', 'service_2')
 
                 # Формируем текст сообщения для отправки пользователю если смс новая
                 if int(current_sms) != int(sms_from_status):
