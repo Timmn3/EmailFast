@@ -894,7 +894,7 @@ class Activation(Model):
 
         :return: Список объектов активных активаций.
         """
-        return await cls.filter(activation_expire_at__gt=timezone.now()).all()
+        return await cls.filter(activation_expire_at__gt=timezone.now()).select_related("service_2").all()
 
     @classmethod
     async def get_active_activation(cls, user_id: int):
