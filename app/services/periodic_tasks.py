@@ -506,8 +506,14 @@ async def check_sms():
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
+
                 await activation.fetch_related('service_2')
-                name = activation.service_2.name if activation.service_2 else None
+                if isinstance(activation.service_2, list):  # Проверяем, не QuerySet ли это
+                    service_2 = activation.service_2[0] if activation.service_2 else None
+                else:
+                    service_2 = activation.service_2
+                name = service_2.name if service_2 else None
+
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
