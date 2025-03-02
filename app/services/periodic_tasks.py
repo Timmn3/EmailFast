@@ -508,6 +508,7 @@ async def check_sms():
                 for_information = order_info
 
                 name = await activation.get_service_2_name()
+                logger.info(f'name activation {name}')
 
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
@@ -544,6 +545,7 @@ async def check_sms():
 
                 # Формируем текст сообщения для отправки пользователю если смс новая
                 if int(current_sms) != int(sms_from_status):
+                    logger.info(f'name {name}')
                     if name:
                         msg_text = f"""
             💬<b>Новое SMS</b> на номер: +{activation.phone_number}
@@ -563,7 +565,7 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    await notice_of_arraignment(activation, '')
+                    await notice_of_arraignment(activation, name)
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
