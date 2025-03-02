@@ -941,8 +941,6 @@ class Activation(Model):
         await self.refresh_from_db()  # Перегружаем объект из БД
         await self.fetch_related("service_2")  # Загружаем связь
 
-        logger.debug(f"DEBUG: {self.service_2} (type: {type(self.service_2)})")
-
         return self.service_2.name if isinstance(self.service_2, ServicesOnlinesim) else None
 
 

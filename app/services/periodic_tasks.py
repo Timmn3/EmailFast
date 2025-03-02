@@ -498,20 +498,17 @@ async def check_sms():
                 sms = SmsReceive()
                 status = str(await sms.get_activation_status(activation.activation_id))
                 try:
-                    await activation.fetch_related("service")  # Загружаем объект сервиса
-                    name = activation.service.name if activation.service else None
-                except Exception as e:
-                    logger.error(f"Ошибка при получении имени сервиса: {e}")
+                    name = activation.service.name
+                except Exception:
                     name = None
-
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 order_info = await client.get_order_info(operation_id=activation.activation_id)
                 for_information = order_info
-                logger.debug(f"DEBUG activation: {activation} (type: {type(activation)})")
+
                 name = await activation.get_service_2_name()
-                logger.debug(f"DEBUG name: {name} (type: {type(name)})")
+
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
                     status = f'STATUS_OK:{sms_code}'
@@ -566,7 +563,7 @@ async def check_sms():
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    await notice_of_arraignment(activation, name)
+                    await notice_of_arraignment(activation, '')
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
