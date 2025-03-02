@@ -1072,7 +1072,6 @@ async def replenishment_error_message(payment, service):
 
 async def notice_of_arraignment(activation, name):
     msg_text = (f'✅ аренда\n'
-                # f'{activation.country.name} \n'
                 f'{name} \n'
                 f'пользователь {activation.user.mention}\n'
                 f'id {activation.user.telegram_id}\n'
