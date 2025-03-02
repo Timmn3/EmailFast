@@ -583,8 +583,8 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        await send_coder(f'Ошибка \n{e}')
-        logger.error(e)
+        await send_coder(f'Ошибка check_sms\n{e}')
+        logger.error(f'Ошибка check_sms\n{e}')
 
 
 import asyncio
