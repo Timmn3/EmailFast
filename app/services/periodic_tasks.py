@@ -486,7 +486,7 @@ import re
 
 
 async def check_sms():
-    for_information = ''
+    name = ''
     try:
         # Получаем все активные активации
         activations = await models.Activation.get_active_activations()
@@ -508,7 +508,6 @@ async def check_sms():
                 for_information = order_info
 
                 name = await activation.get_service_2_name()
-                logger.info(f'name activation {name}')
 
                 if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
                     sms_code = order_info[0]['msg']
@@ -585,8 +584,7 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(for_information)
-        await send_coder(f'Ошибка \n{e}\n{for_information}')
+        await send_coder(f'Ошибка \n{e} name {name}')
         logger.error(e)
 
 
