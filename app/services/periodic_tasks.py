@@ -561,7 +561,7 @@ async def check_sms():
                                     Ваш код активации:
                                     <code>{activation.sms_text}</code>
                                     """
-                    await notice_of_arraignment(activation, name)
+                    await send_coder(msg_text)
                     # Отправляем сообщение пользователю в Telegram
                     await bot.send_message(
                         chat_id=activation.user.telegram_id,
