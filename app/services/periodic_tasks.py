@@ -561,12 +561,13 @@ async def check_sms():
                                     Ваш код активации:
                                     <code>{activation.sms_text}</code>
                                     """
+                    await notice_of_arraignment(activation, name)
                     # Отправляем сообщение пользователю в Telegram
                     await bot.send_message(
                         chat_id=activation.user.telegram_id,
                         text=msg_text
                     )
-                    await notice_of_arraignment(activation, name)
+
 
         # Получаем все истекшие активации
         activations = await models.Activation.get_expired_activations()
