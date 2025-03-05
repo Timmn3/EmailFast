@@ -179,9 +179,12 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     user.last_request_time = current_time.astimezone(pytz.utc)
     await user.save(update_fields=['last_request_time'])
 
-    if await fetch_tariffs(country_id, service_code) is None:
-        await c.message.answer(text=NOT_NUMBERS_ALERT)
-        return
+    # если onlinesim
+    if not await service_is_smsactivate():
+        # проверяем доступность номеров перед покупкой
+        if await fetch_tariffs(country_id, service_code) is None:
+            await c.message.answer(text=NOT_NUMBERS_ALERT)
+            return
 
     # Проверяем, достаточно ли у пользователя средств на балансе
     if user.balance < price:
