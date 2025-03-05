@@ -460,6 +460,49 @@ async def set_smsactivate(message: types.Message):
     await message.answer(text="Установлен сервис Onlinesim")
 
 
+@router.message(Command('info_id'))
+async def info_id(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    # Проверка, что команда содержит два аргумента
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /info_id <telegram_id>")
+        return
+
+    try:
+        telegram_id = int(args[1])
+    except ValueError:
+        await message.answer("Некорректный Telegram ID")
+        return
+
+    # Получаем пользователя по Telegram ID
+    user = await models.User.get_user(telegram_id)
+    if user is None:
+        await message.answer("Пользователь с таким Telegram ID не найден.")
+        return
+
+    amount = user.balance
+    mail = await models.Mail.get_user_mails(user.id)
+    if mail:
+        last_element = mail[-1]
+    else:
+        last_element = "-"
+    data = await models.Activation.get_last_rented_info(user.id)
+    # Отправляем уведомление админу
+    await message.answer(
+        f"<b>📋 Информация о пользователе:</b>\n\n"
+        f"<b>💳 Баланс:</b> {amount} ₽\n"
+        f"<i>📞 Арендованный номер:</i> {data[0] if data and data[0] else 'Нет'}\n"
+        f"<i>🗓 Дата аренды:</i> {data[1] if data and data[1] else 'Нет'}\n"
+        f"<i>🛠 Сервис:</i> {data[2] if data and data[2] else 'Нет'}\n"
+        f"<i>🌍 Страна:</i> {data[3] if data and data[3] else 'Нет'}\n"
+        f"<i>📫 Почта:</i> <a href='mailto:{last_element}'></a>\n",
+    parse_mode="HTML"
+    )
+
+
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -470,6 +513,7 @@ async def help_admin(message: types.Message):
     /freemoney &lt;сумма&gt; &lt;лимит&gt; - Создать ссылку на бесплатные деньги
     /send - Рассылка сообщений
     /add_balance &lt;telegram_id&gt; &lt;сумма&gt; - Пополнение баланса пользователя
+    /info_id &lt;telegram_id&gt; - Информация о пользователе
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """

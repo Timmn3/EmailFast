@@ -943,6 +943,38 @@ class Activation(Model):
 
         return self.service_2.name if isinstance(self.service_2, ServicesOnlinesim) else None
 
+    @classmethod
+    async def get_last_rented_info(cls, user_id: int):
+        """
+        Получает последнюю аренду пользователя, включая номер, дату аренды, имя сервиса и страну.
+
+        :param user_id: Идентификатор пользователя.
+        :return: Кортеж с последней арендой: (номер телефона, дата аренды, имя сервиса, название страны) или None, если аренда не найдена.
+        """
+
+        # Получаем все активные активации пользователя, отсортированные по дате окончания активации (по убыванию)
+        active_activations = await cls.filter(user_id=user_id, status=StatusResponse.STATUS_OK).all()
+
+        # Если есть активные активации, берем первую (самую последнюю)
+        if active_activations:
+            last_activation = active_activations[-1]
+
+            await last_activation.fetch_related('country', 'service', 'service_2')
+
+            country_name = last_activation.country.name
+
+            try:
+                service_name = last_activation.service.name
+            except Exception:
+                service_name = last_activation.service_2.name
+
+            # Форматируем дату аренды в нужный формат
+            formatted_date = last_activation.activation_expire_at.strftime("%Y-%m-%d %H:%M")
+
+            return last_activation.phone_number, formatted_date, service_name, country_name
+
+        # Если нет активных арендуемых данных
+        return None
 
 class Payment(Model):
     class Meta:
