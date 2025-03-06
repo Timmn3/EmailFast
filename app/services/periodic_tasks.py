@@ -587,8 +587,20 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        await send_coder(f'Ошибка check_sms\n{e}')
-        logger.error(f'Ошибка check_sms\n{e}')
+        error_info = f"""
+        ❌ Ошибка в check_sms
+        ───────────────────
+        🔹 Пользователь: {activation.user.telegram_id if 'activation' in locals() and activation.user else 'Неизвестно'}
+        🔹 Номер: {activation.phone_number if 'activation' in locals() else 'Неизвестно'}
+        🔹 Сервис: {name if 'name' in locals() else 'Неизвестно'}
+        🔹 ID активации: {activation.activation_id if 'activation' in locals() else 'Неизвестно'}
+        🔹 Статус: {activation.status.name if 'activation' in locals() else 'Неизвестно'}
+
+        ⚠️ Ошибка: {e}
+        """
+
+        await send_coder(error_info)
+        logger.error(error_info)
 
 
 import asyncio
