@@ -16,7 +16,7 @@ from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services.bot_texts import country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, DOLLAR_ONLINESIM, DOLLAR_SMS_ACTIVATE, \
-    SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT
+    SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT, list_for_sorting_countries_for_telegram
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.onlinesim.get_tariffs import fetch_tariffs
 from app.services.sms_receive import SmsReceive
@@ -473,6 +473,9 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                 country_id = int(country["country"])
                 country["country"] = country_name_mapping.get(country_id, "Unknown Country")
 
+        if service_code == 'telegram':
+            sorted_countries_with_prices = await sort_countries_tg(sorted_countries_with_prices, list_for_sorting_countries_for_telegram)
+
         # Передача данных через параметр `data`
         await manager.start(CountryMenu.select_country, mode=StartMode.NORMAL,
                             data={"countries_with_prices": sorted_countries_with_prices,
@@ -503,3 +506,13 @@ def sort_countries_by_dict(countries_with_prices):
     )
 
     return sorted_countries
+
+
+def country_key(country_dict, priority_list):
+    try:
+        return (priority_list.index(country_dict["country"]),)
+    except ValueError:
+        return (len(priority_list),)
+
+async def sort_countries_tg(data, priority_list):
+    return sorted(data, key=lambda x: country_key(x, priority_list))
