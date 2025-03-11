@@ -57,17 +57,16 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
     :param kwargs: Дополнительные параметры.
     :return: dict с деталями выбранной страны.
     """
-    # Данные о выбранной стране сохранены в dialog_data
     try:
         selected_country = dialog_manager.dialog_data.get("selected_country")
         if selected_country is None:
             selected_country = dialog_manager.start_data.get("selected_country")
 
-        # Получаем тарифы
-        tariffs = [
-            {"days": get_day_string(int(days)), "price": price}
-            for days, price in selected_country["tariffs"].items()
-        ]
+        # Получаем тарифы и сортируем по цене
+        tariffs = sorted(
+            [{"days": get_day_string(int(days)), "price": price} for days, price in selected_country["tariffs"].items()],
+            key=lambda x: x["price"]
+        )
 
         return {
             "country": selected_country["country"],
@@ -75,6 +74,7 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
         }
     except:
         return {"country": "Неизвестно", "tariffs": []}
+
 
 
 

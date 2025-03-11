@@ -38,7 +38,7 @@ class OnlineSimRentAPI:
 
                     # Фильтрация данных
                     filtered_data = {
-                        country_code: info["days"]
+                        country_code: dict(sorted(info["days"].items(), key=lambda x: int(x[0])))
                         for country_code, info in data.items()
                         if info.get("enabled", False)
                     }
