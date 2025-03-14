@@ -1,7 +1,7 @@
 from pathlib import Path
 import yaml
 from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.bot import DefaultBotProperties
 
 
@@ -106,5 +106,5 @@ bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode='HTML', link_preview_is_disabled=True)
 )
-storage = RedisStorage.from_url(f"redis://{DB_HOST}:6379/0", key_builder=DefaultKeyBuilder(with_destiny=True))
+storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
