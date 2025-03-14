@@ -10,6 +10,8 @@ from app.db import models
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_sms.scheduler_balance import start_balance_check
 from app.dialogs.receive_sms.states import CountryMenu
+from app.dialogs.rent_sms.scheduler_balance import start_balance_check_rent
+from app.dialogs.rent_sms.selected import rent_number_in_days
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.handlers.affiliate_program import send_affiliate_message
 from app.services import bot_texts as bt
@@ -248,6 +250,9 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     country_id = ''
     service_code = ''
     service_price = ''
+    rent_country_code = ''
+    selected_country = ''
+    day_index = ''
 
     if state == 'CountryMenu':
         country_id = ctx.dialog_data['country_id']
@@ -258,6 +263,9 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         else:
             await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
     elif state == 'RentCountryMenu':
+        rent_country_code = ctx.dialog_data['rent_country_code']
+        selected_country = ctx.dialog_data['selected_country']
+        day_index = ctx.dialog_data['day_index']
         if price >= 300:
             await manager.start(RentCountryMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
@@ -279,7 +287,10 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'other_url': other_url,
         'price': price,
         'country_id': country_id,
+        'rent_country_code': rent_country_code,
         'service_code': service_code,
+        'selected_country': selected_country,
+        'day_index': day_index,
         'service_price': service_price
     })
 
@@ -320,6 +331,12 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
         # Запускаем проверку баланса
         await start_balance_check(c.from_user.id, service_price, retail_price, free_price_map, country_id, service_code,
                                   c, manager)
+
+    if manager.current_context().state.group.__name__ == 'RentCountryMenu':
+        day_index = current_context.dialog_data.get('day_index')
+        selected_country = current_context.dialog_data.get('selected_country')
+
+        await start_balance_check_rent(c.from_user.id, price, day_index, selected_country, c, manager)
 
     if manager:
         await manager.reset_stack()

@@ -197,7 +197,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                                                       'service_price': price, 'price': missing_amount})
 
         from app.dialogs.personal_cabinet.selected import send_payment_keyboard
-
         await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
 
         # await manager.switch_to(CountryMenu.deposit)

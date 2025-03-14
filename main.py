@@ -22,6 +22,8 @@ from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
 from loguru import logger
+from app.scheduler_instance import scheduler
+
 
 # logger.remove()
 # Добавляем обработчик для записи в файл без цветного вывода
@@ -42,7 +44,6 @@ logger.add("logs/loguru.log",
 # CRITICAL - Для критических ошибок, которые могут привести к серьезным последствиям или завершению программы.
 
 msg_text = "Версия 02.03.2025"  # git push production master
-scheduler = AsyncIOScheduler()
 
 
 async def on_unknown_intent(event, dialog_manager: DialogManager):
@@ -103,7 +104,8 @@ async def main(dp: Dispatcher):
 
     set_scheduled_jobs(scheduler)
     scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
 
     await userbot_ping()
 
@@ -169,7 +171,6 @@ def shutdown_scheduler(scheduler):
     scheduler.shutdown()
 
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
-signal.signal(signal.SIGINT, lambda *args: shutdown_scheduler(scheduler))  # Для Ctrl+C
 
 
 if __name__ == '__main__':

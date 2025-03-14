@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import pytz
 from app.services import bot_texts as bt
 import asyncio
-
+from typing import Optional
 
 # Функция для обработки нажатия кнопки поиска страны
 async def rent_on_search_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -95,7 +95,8 @@ async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, man
     await manager.switch_to(RentCountryMenu.country_details)
 
 
-async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: DialogManager, day_index: str):
+async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: DialogManager, day_index: str,
+                              selected_country: Optional[dict] = None):
     """
     Обрабатывает выбор количества дней для аренды или продления аренды номера страны.
 
@@ -103,17 +104,20 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
     :param widget: Виджет Select от aiogram_dialog.
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param day_index: Индекс выбранного количества дней.
+    :param selected_country: selected_country.
     """
     tzid = None
-    # Получаем данные о выбранной стране
-    selected_country = manager.dialog_data.get("selected_country")
-    if selected_country is None:
-        selected_country = manager.start_data.get("selected_country")
-        tzid = selected_country["tzid"]
 
-    if not selected_country:
-        await c.answer("Ошибка: данные о стране отсутствуют.", show_alert=True)
-        return
+    if selected_country is None:
+        # Получаем данные о выбранной стране
+        selected_country = manager.dialog_data.get("selected_country")
+        if selected_country is None:
+            selected_country = manager.start_data.get("selected_country")
+            tzid = selected_country["tzid"]
+
+        if not selected_country:
+            await c.answer("Ошибка: данные о стране отсутствуют.", show_alert=True)
+            return
 
     # Преобразуем индекс дней в число
     days = int(day_index.split()[0])
@@ -121,22 +125,20 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
     price = selected_country['tariffs'].get(str(days))
     # Получаем информацию о пользователе
     user = await models.User.get_user(c.from_user.id)
+    country_code = selected_country["rent_country_code"]  # Код страны из context
 
     # Проверяем, достаточно ли у пользователя средств на балансе
     if user.balance < price:
 
         missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
-
-        manager.current_context().dialog_data.update({'price': missing_amount})
-
+        manager.current_context().dialog_data.update({'day_index': day_index, 'selected_country': selected_country,
+                                                      'rent_country_code': country_code, 'price': missing_amount})
         from app.dialogs.personal_cabinet.selected import send_payment_keyboard
-
         await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
 
         # await manager.switch_to(RentCountryMenu.deposit)
         return
 
-    country_code = selected_country["rent_country_code"]  # Код страны из context
 
     await c.message.answer(text=NUMBER_REQUEST_SENT)
 

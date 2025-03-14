@@ -3,34 +3,33 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 from app.db import models
 from app.dialogs.receive_sms.selected import send_service_on_country
+from app.dialogs.rent_sms.selected import rent_number_in_days
 from app.scheduler_instance import scheduler
 
 
-# Функция для проверки баланса и вызова send_service_on_country
-async def check_balance_and_send_service(user_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
+# Функция для проверки баланса
+async def check_balance_and_send_service_rent (user_id, price, day_index, selected_country, c, manager):
     user = await models.User.get_user(user_id)
     if user.balance >= price:
-        await send_service_on_country(
-            country_id=country_id,
-            service_code=service_code,
-            price=price,
-            retail_price=retail_price,
-            free_price_map=free_price_map,
-            c=c,
-            manager=manager
+        await rent_number_in_days(
+            c = c,
+            widget = None,
+            manager = manager,
+            day_index = day_index,
+            selected_country = selected_country
         )
         # Останавливаем задачу после успешного выполнения
         scheduler.remove_all_jobs()
 
 
 # Используем scheduler для добавления задач
-async def start_balance_check(user_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
+async def start_balance_check_rent(user_id, price, day_index, selected_country, c, manager):
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
     # Добавляем задачу для проверки баланса каждую секунду
     scheduler.add_job(
-        check_balance_and_send_service,
+        check_balance_and_send_service_rent,
         IntervalTrigger(seconds=1),
-        args=[user_id, price, retail_price, free_price_map, country_id, service_code, c, manager],
+        args=[user_id, price, day_index, selected_country, c, manager],
         id=f'balance_check_{timestamp}',
         replace_existing=True
     )
