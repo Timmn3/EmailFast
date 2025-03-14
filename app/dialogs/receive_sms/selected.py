@@ -11,6 +11,7 @@ from pyonlinesim import OnlineSMS
 from app.db import models
 from app.db.models import PriceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
+
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
@@ -188,9 +189,18 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
     # Проверяем, достаточно ли у пользователя средств на балансе
     if user.balance < price:
+
+
+        missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
+
         manager.current_context().dialog_data.update({'country_id': country_id, 'service_code': service_code,
-                                                      'service_price': price})
-        await manager.switch_to(CountryMenu.deposit)
+                                                      'service_price': price, 'price': missing_amount})
+
+        from app.dialogs.personal_cabinet.selected import send_payment_keyboard
+
+        await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
+
+        # await manager.switch_to(CountryMenu.deposit)
         return
 
     await c.message.answer(text=NUMBER_REQUEST_SENT)
