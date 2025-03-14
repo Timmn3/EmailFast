@@ -124,9 +124,16 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
 
     # Проверяем, достаточно ли у пользователя средств на балансе
     if user.balance < price:
-        # manager.current_context().dialog_data.update({'country_id': country_id, 'service_code': service_code,
-        #                                               'service_price': price})
-        await manager.switch_to(RentCountryMenu.deposit)
+
+        missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
+
+        manager.current_context().dialog_data.update({'price': missing_amount})
+
+        from app.dialogs.personal_cabinet.selected import send_payment_keyboard
+
+        await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
+
+        # await manager.switch_to(RentCountryMenu.deposit)
         return
 
     country_code = selected_country["rent_country_code"]  # Код страны из context
