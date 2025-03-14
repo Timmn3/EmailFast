@@ -253,11 +253,13 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     rent_country_code = ''
     selected_country = ''
     day_index = ''
+    retail_price = ''
 
     if state == 'CountryMenu':
         country_id = ctx.dialog_data['country_id']
         service_code = ctx.dialog_data['service_code']
         service_price = ctx.dialog_data['service_price']
+        retail_price = ctx.dialog_data['retail_price']
         if price >= 300:
             await manager.start(CountryMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
@@ -291,6 +293,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'service_code': service_code,
         'selected_country': selected_country,
         'day_index': day_index,
+        'retail_price': retail_price,
         'service_price': service_price
     })
 

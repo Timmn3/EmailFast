@@ -194,6 +194,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
 
         manager.current_context().dialog_data.update({'country_id': country_id, 'service_code': service_code,
+                                                      'retail_price': retail_price,
                                                       'service_price': price, 'price': missing_amount})
 
         from app.dialogs.personal_cabinet.selected import send_payment_keyboard
@@ -204,7 +205,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
     await c.message.answer(text=NUMBER_REQUEST_SENT)
 
-    if free_price_map is None:
+    if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
         client = OnlineSMS(api_key=API_KEY_ONLINESIM)
         try:
             # Отправляем запрос на получение номера заказа с указанием сервиса и страны

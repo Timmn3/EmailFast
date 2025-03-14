@@ -420,7 +420,7 @@ SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coin
                      'eBay|Kleinanzeigen.', 'Seosprint', 'taxiMaxim', 'Steam', 'Gett', 'Gemini.com', 'Юла', 'OLX',
                      'ftx.com', 'Happn']
 
-SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM = ["ot"]
+SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM = ["ot", "ts"]
 
 
 # возвращает первый ключ, соответствующий значению
