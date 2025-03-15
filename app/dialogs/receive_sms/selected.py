@@ -170,7 +170,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
     # Проверяем, прошло ли 10 секунд с последнего запроса
     if user.last_request_time is not None and (
-            datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 10:
+            datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
         await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
         return
 

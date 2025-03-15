@@ -28,10 +28,11 @@ async def start_balance_check_rent(user_id, price, day_index, selected_country, 
     # Добавляем задачу для проверки баланса каждую секунду
     scheduler.add_job(
         check_balance_and_send_service_rent,
-        IntervalTrigger(seconds=1),
+        IntervalTrigger(seconds=10),
         args=[user_id, price, day_index, selected_country, c, manager],
         id=f'balance_check_{timestamp}',
-        replace_existing=True
+        replace_existing=True,
+        max_instances=5
     )
 
     # Добавляем задачу для остановки всех проверок через 5 минут

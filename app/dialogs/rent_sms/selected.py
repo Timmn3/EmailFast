@@ -144,7 +144,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
 
     # Проверяем, прошло ли 10 секунд с последнего запроса
     if user.last_request_time is not None and (
-            datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 10:
+            datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
         await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
         return
 
