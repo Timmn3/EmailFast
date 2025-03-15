@@ -96,21 +96,21 @@ async def check_payment_lava():
                             refer.total_ref_earnings += ref_sum
                             await refer.save()
 
-                    try:
-                        # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                        builder = InlineKeyboardBuilder()
-                        if payment.continue_data:
-                            builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                        # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                        await bot.send_message(
-                            chat_id=payment.user.telegram_id,
-                            text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                            reply_markup=builder.as_markup()
-                        )
-                    except:
-                        # Игнорируем ошибки, возникающие при отправке сообщения пользователю.
-                        pass
+                    # try:
+                    #     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
+                    #     builder = InlineKeyboardBuilder()
+                    #     if payment.continue_data:
+                    #         builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    #
+                    #     # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    #     await bot.send_message(
+                    #         chat_id=payment.user.telegram_id,
+                    #         text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                    #         reply_markup=builder.as_markup()
+                    #     )
+                    # except:
+                    #     # Игнорируем ошибки, возникающие при отправке сообщения пользователю.
+                    #     pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             pass
@@ -171,16 +171,16 @@ async def check_payment_freekassa():
                             await refer.save()
 
                         # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                        builder = InlineKeyboardBuilder()
-                        if payment.continue_data:
-                            builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                        # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                        await bot.send_message(
-                            chat_id=payment.user.telegram_id,
-                            text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                            reply_markup=builder.as_markup()
-                        )
+                        # builder = InlineKeyboardBuilder()
+                        # if payment.continue_data:
+                        #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                        #
+                        # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                        # await bot.send_message(
+                        #     chat_id=payment.user.telegram_id,
+                        #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                        #     reply_markup=builder.as_markup()
+                        # )
 
             except Exception as e:
                 # Логируем любые исключения, возникшие в процессе обработки платежа.
@@ -229,16 +229,16 @@ async def check_payment_yoomoney():
                         await refer.save()
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    builder = InlineKeyboardBuilder()
-                    if payment.continue_data:
-                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    await bot.send_message(
-                        chat_id=payment.user.telegram_id,
-                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        reply_markup=builder.as_markup()
-                    )
+                    # builder = InlineKeyboardBuilder()
+                    # if payment.continue_data:
+                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    #
+                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    # await bot.send_message(
+                    #     chat_id=payment.user.telegram_id,
+                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                    #     reply_markup=builder.as_markup()
+                    # )
 
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
@@ -287,16 +287,16 @@ async def check_payment_anypay():
                         await refer.save()
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    builder = InlineKeyboardBuilder()
-                    if payment.continue_data:
-                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    await bot.send_message(
-                        chat_id=payment.user.telegram_id,
-                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        reply_markup=builder.as_markup()
-                    )
+                    # builder = InlineKeyboardBuilder()
+                    # if payment.continue_data:
+                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    #
+                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    # await bot.send_message(
+                    #     chat_id=payment.user.telegram_id,
+                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                    #     reply_markup=builder.as_markup()
+                    # )
 
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
@@ -344,16 +344,16 @@ async def check_payment_streampay():
                         await refer.save()
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    builder = InlineKeyboardBuilder()
-                    if payment.continue_data:
-                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    await bot.send_message(
-                        chat_id=payment.user.telegram_id,
-                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        reply_markup=builder.as_markup()
-                    )
+                    # builder = InlineKeyboardBuilder()
+                    # if payment.continue_data:
+                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    #
+                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    # await bot.send_message(
+                    #     chat_id=payment.user.telegram_id,
+                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                    #     reply_markup=builder.as_markup()
+                    # )
 
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
@@ -408,15 +408,15 @@ async def check_payment_ckassa():
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
 
-                # Если есть данные для продолжения операции после успешной оплаты, отправляем клавиатуру.
-                builder = InlineKeyboardBuilder()
-                if payment.continue_data:
-                    builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    await bot.send_message(
-                        chat_id=payment.user.telegram_id,
-                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        reply_markup=builder.as_markup()
-                    )
+                # # Если есть данные для продолжения операции после успешной оплаты, отправляем клавиатуру.
+                # builder = InlineKeyboardBuilder()
+                # if payment.continue_data:
+                #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                #     await bot.send_message(
+                #         chat_id=payment.user.telegram_id,
+                #         text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                #         reply_markup=builder.as_markup()
+                #     )
 
         except Exception as e:
             # Логируем любые исключения.
@@ -466,16 +466,16 @@ async def check_payment_cryptomus():
                         await refer.save()
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    builder = InlineKeyboardBuilder()
-                    if payment.continue_data:
-                        builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-
-                    # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    await bot.send_message(
-                        chat_id=payment.user.telegram_id,
-                        text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        reply_markup=builder.as_markup()
-                    )
+                    # builder = InlineKeyboardBuilder()
+                    # if payment.continue_data:
+                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
+                    #
+                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
+                    # await bot.send_message(
+                    #     chat_id=payment.user.telegram_id,
+                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
+                    #     reply_markup=builder.as_markup()
+                    # )
 
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
