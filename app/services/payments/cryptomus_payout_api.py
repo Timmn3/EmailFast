@@ -3,7 +3,7 @@ import json
 from hashlib import md5
 import base64
 
-API_URL = "https://api.cryptomus.com/v1/"
+API_URL = "https://api.heleket.com/v1/"   # https://api.cryptomus.com/v1/
 
 class CryptomusPayoutAPIException(Exception):
     """Кастомное исключение для работы с API выплат"""
