@@ -22,7 +22,7 @@ def select_rent_window():
     :return: Объект Window от aiogram_dialog.
     """
     return Window(
-        Const(bt.SELECT_COUNTRY),
+        Const(bt.SELECT_COUNTRY_RENT),
         ScrollingGroup(
             Select(
                 Format("{item[country]} от {item[price]} ₽"),
