@@ -134,11 +134,11 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
                 {"code": "ot", "name": "Любой другой"}
             ])
 
-        priority_codes = {"telegram", "google", "vkcom"}
-        priority_services = [s for s in services_db["services"] if s["code"] in priority_codes]
-        other_services = [s for s in services_db["services"] if s["code"] not in priority_codes]
+            priority_codes = {"telegram", "google", "vkcom", "whatsapp"}
+            priority_services = [s for s in services_db["services"] if s["code"] in priority_codes]
+            other_services = [s for s in services_db["services"] if s["code"] not in priority_codes]
 
-        services_db["services"] = priority_services + other_services
+            services_db["services"] = priority_services + other_services
         return services_db
 
 
