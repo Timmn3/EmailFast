@@ -1,4 +1,3 @@
-import asyncio
 from mailtm import Email
 
 async def create_mail():
