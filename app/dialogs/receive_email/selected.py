@@ -60,7 +60,10 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
     mail = await models.Mail.add_mail(user, email, token)
     ctx.start_data['mail_id'] = mail.id
     ctx.dialog_data['mail_id'] = mail.id
-    await manager.switch_to(ReceiveEmailMenu.receive_email)
+    await manager.start(ReceiveEmailMenu.receive_email,
+                            data={"mail_id": mail.id},
+                            mode=StartMode.RESET_STACK
+                            )
 
 
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
