@@ -191,8 +191,10 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             if activation.sms_text is None:
                 user.balance += activation.cost
                 await user.save()
+                msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
+            else:
+                msg_text = bt.SERVICE_CANCEL.strip()
 
-            msg_text = bt.SERVICE_CANCEL.strip()
             # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
             if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
                 try:
