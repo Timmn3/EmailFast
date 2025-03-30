@@ -63,10 +63,14 @@ RENT_DETAILS = """
 RENT_SUCCESS_MESSAGE = "✅ Номер успешно арендован на {days}"
 NUMBER_RENTAL_CLOSED = "Срок аренды номера {number} истек"
 
-SERVICE_CANCEL = """
+SERVICE_CANCEL_MONEY_RETURNED = """
 ⛔️Номер отменен
 
 💰Деньги вернулись на баланс.
+"""
+
+SERVICE_CANCEL = """
+⛔️Номер отменен
 """
 
 NOT_ENOUGH_BALANCE = """
