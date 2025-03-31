@@ -94,7 +94,7 @@ async def save_payment_to_database(user, amount):
     msg_text = (f'💲Пополнение stars⭐️\n'
                 f'пользователь {user.mention}\n'
                 f'id {user.telegram_id}\n'
-                f'сумма {amount}'
+                f'сумма {amount}\n'
                 f'баланс: {user.balance}')
     await send_coder(msg_text)
     await user.save()
