@@ -1585,3 +1585,29 @@ class AdminSettings(Model):
 
     def __str__(self):
         return f"{self.name_setting}: {self.value_setting}"
+
+
+
+class BroadcastCampaign(Model):
+    """ Таблица для хранения информации о рассылках """
+    id = fields.IntField(pk=True)
+    message_id = fields.BigIntField(null=True)  # ID оригинального сообщения (если копируем)
+    message_text = fields.TextField(null=True)  # Текст сообщения (если текстовая рассылка)
+    sent_by_admin_id = fields.BigIntField(null=True)  # ID администратора, отправившего сообщение
+    created_at = fields.DatetimeField(auto_now_add=True, timezone=True)  # Учитываем часовой пояс
+
+    class Meta:
+        table = "broadcast_campaigns"
+
+
+
+
+class Broadcast(Model):
+    """ Таблица для хранения отправленных сообщений в рамках рассылки """
+    id = fields.IntField(pk=True)
+    campaign = fields.ForeignKeyField("models.BroadcastCampaign", related_name="broadcasts", on_delete=fields.CASCADE)
+    sent_to = fields.BigIntField()  # Telegram ID пользователя
+    created_at = fields.DatetimeField(auto_now_add=True, timezone=True)  # Учитываем часовой пояс
+
+    class Meta:
+        table = "broadcasts"

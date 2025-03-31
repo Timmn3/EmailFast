@@ -20,6 +20,8 @@ from loguru import logger
 from tortoise.functions import Sum
 import calendar
 
+from celery_worker.tasks import send_message_batch
+
 router = Router()
 
 
@@ -261,7 +263,6 @@ https://t.me/{me.username}?start={word}
 
     await message.answer(text=msg_text, disable_web_page_preview=True)
 
-
 @router.message(Command('send'))
 async def send_message(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
@@ -284,34 +285,67 @@ async def cancel_send_message(c: types.CallbackQuery, state: FSMContext):
     await c.message.edit_text(text='Ввод отменен')
     await state.clear()
 
-
 @router.message(BroadcastState.send_message)
 async def on_send_message(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
 
     await state.clear()
-    await state.update_data(
-        chat_id=message.chat.id,
-        message_id=message.message_id
+
+    # Проверяем, есть ли у сообщения текст
+    message_text = message.text if message.content_type == types.ContentType.TEXT else None
+
+    # Сохраняем информацию о рассылке в базе данных
+    campaign = await models.BroadcastCampaign.create(
+        message_id=message.message_id,
+        message_text=message_text,  # Сохраняем текст сообщения, если он есть
+        sent_by_admin_id = message.from_user.id  # Сохраняем ID администратора
     )
+
+    # Обновляем состояние с данными рассылки и campaign_id
+    await state.update_data(
+        campaign_id=campaign.id,  # Сохраняем campaign_id
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+        message_text=message_text
+    )
+
+    # Копируем сообщение (для наглядности перед подтверждением)
     await bot.copy_message(
         chat_id=message.chat.id,
         from_chat_id=message.chat.id,
         message_id=message.message_id
     )
+
     users_count = await models.User.all().count()
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                types.InlineKeyboardButton(text=bt.CONFIRM_BTN, callback_data='send_message'),
+                types.InlineKeyboardButton(text=bt.CONFIRM_BTN, callback_data='send_message_celery'),
                 types.InlineKeyboardButton(text='Отмена', callback_data='cancel_send_message')
             ]
         ]
     )
 
-    await message.answer(text=f'Сообщение выше будет отправлено {users_count} пользователям. Продолжить?',
-                         reply_markup=mk)
+    await message.answer(
+        text=f'Сообщение выше будет отправлено {users_count} пользователям. Продолжить?',
+        reply_markup=mk
+    )
+
+
+
+@router.callback_query(F.data == 'send_message_celery')
+async def on_confirm_send_message(c: types.CallbackQuery, state: FSMContext):
+    if c.from_user.id not in ADMINS:
+        return
+    # Получаем данные из состояния
+    data = await state.get_data()
+    campaign_id = data.get("campaign_id")  # Получаем campaign_id
+    await c.message.edit_text(f"Рассылка #{campaign_id} запущена!")
+    # Запуск задачи Celery с campaign_id
+    send_message_batch.delay(campaign_id)  # Передаем campaign_id в Celery-задачу
+    await state.clear()
+
 
 
 @router.callback_query(F.data == 'send_message')
@@ -407,7 +441,7 @@ async def add_balance(message: types.Message):
     # Проверка, что команда содержит два аргумента
     args = message.text.split()
     if len(args) != 3:
-        await message.answer("Использование: /add_balance <telegram_id> <сумма>")
+        await message.answer("Использование: /add_balance [telegram_id] [сумма]")
         return
 
     try:
@@ -468,7 +502,7 @@ async def info_id(message: types.Message):
     # Проверка, что команда содержит два аргумента
     args = message.text.split()
     if len(args) != 2:
-        await message.answer("Использование: /info_id <telegram_id>")
+        await message.answer("Использование: /info_id [telegram_id]")
         return
 
     try:
@@ -503,6 +537,36 @@ async def info_id(message: types.Message):
     )
 
 
+@router.message(Command('sending_status'))
+async def campaign_status(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    # Проверяем, передан ли campaign_id
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /sending_status [номер рассылки]")
+        return
+
+    try:
+        campaign_id = int(args[1])
+    except ValueError:
+        await message.answer("Некорректный номер рассылки")
+        return
+
+    # Проверяем существование рассылки
+    campaign = await models.BroadcastCampaign.get_or_none(id=campaign_id)
+    if not campaign:
+        await message.answer("Рассылка с таким ID не найдена.")
+        return
+
+    # Подсчитываем количество отправленных сообщений
+    sent_count = await models.Broadcast.filter(campaign_id=campaign_id).count()
+
+    await message.answer(f"В рамках рассылки #{campaign_id} отправлено сообщений: {sent_count}")
+
+
+
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -510,10 +574,11 @@ async def help_admin(message: types.Message):
 
     commands = """
     /stat - Статистика
-    /freemoney &lt;сумма&gt; &lt;лимит&gt; - Создать ссылку на бесплатные деньги
+    /freemoney [сумма] [лимит] - Создать ссылку на бесплатные деньги
     /send - Рассылка сообщений
-    /add_balance &lt;telegram_id&gt; &lt;сумма&gt; - Пополнение баланса пользователя
-    /info_id &lt;telegram_id&gt; - Информация о пользователе
+    /sending_status [номер рассылки] - Проверка рассылки сообщений
+    /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
+    /info_id [telegram_id] - Информация о пользователе
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
