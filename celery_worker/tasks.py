@@ -6,11 +6,13 @@ import asyncio
 from loguru import logger
 from tortoise import Tortoise
 
+test = True
+
+ADMINS = [7099582423, 5097159804, 808667695, 1089138631]
 
 async def init_db():
     await Tortoise.init(config=DB_CONFIG)
     await Tortoise.generate_schemas()
-
 
 @celery_app.task
 def send_message_batch(campaign_id: int):
@@ -19,35 +21,31 @@ def send_message_batch(campaign_id: int):
 
 
 async def async_send_message(campaign_id: int):
-    await init_db()  # Инициализация базы данных
+    await init_db()
     bot = Bot(token=API_TOKEN)
 
     campaign = await models.BroadcastCampaign.get(id=campaign_id)
-    users = await models.User.all()
+    users = ADMINS if test else await models.User.all()
     sent_users = {b.sent_to for b in await models.Broadcast.filter(campaign=campaign)}
 
     sent_count = 0
     blocked_count = 0
 
-    for user in users:
-        if user.telegram_id in sent_users:
-            continue  # Пропускаем, если уже отправляли
+    for user_id in users:
+        if user_id in sent_users:
+            continue
         try:
-            await bot.send_message(chat_id=user.telegram_id, text=campaign.message_text)
-            await models.Broadcast.create(campaign=campaign, sent_to=user.telegram_id)
-            sent_count += 1  # Увеличиваем счётчик успешных отправок
+            await bot.send_message(chat_id=user_id, text=campaign.message_text)
+            await models.Broadcast.create(campaign=campaign, sent_to=user_id)
+            sent_count += 1
         except Exception as e:
             error_message = str(e)
-
-            # Проверяем на конкретную ошибку "chat not found"
             if "chat not found" in error_message:
-                blocked_count += 1  # Увеличиваем счётчик заблокировавших бота
+                blocked_count += 1
             else:
-                logger.error(f"Ошибка при отправке {user.telegram_id}: {e}")
-
+                logger.error(f"Ошибка при отправке {user_id}: {e}")
         await asyncio.sleep(0.5)
 
-    # Отправляем админу статистику по рассылке
     text = (f'Рассылка завершена!\n'
             f'✅ Успешно отправлено: {sent_count}\n'
             f'🚫 Заблокировали бота: {blocked_count}')
