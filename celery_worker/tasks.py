@@ -33,7 +33,7 @@ async def async_send_message(campaign_id: int):
         if user.telegram_id in sent_users:
             continue  # Пропускаем, если уже отправляли
         try:
-            await bot.send_message(chat_id=5635586329, text=campaign.message_text)
+            await bot.send_message(chat_id=user.telegram_id, text=campaign.message_text)
             await models.Broadcast.create(campaign=campaign, sent_to=user.telegram_id)
             sent_count += 1  # Увеличиваем счётчик успешных отправок
         except Exception as e:
