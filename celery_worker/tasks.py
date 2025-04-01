@@ -8,7 +8,7 @@ from tortoise import Tortoise
 
 test = True
 
-ADMINS = [7099582423, 5097159804, 808667695, 1089138631]
+LIMITED_USERS = [7099582423, 5097159804, 808667695, 1089138631]
 
 async def init_db():
     await Tortoise.init(config=DB_CONFIG)
@@ -25,7 +25,7 @@ async def async_send_message(campaign_id: int):
     bot = Bot(token=API_TOKEN)
 
     campaign = await models.BroadcastCampaign.get(id=campaign_id)
-    users = ADMINS if test else await models.User.all()
+    users = LIMITED_USERS if test else await models.User.all()
     sent_users = {b.sent_to for b in await models.Broadcast.filter(campaign=campaign)}
 
     sent_count = 0

@@ -43,7 +43,7 @@ logger.add("logs/loguru.log",
 # ERROR - Для сообщений об ошибках, которые препятствуют нормальному выполнению.
 # CRITICAL - Для критических ошибок, которые могут привести к серьезным последствиям или завершению программы.
 
-msg_text = "Версия 15.03.2025"  # git push production master
+msg_text = "Версия 31.03.2025"  # git push production master
 
 
 async def on_unknown_intent(event, dialog_manager: DialogManager):
@@ -133,7 +133,7 @@ def set_scheduled_jobs(scheduler):
             # Добавление\обновление сервисов
             scheduler.add_job(add_services, "cron", hour=3, minute=0)
             # Пинг userbot
-            scheduler.add_job(userbot_ping, "interval", seconds=180, max_instances=3)
+            scheduler.add_job(userbot_ping, "interval", seconds=300, max_instances=3)
             # Проверка истечения срока почты и уведомления
             scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
             # Проверка арендованных SMS
