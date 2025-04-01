@@ -16,7 +16,7 @@ async def init_db():
 
 @celery_app.task
 def send_message_batch(campaign_id: int):
-    print("Celery таска запущена")
+    print(f"Celery таска #{campaign_id} запущена")
     asyncio.run(async_send_message(campaign_id))  # Запускаем асинхронную задачу
 
 
@@ -35,7 +35,12 @@ async def async_send_message(campaign_id: int):
         if user_id in sent_users:
             continue
         try:
-            await bot.send_message(chat_id=user_id, text=campaign.message_text)
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=campaign.sent_by_admin_id,  # ID администратора, который отправил сообщение
+                message_id=campaign.message_id
+            )
+
             await models.Broadcast.create(campaign=campaign, sent_to=user_id)
             sent_count += 1
         except Exception as e:
