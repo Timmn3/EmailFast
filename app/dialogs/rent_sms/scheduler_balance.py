@@ -21,30 +21,35 @@ async def check_balance_and_send_service_rent(user_id, price, day_index, selecte
             selected_country=selected_country
         )
         # Удаляем задачу проверки баланса после успешного выполнения
-        scheduler.remove_job(f'balance_check_rent_{user_id}')
+        if scheduler.get_job(f'balance_check_rent_{user_id}'):
+            scheduler.remove_job(f'balance_check_rent_{user_id}')
 
 
 # Асинхронная функция для запуска проверки баланса
 async def start_balance_check_rent(user_id, price, day_index, selected_country, c, manager):
-    # Генерируем уникальный идентификатор задачи с меткой времени
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
     job_id = f'balance_check_rent_{user_id}'
+    stop_job_id = f'stop_{job_id}'
 
-    # Добавляем задачу для периодической проверки баланса каждые 10 секунд
+    # Проверяем, есть ли уже такая задача, и удаляем перед добавлением
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+    if scheduler.get_job(stop_job_id):
+        scheduler.remove_job(stop_job_id)
+
+    # Добавляем задачу для периодической проверки баланса каждые 5 секунд
     scheduler.add_job(
         check_balance_and_send_service_rent,
         IntervalTrigger(seconds=5),
         args=[user_id, price, day_index, selected_country, c, manager],
-        id=job_id,
-        replace_existing=True  # Заменяем существующую задачу с тем же ID
+        id=job_id
     )
 
     # Определяем время завершения задачи (через 5 минут)
     end_time = datetime.now() + timedelta(minutes=5)
 
-    # Добавляем отдельную задачу для остановки проверки баланса по истечении времени
+    # Добавляем отдельную задачу для остановки проверки баланса
     scheduler.add_job(
-        lambda: scheduler.remove_job(job_id),  # Лямбда-функция для удаления задачи
-        DateTrigger(run_date=end_time),  # Запускаем через 5 минут
-        id=f'stop_{job_id}'  # Уникальный ID для задачи остановки
+        lambda: scheduler.remove_job(job_id) if scheduler.get_job(job_id) else None,
+        DateTrigger(run_date=end_time),
+        id=stop_job_id
     )
