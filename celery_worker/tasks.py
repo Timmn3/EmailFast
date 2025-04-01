@@ -6,7 +6,7 @@ import asyncio
 from loguru import logger
 from tortoise import Tortoise
 
-test = True
+test = False
 
 LIMITED_USERS = [7099582423, 5097159804, 808667695, 1089138631]
 
