@@ -14,7 +14,7 @@ async def get_user_info(dialog_manager: DialogManager, **middleware_data):
     return {
         'user_id': user.telegram_id,
         'balance': user.balance,
-        'ref_balance': user.ref_balance,
+        'ref_balance': int(user.ref_balance),
     }
 
 
