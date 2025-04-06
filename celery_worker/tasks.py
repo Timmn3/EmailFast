@@ -25,7 +25,8 @@ async def async_send_message(campaign_id: int):
     bot = Bot(token=API_TOKEN)
 
     campaign = await models.BroadcastCampaign.get(id=campaign_id)
-    users = LIMITED_USERS if test else await models.User.all()
+    users = LIMITED_USERS if test else [user.telegram_id for user in await models.User.all()]
+
     sent_users = {b.sent_to for b in await models.Broadcast.filter(campaign=campaign)}
 
     sent_count = 0
