@@ -78,6 +78,8 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
     if not user_id:
         user_id = m.from_user.id
 
+    loading_msg = await m.answer("⏳")
+
     me = await m.bot.me()
     link = f'https://t.me/{me.username}?start={user_id}'
     qr_code_bytes = await generate_qr_code(link)
@@ -114,6 +116,8 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
                                                  payment_count=payment_count),
         reply_markup=mk
     )
+
+    await loading_msg.delete()  # Удаляем "⏳"
 
 
 @router.message(F.text == bt.AFFILIATE_PROGRAM_BTN)
