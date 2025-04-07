@@ -78,7 +78,7 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
     if not user_id:
         user_id = m.from_user.id
 
-    loading_msg = await m.answer("⏳")
+    loading_msg = await m.answer("⏳Идёт загрузка, ожидайте...")
 
     me = await m.bot.me()
     link = f'https://t.me/{me.username}?start={user_id}'
