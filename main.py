@@ -1,5 +1,6 @@
 import logging
 from aiogram.filters import ExceptionTypeFilter
+from aiogram.types import Message
 from aiogram_dialog import DialogManager, StartMode, ShowMode
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,6 +13,7 @@ from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (start_handler, affiliate_program, admin_handler, bot_handler, get_email_handler,
                           receive_sms_handler, rent_number_handler)
 from app.handlers.health_check_router import health_check_router
+from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
@@ -23,7 +25,7 @@ from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
 from loguru import logger
 from app.scheduler_instance import scheduler
-
+from app.services import bot_texts as bt
 
 # logger.remove()
 # Добавляем обработчик для записи в файл без цветного вывода
@@ -46,16 +48,11 @@ logger.add("logs/loguru.log",
 msg_text = "Версия 31.03.2025"  # git push production master
 
 
-async def on_unknown_intent(event, dialog_manager: DialogManager):
-    await dialog_manager.start(
-        BotMenu.start, mode=StartMode.RESET_STACK, show_mode=ShowMode.AUTO,
-    )
+async def on_unknown_intent(message: Message):
+    await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
 
-
-async def on_unknown_state(event, dialog_manager: DialogManager):
-    await dialog_manager.start(
-        BotMenu.start, mode=StartMode.RESET_STACK, show_mode=ShowMode.AUTO,
-    )
+async def on_unknown_state(message: Message):
+    await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
 
 
 def job_listener(event):
