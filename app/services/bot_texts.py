@@ -411,11 +411,11 @@ prices_data = [
 CHANNEL_LINK = 'https://t.me/neuronbo'
 
 # процент, который накидывает сервис
-INTEREST = 1.3
+INTEREST = 1.5
 
-DOLLAR_ONLINESIM = 78 * 1.3
+DOLLAR_ONLINESIM = 78 * 1.5
 
-DOLLAR_SMS_ACTIVATE = 100 * 1.3
+DOLLAR_SMS_ACTIVATE = 100 * 1.5
 
 # Словарь для перевода сокращений из названия сервисов в таблице services в названия сервисов таблицы onlinesim
 SERVICES_TRANSLATION = {
