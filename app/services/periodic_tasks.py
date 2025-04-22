@@ -519,21 +519,22 @@ async def check_sms():
             if status.startswith(models.StatusResponse.STATUS_OK.name):
                 # Обновляем статус активации на 'STATUS_OK'
                 activation.status = models.StatusResponse.STATUS_OK
+
                 # Смотрим какая смс в БД
                 current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
 
                 # Извлекаем текст SMS из статуса
-                sms_from_status = status.split(':')[1]
+                sms_from_status = status.split(':', 1)[1]  # используем split только один раз
 
                 # Применяем регулярное выражение для извлечения цифр из текста
                 sms_digits = re.findall(r'\d+', sms_from_status)
 
                 if sms_digits:
-                    # Если цифры найдены, берем первое из них (или обрабатываем по-другому, если нужно)
+                    # Если цифры найдены, берем первую
                     sms_from_status = sms_digits[0]
                 else:
-                    # Если цифры не найдены, присваиваем значение по умолчанию (например, 0)
-                    sms_from_status = '0'
+                    # Если цифры не найдены — оставляем оригинальный текст SMS
+                    sms_from_status = sms_from_status.strip()
 
                 activation.sms_text = sms_from_status
                 # Сохраняем изменения в базе данных
