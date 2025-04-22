@@ -1,6 +1,6 @@
 import json
 from locale import currency
-
+from loguru import logger
 import aiohttp
 from smsactivate.api import SMSActivateAPI
 from yarl import URL
@@ -172,12 +172,14 @@ class SMSActivateAPIAsync(SMSActivateAPI):
         # Создаем URL с параметрами
         full_url = URL(url).with_query(params)
 
-        # Выводим полный URL
-        # print(f"Request URL: {full_url}")
+        # Логгируем полный URL запроса
+        logger.info(f"[SMSActivateAPI] Sending request: {full_url}")
 
         async with aiohttp.ClientSession() as session:
             async with session.get(str(full_url)) as response:
-                return await response.text()
+                response_text = await response.text()
+                logger.info(f"[SMSActivateAPI] Response: {response_text}")
+                return response_text
 
     async def getBalance(self):
         payload = {'api_key': self.api_key, 'action': 'getBalance'}
