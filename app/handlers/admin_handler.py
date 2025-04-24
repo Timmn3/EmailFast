@@ -438,7 +438,6 @@ async def add_balance(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    # Проверка, что команда содержит два аргумента
     args = message.text.split()
     if len(args) != 3:
         await message.answer("Использование: /add_balance [telegram_id] [сумма]")
@@ -451,23 +450,22 @@ async def add_balance(message: types.Message):
         await message.answer("Некорректный Telegram ID или сумма. Пожалуйста, введите числовые значения.")
         return
 
-    # Получаем пользователя по Telegram ID
     user = await models.User.get_user(telegram_id)
     if user is None:
         await message.answer("Пользователь с таким Telegram ID не найден.")
         return
 
-    # Добавляем баланс
     user.balance += amount
-    await user.save()  # Сохраняем изменения в базе данных
+    await user.save()
 
-    # Отправляем уведомление админу
     await message.answer(f"Баланс пользователя {user} пополнен на {amount}.")
 
-    await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
+    if amount > 0:
+        await bot.send_message(telegram_id, f"Администратор пополнил ваш баланс на {amount}.")
 
-    msg_text = f" Администратор пополнил баланс пользователю {user.mention} на {amount}."
+    msg_text = f"Администратор пополнил баланс пользователю {user.mention} на {amount}."
     await send_coder(msg_text)
+
 
 @router.message(Command('services_update'))
 async def services(message: types.Message, state: FSMContext):
