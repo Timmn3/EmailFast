@@ -45,7 +45,7 @@ logger.add("logs/loguru.log",
 # ERROR - Для сообщений об ошибках, которые препятствуют нормальному выполнению.
 # CRITICAL - Для критических ошибок, которые могут привести к серьезным последствиям или завершению программы.
 
-msg_text = "Версия 31.03.2025"  # git push production master
+msg_text = "Версия 25.04.2025"  # git push production master
 
 
 async def on_unknown_intent(message: Message):

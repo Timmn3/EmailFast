@@ -525,16 +525,36 @@ async def info_id(message: types.Message):
     rent_number = rent_with_sms.phone_number if rent_with_sms else "Нет"
     rent_date = rent_with_sms.created_at.strftime("%Y-%m-%d %H:%M") if rent_with_sms else "Нет"
 
+    # Получаем сумму всех успешных пополнений
+    from tortoise.functions import Sum
+    total_payments_result = await models.Payment.filter(user=user, is_success=True).annotate(total=Sum("amount")).values("total")
+    total_payments = total_payments_result[0]["total"] or 0
+
+
+    # Сумма списаний из Rent
+    rent_cost_result = await models.Rent.filter(user=user, sms_text__isnull=False).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+    rent_total = rent_cost_result[0]["total"] or 0
+
+    # Сумма списаний из Activation
+    activation_cost_result = await models.Activation.filter(user=user, sms_text__isnull=False).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+    activation_total = activation_cost_result[0]["total"] or 0
+
+    total_spent = rent_total + activation_total
+
     await message.answer(
         f"<b>📋 Информация о пользователе:</b>\n\n"
         f"<b>💳 Баланс:</b> {amount} ₽\n"
-        f"<i>📱 Арендованный номер:</i> {rent_number}\n"
+        f"<b>💰 Всего пополнений:</b> {total_payments:.2f} ₽\n"
+        f"<b>📤 Всего списаний:</b> {total_spent:.2f} ₽\n"
+        f"\n<i>📱 Последний арендованный номер:</i> {rent_number}\n"
         f"<i>🗓 Дата аренды:</i> {rent_date}\n"
-        f"<i>📞 Принял смс на номер:</i> {data[0] if data and data[0] else 'Нет'}\n"
-        f"<i>🗓 Дата принятия СМС:</i> {data[1] if data and data[1] else 'Нет'}\n"
+        f"\n<b>📩 Последний номер, на который было получено SMS:</b>\n"
+        f"<i>📞 Номер:</i> {data[0] if data and data[0] else 'Нет'}\n"
+        f"<i>🗓 Дата:</i> {data[1] if data and data[1] else 'Нет'}\n"
         f"<i>🛠 Сервис:</i> {data[2] if data and data[2] else 'Нет'}\n"
         f"<i>🌍 Страна:</i> {data[3] if data and data[3] else 'Нет'}\n"
-        f"<i>📫 Почта:</i> <a href='mailto:{last_element}'></a>\n",
+
+        f"\n<i>📫 Почта:</i> <a href='mailto:{last_element}'></a>\n",
         parse_mode="HTML"
     )
 
@@ -567,6 +587,73 @@ async def campaign_status(message: types.Message):
 
     await message.answer(f"В рамках рассылки #{campaign_id} отправлено сообщений: {sent_count}")
 
+import tempfile
+
+@router.message(Command('users_with_balance'))
+async def users_with_balance_html(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /users_with_balance [сумма]")
+        return
+
+    try:
+        balance_threshold = float(args[1])
+    except ValueError:
+        await message.answer("Некорректное значение суммы.")
+        return
+
+    users = await models.User.filter(balance__gt=balance_threshold).all()
+
+    if not users:
+        await message.answer(f"Нет пользователей с балансом выше {balance_threshold} ₽.")
+        return
+
+    # Формируем HTML-таблицу
+    rows = "".join([
+        f"<tr><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td><td>{u.mention}</td><td>{u.balance:.2f} ₽</td></tr>"
+        for u in users
+    ])
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <h2>Пользователи с балансом выше {balance_threshold} ₽</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Telegram ID</th>
+                    <th>Имя</th>
+                    <th>Username</th>
+                    <th>Mention</th>
+                    <th>Баланс</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    # Создаём временный файл
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.html', delete=False, encoding='utf-8') as f:
+        f.write(html_content)
+        f.flush()
+        file_path = f.name
+
+    # Отправляем файл
+    await message.answer_document(types.FSInputFile(file_path), caption=f"Пользователи с балансом > {balance_threshold} ₽")
 
 
 @router.message(Command('help_admin'))
@@ -581,6 +668,7 @@ async def help_admin(message: types.Message):
     /sending_status [номер рассылки] - Проверка рассылки сообщений
     /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
     /info_id [telegram_id] - Информация о пользователе
+    /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
