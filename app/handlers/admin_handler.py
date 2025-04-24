@@ -497,7 +497,6 @@ async def info_id(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    # Проверка, что команда содержит два аргумента
     args = message.text.split()
     if len(args) != 2:
         await message.answer("Использование: /info_id [telegram_id]")
@@ -509,7 +508,6 @@ async def info_id(message: types.Message):
         await message.answer("Некорректный Telegram ID")
         return
 
-    # Получаем пользователя по Telegram ID
     user = await models.User.get_user(telegram_id)
     if user is None:
         await message.answer("Пользователь с таким Telegram ID не найден.")
@@ -517,21 +515,27 @@ async def info_id(message: types.Message):
 
     amount = user.balance
     mail = await models.Mail.get_user_mails(user.id)
-    if mail:
-        last_element = mail[-1]
-    else:
-        last_element = "-"
+    last_element = mail[-1] if mail else "-"
+
     data = await models.Activation.get_last_rented_info(user.id)
-    # Отправляем уведомление админу
+
+    # Проверка наличия арендованного номера с sms_text
+    rent_with_sms = await models.Rent.filter(user=user, sms_text__isnull=False).order_by('-created_at').first()
+
+    rent_number = rent_with_sms.phone_number if rent_with_sms else "Нет"
+    rent_date = rent_with_sms.created_at.strftime("%Y-%m-%d %H:%M") if rent_with_sms else "Нет"
+
     await message.answer(
         f"<b>📋 Информация о пользователе:</b>\n\n"
         f"<b>💳 Баланс:</b> {amount} ₽\n"
-        f"<i>📞 Арендованный номер:</i> {data[0] if data and data[0] else 'Нет'}\n"
-        f"<i>🗓 Дата аренды:</i> {data[1] if data and data[1] else 'Нет'}\n"
+        f"<i>📱 Арендованный номер:</i> {rent_number}\n"
+        f"<i>🗓 Дата аренды:</i> {rent_date}\n"
+        f"<i>📞 Принял смс на номер:</i> {data[0] if data and data[0] else 'Нет'}\n"
+        f"<i>🗓 Дата принятия СМС:</i> {data[1] if data and data[1] else 'Нет'}\n"
         f"<i>🛠 Сервис:</i> {data[2] if data and data[2] else 'Нет'}\n"
         f"<i>🌍 Страна:</i> {data[3] if data and data[3] else 'Нет'}\n"
         f"<i>📫 Почта:</i> <a href='mailto:{last_element}'></a>\n",
-    parse_mode="HTML"
+        parse_mode="HTML"
     )
 
 
