@@ -662,6 +662,7 @@ async def users_without_payments(message: types.Message):
         return
 
     from tortoise.expressions import Q
+    from tortoise.functions import Sum
 
     # Получаем всех пользователей с положительным балансом
     users_with_balance = await models.User.filter(balance__gt=0).all()
@@ -676,9 +677,26 @@ async def users_without_payments(message: types.Message):
         await message.answer("Нет пользователей с балансом больше 0 и без пополнений.")
         return
 
+    # Словарь user_id -> total_spent
+    user_spent = {}
+
+    for user in filtered_users:
+        rent_cost_result = await models.Rent.filter(
+            user=user, sms_text__isnull=False
+        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+        rent_total = rent_cost_result[0]["total"] or 0
+
+        activation_cost_result = await models.Activation.filter(
+            user=user, sms_text__isnull=False
+        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+        activation_total = activation_cost_result[0]["total"] or 0
+
+        user_spent[user.id] = rent_total + activation_total
+
     # Формируем HTML-таблицу
     rows = "".join([
-        f"<tr><td>{u.id}</td><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td><td>{u.mention}</td><td>{u.balance:.2f} ₽</td></tr>"
+        f"<tr><td>{u.id}</td><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td>"
+        f"<td>{u.mention}</td><td>{u.balance:.2f} ₽</td><td>{user_spent[u.id]:.2f} ₽</td><td>{u.created_at.strftime('%Y-%m-%d %H:%M')}</td></tr>"
         for u in filtered_users
     ])
     html_content = f"""
@@ -702,6 +720,8 @@ async def users_without_payments(message: types.Message):
                     <th>Username</th>
                     <th>Mention</th>
                     <th>Баланс</th>
+                    <th>Всего списаний</th>
+                    <th>Зарегистрирован</th>
                 </tr>
             </thead>
             <tbody>{rows}</tbody>
@@ -710,13 +730,13 @@ async def users_without_payments(message: types.Message):
     </html>
     """
 
-    # Сохраняем в файл и отправляем
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w+', suffix='.html', delete=False, encoding='utf-8') as f:
         f.write(html_content)
         file_path = f.name
 
     await message.answer_document(types.FSInputFile(file_path), caption="Пользователи без пополнений с балансом.")
+
 
 
 @router.message(Command('help_admin'))
