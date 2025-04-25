@@ -11,7 +11,7 @@ from app.dependencies import bot, ON_SCHEDULE
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (start_handler, affiliate_program, admin_handler, bot_handler, get_email_handler,
-                          receive_sms_handler, rent_number_handler)
+                          receive_sms_handler, rent_number_handler, report)
 from app.handlers.health_check_router import health_check_router
 from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
@@ -73,6 +73,7 @@ async def main(dp: Dispatcher):
     """
     main_routers = [
         admin_handler.router,
+        report.router,
         start_handler.router,
         affiliate_program.router,
         health_check_router,
