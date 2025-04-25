@@ -656,6 +656,71 @@ async def users_with_balance_html(message: types.Message):
     await message.answer_document(types.FSInputFile(file_path), caption=f"Пользователи с балансом > {balance_threshold} ₽")
 
 
+@router.message(Command('users_without_payments'))
+async def users_without_payments(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    from tortoise.expressions import Q
+
+    # Получаем всех пользователей с положительным балансом
+    users_with_balance = await models.User.filter(balance__gt=0).all()
+
+    # Получаем ID пользователей с успешными платежами
+    paid_user_ids = set(await models.Payment.filter(is_success=True).values_list('user_id', flat=True))
+
+    # Оставляем только тех, кто не пополнял
+    filtered_users = [u for u in users_with_balance if u.id not in paid_user_ids]
+
+    if not filtered_users:
+        await message.answer("Нет пользователей с балансом больше 0 и без пополнений.")
+        return
+
+    # Формируем HTML-таблицу
+    rows = "".join([
+        f"<tr><td>{u.id}</td><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td>"
+        f"<td>{u.mention}</td><td>{u.balance:.2f} ₽</td><td>{u.created_at.strftime('%Y-%m-%d %H:%M')}</td></tr>"
+        for u in filtered_users
+    ])
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <h3>Пользователи с балансом > 0 и без успешных пополнений</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Telegram ID</th>
+                    <th>Имя</th>
+                    <th>Username</th>
+                    <th>Mention</th>
+                    <th>Баланс</th>
+                    <th>Зарегистрирован</th>
+                </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    # Сохраняем в файл и отправляем
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.html', delete=False, encoding='utf-8') as f:
+        f.write(html_content)
+        file_path = f.name
+
+    await message.answer_document(types.FSInputFile(file_path), caption="Пользователи без пополнений с балансом.")
+
+
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
     if message.from_user.id not in ADMINS:
@@ -669,6 +734,7 @@ async def help_admin(message: types.Message):
     /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
     /info_id [telegram_id] - Информация о пользователе
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
+    /users_without_payments - Пользователи с балансом > 0 и без пополнений
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
