@@ -751,6 +751,7 @@ async def help_admin(message: types.Message):
     /sending_status [номер рассылки] - Проверка рассылки сообщений
     /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
     /info_id [telegram_id] - Информация о пользователе
+    /user_report [telegram_id] - HTML-отчёт по пользователю
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
     /users_without_payments - Пользователи с балансом > 0 и без пополнений
     /smsactivate - Установить SMS_Activate
