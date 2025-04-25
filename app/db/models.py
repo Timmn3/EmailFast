@@ -40,6 +40,7 @@ class PaymentMethod(Enum):
     STREAMPAY = 'streampay'
     CKASSA = 'ckassa'
     CRYPTOMUS = 'cryptomus'
+    STARS = 'stars'
 
 
 class User(Model):

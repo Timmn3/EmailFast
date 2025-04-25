@@ -89,6 +89,14 @@ async def save_payment_to_database(user, amount):
         # Сбрасываем срок действия бонуса.
         user.bonus_end_at = None
 
+    payment = await models.Payment.create_payment(
+        user=user,
+        method=models.PaymentMethod.STARS,
+        amount=amount,
+        continue_data=None
+    )
+    payment.is_success = True
+    await payment.save()
     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
     user.balance += amount
     msg_text = (f'💲Пополнение stars⭐️\n'
