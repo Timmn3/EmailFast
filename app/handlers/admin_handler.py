@@ -678,8 +678,7 @@ async def users_without_payments(message: types.Message):
 
     # Формируем HTML-таблицу
     rows = "".join([
-        f"<tr><td>{u.id}</td><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td>"
-        f"<td>{u.mention}</td><td>{u.balance:.2f} ₽</td><td>{u.created_at.strftime('%Y-%m-%d %H:%M')}</td></tr>"
+        f"<tr><td>{u.id}</td><td>{u.telegram_id}</td><td>{u.full_name}</td><td>{u.username or '-'}</td><td>{u.mention}</td><td>{u.balance:.2f} ₽</td></tr>"
         for u in filtered_users
     ])
     html_content = f"""
@@ -703,7 +702,6 @@ async def users_without_payments(message: types.Message):
                     <th>Username</th>
                     <th>Mention</th>
                     <th>Баланс</th>
-                    <th>Зарегистрирован</th>
                 </tr>
             </thead>
             <tbody>{rows}</tbody>
