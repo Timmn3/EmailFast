@@ -349,18 +349,30 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
                                         callback_data=f"receive_sms_for_another_service:{activation.id}")],
         ]
     )
+
     # Получаем флаг из словаря
     country = country.strip()
     flag = country_flags.get(country, "")  # Получаем флаг, если страны нет в словаре, возвращается пустая строка
     flag_and_country = f"{flag} {country}"
-    await message.answer(
-        text=bt.SERVICE_INFO.format(
-            country=flag_and_country,
-            service=service,
-            phone=activation.phone_number,
-        ),
-        reply_markup=mk
-    )
+
+    if service != "Telegram":
+        await message.answer(
+            text=bt.SERVICE_INFO.format(
+                country=flag_and_country,
+                service=service,
+                phone=activation.phone_number,
+            ),
+            reply_markup=mk
+        )
+    else:
+        await message.answer(
+            text=bt.SERVICE_INFO_TELEGRAM.format(
+                country=flag_and_country,
+                service=service,
+                phone=activation.phone_number,
+            ),
+            reply_markup=mk
+        )
 
 
 @logger.catch()

@@ -50,6 +50,8 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         await activation.fetch_related('country')
         country = activation.country.name
         service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
+        if service is None:
+            service = await models.ServicesOnlinesim.get_service_name_by_id(service_id=activation.service_2_id)
         await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
 
 
