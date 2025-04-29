@@ -205,21 +205,24 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         else:
             await call.answer(text='Отмена больше не доступна', show_alert=True)
 
+
     except TelegramAPIError as e:
         logger.warning(f"Telegram server error: {e}")
     except Exception as e:
-        if str(e) == 'Unable to finish order':
+        error_text = str(e)
+        if error_text == 'Unable to finish order':
             await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
-        elif str(e) == 'Wrong operation ID':
+        elif error_text == 'Wrong operation ID':
             activation.activation_expire_at = None
             activation.status = models.StatusResponse.STATUS_CANCEL
             await activation.save()
             await call.answer(text='Отмена больше не доступна', show_alert=True)
-        elif str(e) == 'Try again later':
+        elif error_text == 'Try again later':
             await call.answer(text='Повторите попытку позже', show_alert=True)
         else:
-            logger.error(f"Необработанное исключение: {e}")
-            await call.answer(text='Ошибка при отмене номера', show_alert=True)
+            text = error_text[0].upper() + error_text[1:] if error_text else "Неизвестная ошибка"
+            logger.error(f"Необработанное исключение: {text}")
+            await call.answer(text=f'Ошибка при отмене номера. \n{text}', show_alert=True)
 
 
 @router.callback_query(F.data.startswith('full_unread_message|'))
