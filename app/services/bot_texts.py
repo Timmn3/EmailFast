@@ -256,6 +256,12 @@ ADMIN_STAT = """
 <b>За сегодня:</b> {payments_count_today} (<b>{payments_amount_today} руб.</b>)
 <b>За {month_name}:</b> {payments_count_month} (<b>{payments_amount_month} руб.</b>)
 <b>За {last_month_name}:</b> {payments_count_last_month} (<b>{payments_amount_last_month} руб.</b>)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⭐️ Статистика STARS:
+За сегодня: {stars_count_today} ({stars_amount_today:.0f} руб.)
+За {month_name}: {stars_month_count} ({stars_month_amount:.0f} руб.)
+За {last_month_name}: {stars_last_month_count} ({stars_last_month_amount:.0f} руб.)
 """
 
 AFFILIATE_STAT = """

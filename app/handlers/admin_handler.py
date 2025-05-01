@@ -19,7 +19,6 @@ from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum
 import calendar
-
 from celery_worker.tasks import send_message_batch
 
 router = Router()
@@ -148,6 +147,54 @@ async def stat(message: types.Message):
     # Суммируем (count - 1) для каждого пользователя
     repeat_purchases_total = sum(user["total_purchases"] - 1 for user in user_purchases)
 
+    # Для STARS
+    today_start = utc_now.replace(hour=0, minute=0, second=0)
+
+    # За сегодня
+    stars_today_count = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=today_start
+    ).count()
+
+    # Используем values_list для суммы
+    amounts_today = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=today_start
+    ).values_list("amount", flat=True)
+    stars_today_amount = sum(amounts_today) if amounts_today else 0.0
+
+    # За текущий месяц
+    stars_month_count = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=first_day_of_month
+    ).count()
+
+    amounts_month = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=first_day_of_month
+    ).values_list("amount", flat=True)
+    stars_month_amount = sum(amounts_month) if amounts_month else 0.0
+
+    # За предыдущий месяц
+    stars_last_month_count = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=first_day_of_last_month,
+        created_at__lt=first_day_of_month
+    ).count()
+
+    amounts_last_month = await models.Payment.filter(
+        method=models.PaymentMethod.STARS,
+        is_success=True,
+        created_at__gte=first_day_of_last_month,
+        created_at__lt=first_day_of_month
+    ).values_list("amount", flat=True)
+    stars_last_month_amount = sum(amounts_last_month) if amounts_last_month else 0.0
+
     msg_text = bt.ADMIN_STAT.format(
         users_count=users_count,
         users_count_today=users_count_today,
@@ -178,7 +225,13 @@ async def stat(message: types.Message):
         rented_number_today=rented_number_today,
         repeat_purchases_total=repeat_purchases_total,
         month_name=current_month_name,
-        last_month_name=last_month_name
+        last_month_name=last_month_name,
+        stars_count_today=stars_today_count,
+        stars_amount_today=stars_today_amount,
+        stars_month_count=stars_month_count,
+        stars_month_amount=stars_month_amount,
+        stars_last_month_count=stars_last_month_count,
+        stars_last_month_amount=stars_last_month_amount,
     )
 
     await message.answer(msg_text)
