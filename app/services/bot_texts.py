@@ -258,10 +258,10 @@ ADMIN_STAT = """
 <b>За {last_month_name}:</b> {payments_count_last_month} (<b>{payments_amount_last_month} руб.</b>)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
-⭐️ Статистика STARS:
-За сегодня: {stars_count_today} ({stars_amount_today:.0f} руб.)
-За {month_name}: {stars_month_count} ({stars_month_amount:.0f} руб.)
-За {last_month_name}: {stars_last_month_count} ({stars_last_month_amount:.0f} руб.)
+<b>⭐️ Статистика STARS:</b>
+<b>За сегодня:</b> {stars_count_today} (<b>{stars_amount_today:.0f} руб.</b>)
+<b>За {month_name}:</b> {stars_month_count} (<b>{stars_month_amount:.0f} руб.</b>)
+<b>За {last_month_name}:</b> {stars_last_month_count} (<b>{stars_last_month_amount:.0f} руб.</b>)
 """
 
 AFFILIATE_STAT = """
