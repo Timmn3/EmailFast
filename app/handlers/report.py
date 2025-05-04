@@ -41,14 +41,14 @@ async def generate_user_report_html(user):
     payments = await models.Payment.filter(user=user, is_success=True).order_by("-created_at")
     withdraws = await models.Withdraw.filter(user=user).order_by("-created_at")
     activations = await models.Activation.filter(user=user, sms_text__isnull=False).order_by("-created_at").prefetch_related("country", "service", "service_2")
-    rents = await models.Rent.filter(user=user).order_by("-created_at").prefetch_related("country")
+    rents = await models.Rent.filter(user=user, sms_text__isnull=False).order_by("-created_at").prefetch_related("country")
     mails = await models.Mail.filter(user=user).order_by("-created_at")
     letters = await models.Letter.filter(user=user).order_by("-created_at")
 
     # Подсчёты
     total_payments = sum([p.amount for p in payments])
-    total_spent = sum([a.cost for a in activations]) + sum([r.cost for r in rents])
-    total_rents = len(rents)
+    total_spent = sum([a.cost for a in activations]) + sum([r.cost for r in rents if r.sms_text])  # Только аренды с SMS
+    total_rents = len([r for r in rents if r.sms_text])  # Только аренды с SMS
     total_sms = len(activations)
     total_mails = len(mails)
     total_letters = len(letters)

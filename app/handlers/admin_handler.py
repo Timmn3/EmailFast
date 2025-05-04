@@ -922,6 +922,125 @@ async def users_with_discrepancy(message: types.Message):
         caption="Пользователи с (расходы + баланс) > пополнений"
     )
 
+@router.message(Command("users_with_overspent"))
+async def users_with_overspent(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    # Получаем суммы пополнений
+    payments = await models.Payment.filter(is_success=True).group_by("user_id").annotate(
+        total_paid=Sum("amount")
+    ).values("user_id", "total_paid")
+
+    # Расходы: аренда
+    rents = await models.Rent.filter(sms_text__isnull=False).exclude(sms_text="").group_by("user_id").annotate(
+        total_rent=Sum("cost")
+    ).values("user_id", "total_rent")
+
+    # Расходы: активации
+    activations = await models.Activation.filter(sms_text__isnull=False).exclude(sms_text="").group_by("user_id").annotate(
+        total_activation=Sum("cost")
+    ).values("user_id", "total_activation")
+
+    user_data = {}
+
+    for p in payments:
+        user_data[p["user_id"]] = {"total_paid": p["total_paid"], "total_spent": 0}
+
+    for r in rents:
+        user_data.setdefault(r["user_id"], {"total_paid": 0, "total_spent": 0})
+        user_data[r["user_id"]]["total_spent"] += r["total_rent"]
+
+    for a in activations:
+        user_data.setdefault(a["user_id"], {"total_paid": 0, "total_spent": 0})
+        user_data[a["user_id"]]["total_spent"] += a["total_activation"]
+
+    user_ids = list(user_data.keys())
+    users = await models.User.filter(id__in=user_ids).values(
+        "id", "telegram_id", "full_name", "username", "mention"
+    )
+    user_info_map = {u["id"]: u for u in users}
+
+    filtered = []
+    for user_id, data in user_data.items():
+        user = user_info_map.get(user_id)
+        if not user:
+            continue
+
+        total_paid = data["total_paid"] or 0
+        total_spent = data["total_spent"] or 0
+
+        if total_spent > total_paid:
+            filtered.append({
+                "telegram_id": user["telegram_id"],
+                "full_name": user["full_name"],
+                "username": user["username"] or "-",
+                "mention": user["mention"] or "-",
+                "total_paid": total_paid,
+                "total_spent": total_spent,
+                "difference": total_spent - total_paid
+            })
+
+    filtered.sort(key=lambda x: x["difference"], reverse=True)
+
+    if not filtered:
+        await message.answer("Нет пользователей, у которых расходы превышают пополнения.")
+        return
+
+    rows = "".join([
+        f"<tr>"
+        f"<td>{u['telegram_id']}</td>"
+        f"<td>{u['full_name']}</td>"
+        f"<td>{u['username']}</td>"
+        f"<td>{u['mention']}</td>"
+        f"<td>{u['total_paid']:.2f} ₽</td>"
+        f"<td>{u['total_spent']:.2f} ₽</td>"
+        f"<td>{u['difference']:.2f} ₽</td>"
+        f"</tr>"
+        for u in filtered
+    ])
+
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <h2>Пользователи с расходами выше, чем пополнения</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Telegram ID</th>
+                    <th>Имя</th>
+                    <th>Username</th>
+                    <th>Mention</th>
+                    <th>Пополнения</th>
+                    <th>Расходы</th>
+                    <th>Разница</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.html', delete=False, encoding='utf-8') as f:
+        f.write(html_content)
+        file_path = f.name
+
+    await message.answer_document(
+        FSInputFile(file_path),
+        caption="Пользователи с расходами выше пополнений"
+    )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -939,6 +1058,7 @@ async def help_admin(message: types.Message):
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
     /users_without_payments - Пользователи с балансом > 0 и без пополнений
     /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
+    /users_with_overspent - Пользователи с расходами > пополнений (без учёта баланса)
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
