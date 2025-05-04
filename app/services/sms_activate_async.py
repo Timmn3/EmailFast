@@ -173,12 +173,12 @@ class SMSActivateAPIAsync(SMSActivateAPI):
         full_url = URL(url).with_query(params)
 
         # Логгируем полный URL запроса
-        logger.info(f"[SMSActivateAPI] Sending request: {full_url}")
+        # logger.info(f"[SMSActivateAPI] Sending request: {full_url}")
 
         async with aiohttp.ClientSession() as session:
             async with session.get(str(full_url)) as response:
                 response_text = await response.text()
-                logger.info(f"[SMSActivateAPI] Response: {response_text}")
+                # logger.info(f"[SMSActivateAPI] Response: {response_text}")
                 return response_text
 
     async def getBalance(self):
