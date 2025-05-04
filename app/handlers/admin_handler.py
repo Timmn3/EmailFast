@@ -791,6 +791,110 @@ async def users_without_payments(message: types.Message):
     await message.answer_document(types.FSInputFile(file_path), caption="Пользователи без пополнений с балансом.")
 
 
+@router.message(Command('users_with_discrepancy'))
+async def users_with_discrepancy(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    # Получаем всех пользователей
+    try:
+        users = await models.User.all().prefetch_related('payments', 'rents', 'activations')
+    except ValueError as e:
+        if 'is not a valid PaymentMethod' in str(e):
+            logger.error("Найдены некорректные методы оплаты в базе данных")
+        raise
+
+    filtered_users = []
+
+    for user in users:
+        # Сумма пополнений
+        total_payments_result = await models.Payment.filter(
+            user=user, is_success=True
+        ).annotate(total=Sum("amount")).values("total")
+        total_payments = total_payments_result[0]["total"] or 0
+
+        # Сумма расходов
+        rent_cost_result = await models.Rent.filter(
+            user=user, sms_text__isnull=False
+        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+        rent_total = rent_cost_result[0]["total"] or 0
+
+        activation_cost_result = await models.Activation.filter(
+            user=user, sms_text__isnull=False
+        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
+        activation_total = activation_cost_result[0]["total"] or 0
+
+        total_spent = rent_total + activation_total
+
+        # Проверяем условие: (расходы + баланс) > пополнения
+        if (total_spent + user.balance) > total_payments:
+            filtered_users.append({
+                'user': user,
+                'total_payments': total_payments,
+                'total_spent': total_spent,
+                'balance': user.balance
+            })
+
+    if not filtered_users:
+        await message.answer("Нет пользователей, удовлетворяющих условиям фильтра.")
+        return
+
+    # Формируем HTML-таблицу
+    rows = "".join([
+        f"<tr>"
+        f"<td>{u['user'].telegram_id}</td>"
+        f"<td>{u['user'].full_name}</td>"
+        f"<td>{u['user'].username or '-'}</td>"
+        f"<td>{u['user'].mention}</td>"
+        f"<td>{u['balance']:.2f} ₽</td>"
+        f"<td>{u['total_payments']:.2f} ₽</td>"
+        f"<td>{u['total_spent']:.2f} ₽</td>"
+        f"<td>{(u['total_spent'] + u['balance']):.2f} ₽</td>"
+        f"</tr>"
+        for u in filtered_users
+    ])
+
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <h2>Пользователи с (расходы + баланс) > пополнений</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Telegram ID</th>
+                    <th>Имя</th>
+                    <th>Username</th>
+                    <th>Mention</th>
+                    <th>Баланс</th>
+                    <th>Пополнения</th>
+                    <th>Расходы</th>
+                    <th>Разница (расходы + баланс - пополнения)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.html', delete=False, encoding='utf-8') as f:
+        f.write(html_content)
+        file_path = f.name
+
+    await message.answer_document(
+        types.FSInputFile(file_path),
+        caption=f"Пользователи с (расходы + баланс) > пополнений"
+    )
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -807,6 +911,7 @@ async def help_admin(message: types.Message):
     /user_report [telegram_id] - HTML-отчёт по пользователю
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
     /users_without_payments - Пользователи с балансом > 0 и без пополнений
+    /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
