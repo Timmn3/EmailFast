@@ -830,7 +830,9 @@ async def users_with_discrepancy(message: types.Message):
 
     # Получаем баланс всех этих пользователей
     user_ids = list(user_data.keys())
-    users = await models.User.filter(id__in=user_ids).values("id", "telegram_id", "full_name", "username", "balance")
+    users = await models.User.filter(id__in=user_ids).values(
+        "id", "telegram_id", "full_name", "username", "balance", "mention"
+    )
 
     user_info_map = {u["id"]: u for u in users}
 
@@ -849,12 +851,15 @@ async def users_with_discrepancy(message: types.Message):
                 "telegram_id": user["telegram_id"],
                 "full_name": user["full_name"],
                 "username": user["username"] or "-",
-                "mention": f'<a href="tg://user?id={user["telegram_id"]}">ссылка</a>',
+                "mention": user["mention"] or "-",
                 "balance": balance,
                 "total_paid": total_paid,
                 "total_spent": total_spent,
                 "difference": (total_spent + balance - total_paid)
             })
+
+    # сортировка по убыванию разницы
+    filtered.sort(key=lambda x: x["difference"], reverse=True)
 
     if not filtered:
         await message.answer("Нет пользователей с расхождениями.")
