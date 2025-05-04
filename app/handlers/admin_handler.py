@@ -20,6 +20,8 @@ from loguru import logger
 from tortoise.functions import Sum
 import calendar
 from celery_worker.tasks import send_message_batch
+from aiogram.types import FSInputFile
+
 
 router = Router()
 
@@ -791,67 +793,86 @@ async def users_without_payments(message: types.Message):
     await message.answer_document(types.FSInputFile(file_path), caption="Пользователи без пополнений с балансом.")
 
 
-@router.message(Command('users_with_discrepancy'))
+
+@router.message(Command("users_with_discrepancy"))
 async def users_with_discrepancy(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    # Получаем всех пользователей
-    try:
-        users = await models.User.all().prefetch_related('payments', 'rents', 'activations')
-    except ValueError as e:
-        if 'is not a valid PaymentMethod' in str(e):
-            logger.error("Найдены некорректные методы оплаты в базе данных")
-        raise
+    # Получаем суммы пополнений по пользователям
+    payments = await models.Payment.filter(is_success=True).group_by("user_id").annotate(
+        total_paid=Sum("amount")
+    ).values("user_id", "total_paid")
 
-    filtered_users = []
+    # Получаем суммы расходов на аренды
+    rents = await models.Rent.filter(sms_text__isnull=False).exclude(sms_text="").group_by("user_id").annotate(
+        total_rent=Sum("cost")
+    ).values("user_id", "total_rent")
 
-    for user in users:
-        # Сумма пополнений
-        total_payments_result = await models.Payment.filter(
-            user=user, is_success=True
-        ).annotate(total=Sum("amount")).values("total")
-        total_payments = total_payments_result[0]["total"] or 0
+    # Получаем суммы расходов на активации
+    activations = await models.Activation.filter(sms_text__isnull=False).exclude(sms_text="").group_by("user_id").annotate(
+        total_activation=Sum("cost")
+    ).values("user_id", "total_activation")
 
-        # Сумма расходов
-        rent_cost_result = await models.Rent.filter(
-            user=user, sms_text__isnull=False
-        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
-        rent_total = rent_cost_result[0]["total"] or 0
+    # Сопоставляем user_id с их данными
+    user_data = {}
 
-        activation_cost_result = await models.Activation.filter(
-            user=user, sms_text__isnull=False
-        ).exclude(sms_text="").annotate(total=Sum("cost")).values("total")
-        activation_total = activation_cost_result[0]["total"] or 0
+    for p in payments:
+        user_data[p["user_id"]] = {"total_paid": p["total_paid"], "total_spent": 0}
 
-        total_spent = rent_total + activation_total
+    for r in rents:
+        user_data.setdefault(r["user_id"], {"total_paid": 0, "total_spent": 0})
+        user_data[r["user_id"]]["total_spent"] += r["total_rent"]
 
-        # Проверяем условие: (расходы + баланс) > пополнения
-        if (total_spent + user.balance) > total_payments:
-            filtered_users.append({
-                'user': user,
-                'total_payments': total_payments,
-                'total_spent': total_spent,
-                'balance': user.balance
+    for a in activations:
+        user_data.setdefault(a["user_id"], {"total_paid": 0, "total_spent": 0})
+        user_data[a["user_id"]]["total_spent"] += a["total_activation"]
+
+    # Получаем баланс всех этих пользователей
+    user_ids = list(user_data.keys())
+    users = await models.User.filter(id__in=user_ids).values("id", "telegram_id", "full_name", "username", "balance")
+
+    user_info_map = {u["id"]: u for u in users}
+
+    # Выбираем пользователей с расхождениями
+    filtered = []
+    for user_id, data in user_data.items():
+        user = user_info_map.get(user_id)
+        if not user:
+            continue
+        total_paid = data["total_paid"] or 0
+        total_spent = data["total_spent"] or 0
+        balance = user["balance"] or 0
+
+        if total_spent + balance > total_paid:
+            filtered.append({
+                "telegram_id": user["telegram_id"],
+                "full_name": user["full_name"],
+                "username": user["username"] or "-",
+                "mention": f'<a href="tg://user?id={user["telegram_id"]}">ссылка</a>',
+                "balance": balance,
+                "total_paid": total_paid,
+                "total_spent": total_spent,
+                "difference": (total_spent + balance - total_paid)
             })
 
-    if not filtered_users:
-        await message.answer("Нет пользователей, удовлетворяющих условиям фильтра.")
+    if not filtered:
+        await message.answer("Нет пользователей с расхождениями.")
         return
 
     # Формируем HTML-таблицу
     rows = "".join([
         f"<tr>"
-        f"<td>{u['user'].telegram_id}</td>"
-        f"<td>{u['user'].full_name}</td>"
-        f"<td>{u['user'].username or '-'}</td>"
-        f"<td>{u['user'].mention}</td>"
+        f"<td>{u['telegram_id']}</td>"
+        f"<td>{u['full_name']}</td>"
+        f"<td>{u['username']}</td>"
+        f"<td>{u['mention']}</td>"
         f"<td>{u['balance']:.2f} ₽</td>"
-        f"<td>{u['total_payments']:.2f} ₽</td>"
+        f"<td>{u['total_paid']:.2f} ₽</td>"
         f"<td>{u['total_spent']:.2f} ₽</td>"
-        f"<td>{(u['total_spent'] + u['balance']):.2f} ₽</td>"
+        f"<td>{u['difference']:.2f} ₽</td>"
         f"</tr>"
-        for u in filtered_users
+        for u in filtered
     ])
 
     html_content = f"""
@@ -876,7 +897,7 @@ async def users_with_discrepancy(message: types.Message):
                     <th>Баланс</th>
                     <th>Пополнения</th>
                     <th>Расходы</th>
-                    <th>Разница (расходы + баланс - пополнения)</th>
+                    <th>Разница</th>
                 </tr>
             </thead>
             <tbody>
@@ -892,9 +913,10 @@ async def users_with_discrepancy(message: types.Message):
         file_path = f.name
 
     await message.answer_document(
-        types.FSInputFile(file_path),
-        caption=f"Пользователи с (расходы + баланс) > пополнений"
+        FSInputFile(file_path),
+        caption="Пользователи с (расходы + баланс) > пополнений"
     )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
