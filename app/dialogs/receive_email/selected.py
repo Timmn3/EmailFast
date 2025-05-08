@@ -1,7 +1,6 @@
 from datetime import timedelta
 import asyncio
 from aiogram import types
-from aiogram.client.session.middlewares.request_logging import logger
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.kbd import Button
@@ -25,12 +24,17 @@ async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogMa
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_back_mail').log("USER_ACTION", "Возврат к меню почтовых ящиков")
 
-    user = await models.User.get_user(c.from_user.id)
-    if not user:
-        return
+        user = await models.User.get_user(user_id)
+        if not user:
+            return
 
-    await manager.switch_to(ReceiveEmailMenu.receive_email)
+        await manager.switch_to(ReceiveEmailMenu.receive_email)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_back_mail: {e}")
 
 
 async def on_change_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -42,34 +46,43 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "Запрос на смену почтового ящика")
 
-    ctx = manager.current_context()
-    mail_id = ctx.dialog_data.get('mail_id')
-    if not mail_id:
-        await c.answer("Не найден идентификатор почты.", show_alert=True)
-        return
+        ctx = manager.current_context()
+        mail_id = ctx.dialog_data.get('mail_id')
+        if not mail_id:
+            logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "ID почты не найден")
+            await c.answer("Не найден идентификатор почты.", show_alert=True)
+            return
 
-    mail = await models.Mail.get_mail(mail_id)
-    if mail:
-        mail.is_active = False
-        await mail.save(update_fields=['is_active'])
+        mail = await models.Mail.get_mail(mail_id)
+        if mail:
+            mail.is_active = False
+            await mail.save(update_fields=['is_active'])
 
-    user = await models.User.get_user(c.from_user.id)
-    email, token = await create_mail()
+        user = await models.User.get_user(user_id)
+        email, token = await create_mail()
 
-    if not email or not token:
-        await c.answer("Ошибка при создании почтового ящика. Попробуйте позже.", show_alert=True)
-        return
+        if not email or not token:
+            logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "Ошибка при создании почты")
+            await c.answer("Ошибка при создании почтового ящика. Попробуйте позже.", show_alert=True)
+            return
 
-    mail = await models.Mail.add_mail(user, email, token)
-    ctx.start_data['mail_id'] = mail.id
-    ctx.dialog_data['mail_id'] = mail.id
+        mail = await models.Mail.add_mail(user, email, token)
+        ctx.start_data['mail_id'] = mail.id
+        ctx.dialog_data['mail_id'] = mail.id
 
-    await manager.start(
-        ReceiveEmailMenu.receive_email,
-        data={"mail_id": mail.id},
-        mode=StartMode.RESET_STACK
-    )
+        logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", f"Создана новая почта: {email}")
+
+        await manager.start(
+            ReceiveEmailMenu.receive_email,
+            data={"mail_id": mail.id},
+            mode=StartMode.RESET_STACK
+        )
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_change_email: {e}")
 
 
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -81,8 +94,13 @@ async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogM
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_rent_email').log("USER_ACTION", "Переход к аренде почты")
 
-    await manager.switch_to(ReceiveEmailMenu.rent_email)
+        await manager.switch_to(ReceiveEmailMenu.rent_email)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_rent_email: {e}")
 
 
 async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -94,27 +112,42 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    from app.dialogs.personal_cabinet.selected import on_deposit_state
-    widget_id = widget.widget_id
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_rent_email_item').log("USER_ACTION", "Выбран период аренды")
 
-    user = await models.User.get_user(c.from_user.id)
+        from app.dialogs.personal_cabinet.selected import on_deposit_state
+        widget_id = widget.widget_id
 
-    ctx = manager.current_context()
-    ctx.dialog_data['cost'] = RENT_DATA[widget_id][0]
-    ctx.dialog_data['rent_days'] = RENT_DATA[widget_id][1]
-    ctx.dialog_data['rent_text'] = RENT_DATA[widget_id][2]
+        user = await models.User.get_user(user_id)
 
-    mail = await models.Mail.get_mail(mail_id=ctx.dialog_data['mail_id'])
-    if not mail:
-        return
+        ctx = manager.current_context()
+        ctx.dialog_data['cost'] = RENT_DATA[widget_id][0]
+        ctx.dialog_data['rent_days'] = RENT_DATA[widget_id][1]
+        ctx.dialog_data['rent_text'] = RENT_DATA[widget_id][2]
 
-    ctx.dialog_data['email'] = mail.email
+        mail = await models.Mail.get_mail(mail_id=ctx.dialog_data['mail_id'])
+        if not mail:
+            return
 
-    if user.balance < ctx.dialog_data['cost']:
-        await on_deposit_state(c=c, widget=widget, manager=manager)
-        return
+        ctx.dialog_data['email'] = mail.email
 
-    await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+        if user.balance < ctx.dialog_data['cost']:
+            logger.bind(user_id=user_id, action='on_rent_email_item').log(
+                "USER_ACTION",
+                f"Недостаточно средств для аренды: требуется {ctx.dialog_data['cost']}, доступно {user.balance}"
+            )
+            await on_deposit_state(c=c, widget=widget, manager=manager)
+            return
+
+        logger.bind(user_id=user_id, action='on_rent_email_item').log(
+            "USER_ACTION",
+            f"Аренда почты '{ctx.dialog_data['email']}' на {ctx.dialog_data['rent_text']}"
+        )
+
+        await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_rent_email_item: {e}")
 
 
 async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -126,36 +159,57 @@ async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, ma
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    from app.dialogs.personal_cabinet.selected import on_deposit_state
-    widget_id = widget.widget_id
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_rent_email_item_discount').log("USER_ACTION", "Выбор аренды со скидкой")
 
-    # Проверяем, предлагалась ли пользователю скидка ранее
-    user = await models.User.get_user(c.from_user.id)
-    if user.discount_used is True:
-        rent_data = RENT_DATA  # Используем обычные данные аренды
-    else:
-        rent_data = RENT_DATA_DISCOUNT  # Используем данные аренды со скидкой
+        from app.dialogs.personal_cabinet.selected import on_deposit_state
+        widget_id = widget.widget_id
 
-    ctx = manager.current_context()
+        user = await models.User.get_user(user_id)
+        if user.discount_used is True:
+            rent_data = RENT_DATA  # Используем обычные данные аренды
+        else:
+            rent_data = RENT_DATA_DISCOUNT  # Используем данные аренды со скидкой
 
-    ctx.dialog_data['cost'] = rent_data[widget_id][0]
-    ctx.dialog_data['rent_days'] = rent_data[widget_id][1]
-    ctx.dialog_data['rent_text'] = rent_data[widget_id][2]
+        ctx = manager.current_context()
 
-    mail = await models.Mail.get_mail(mail_id=ctx.start_data['mail_id'])
+        cost = rent_data[widget_id][0]
+        days = rent_data[widget_id][1]
+        text = rent_data[widget_id][2]
 
-    ctx.dialog_data['email'] = mail.email
+        ctx.dialog_data.update({'cost': cost, 'rent_days': days, 'rent_text': text})
 
-    if user.balance < ctx.dialog_data['cost']:
-        await on_deposit_state(c=c, widget=widget, manager=manager)
-        return
+        mail = await models.Mail.get_mail(mail_id=ctx.start_data['mail_id'])
+        if not mail:
+            return
 
-    # Если пользователь использовал скидку, обновляем поле discount_used
-    if user.discount_used is not True:
-        user.discount_used = True
-        await user.save()
+        ctx.dialog_data['email'] = mail.email
 
-    await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+        if user.balance < cost:
+            logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
+                "USER_ACTION",
+                f"Недостаточно средств для аренды со скидкой: требуется {cost}, доступно {user.balance}"
+            )
+            await on_deposit_state(c=c, widget=widget, manager=manager)
+            return
+
+        if user.discount_used is not True:
+            user.discount_used = True
+            await user.save()
+            logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
+                "USER_ACTION",
+                "Пользователь использовал скидку"
+            )
+
+        logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
+            "USER_ACTION",
+            f"Аренда почты '{ctx.dialog_data['email']}' на {text} по скидке"
+        )
+
+        await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_rent_email_item_discount: {e}")
 
 
 async def on_rent_email_check_discount(message: types.Message, manager: DialogManager):
@@ -165,14 +219,30 @@ async def on_rent_email_check_discount(message: types.Message, manager: DialogMa
     :param message: Объект Message.
     :param manager: Объект DialogManager.
     """
-    user = await models.User.get(telegram_id=message.from_user.id)
-    # получаем последнюю почту
-    last_mail = await models.Mail.filter(user=user, notification_sent=True).order_by('-id').first()
-    # Проверяем, предлагалась ли пользователю скидка ранее
-    if user.discount_used is True:
-        await manager.start(ReceiveEmailMenu.rent_email_no_discount, data={"mail_id": last_mail.id})
-    else:
-        await manager.start(ReceiveEmailMenu.rent_email_discount, data={"mail_id": last_mail.id})
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
+            "USER_ACTION",
+            "Проверка наличия скидки у пользователя"
+        )
+
+        user = await models.User.get(telegram_id=user_id)
+        last_mail = await models.Mail.filter(user=user, notification_sent=True).order_by('-id').first()
+
+        if user.discount_used is True:
+            logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
+                "USER_ACTION",
+                "Скидка уже была использована"
+            )
+            await manager.start(ReceiveEmailMenu.rent_email_no_discount, data={"mail_id": last_mail.id})
+        else:
+            logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
+                "USER_ACTION",
+                "Скидка ещё не использована"
+            )
+            await manager.start(ReceiveEmailMenu.rent_email_discount, data={"mail_id": last_mail.id})
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_rent_email_check_discount: {e}")
 
 
 async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -184,37 +254,55 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_confirm_rent_email').log("USER_ACTION", "Подтверждение аренды почты")
 
-    ctx = manager.current_context()
-    if 'email' in ctx.start_data:
-        ctx.dialog_data = ctx.start_data
+        ctx = manager.current_context()
+        if 'email' in ctx.start_data:
+            ctx.dialog_data = ctx.start_data
 
-    mail_id = ctx.dialog_data.get('mail_id')
-    cost = ctx.dialog_data.get('cost')
-    user = await models.User.get_user(c.from_user.id)
-    if not user:
-        return
+        mail_id = ctx.dialog_data.get('mail_id')
+        cost = ctx.dialog_data.get('cost')
 
-    if user.balance < cost:
-        await manager.switch_to(ReceiveEmailMenu.not_enough_balance)
-        return
+        user = await models.User.get_user(user_id)
+        if not user:
+            return
 
-    mail = await models.Mail.get_mail(mail_id)
-    if not mail:
-        return
+        if user.balance < cost:
+            logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
+                "USER_ACTION",
+                f"Недостаточно средств для аренды: требуется {cost}, доступно {user.balance}"
+            )
+            await manager.switch_to(ReceiveEmailMenu.not_enough_balance)
+            return
 
-    mail.is_paid_mail = True
-    mail.expire_at = timezone.now() + timedelta(days=ctx.dialog_data['rent_days'])
-    mail.is_active = True
-    await mail.save(update_fields=['is_paid_mail', 'expire_at'])
-    low_balance = await check_low_balance(user, cost)
-    user.balance -= cost
-    await user.save(update_fields=['balance'])
-    ctx.dialog_data['email'] = mail.email
-    await manager.switch_to(ReceiveEmailMenu.rent_email_success)
-    await asyncio.sleep(2)
-    if low_balance:
-        await send_low_balance_alert(user)
+        mail = await models.Mail.get_mail(mail_id)
+        if not mail:
+            return
+
+        mail.is_paid_mail = True
+        mail.expire_at = timezone.now() + timedelta(days=ctx.dialog_data['rent_days'])
+        mail.is_active = True
+        await mail.save(update_fields=['is_paid_mail', 'expire_at'])
+
+        low_balance = await check_low_balance(user, cost)
+        user.balance -= cost
+        await user.save(update_fields=['balance'])
+
+        logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
+            "USER_ACTION",
+            f"Успешная аренда почты '{mail.email}' на {ctx.dialog_data['rent_days']} дней"
+        )
+
+        ctx.dialog_data['email'] = mail.email
+        await manager.switch_to(ReceiveEmailMenu.rent_email_success)
+        await asyncio.sleep(2)
+
+        if low_balance:
+            await send_low_balance_alert(user)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_confirm_rent_email: {e}")
 
 
 async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -226,22 +314,36 @@ async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: Dia
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    user = await models.User.get_user(c.from_user.id)
-    if not user:
-        return
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_my_rent_emails').log("USER_ACTION", "Запрос списка арендованных почт")
 
-    mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
-    if len(mails) == 0:
-        await c.answer(text='У вас нет арендованных почтовых ящиков', show_alert=True)
-        return
+        user = await models.User.get_user(user_id)
+        if not user:
+            return
 
-    builder = InlineKeyboardBuilder()
-    for mail in mails:
-        builder.add(types.InlineKeyboardButton(text=mail.email, callback_data=f'mail:{mail.id}'))
+        mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
+        if len(mails) == 0:
+            logger.bind(user_id=user_id, action='on_my_rent_emails').log(
+                "USER_ACTION",
+                "Нет арендованных почт"
+            )
+            await c.answer(text='У вас нет арендованных почтовых ящиков', show_alert=True)
+            return
 
-    builder.button(text=bt.BACK_BTN, callback_data='receive_email')
-    builder.adjust(1)
+        builder = InlineKeyboardBuilder()
+        for mail in mails:
+            builder.add(types.InlineKeyboardButton(text=mail.email, callback_data=f'mail:{mail.id}'))
 
-    await c.message.edit_text(text='Выберите почтовый ящик', reply_markup=builder.as_markup())
-    await manager.reset_stack(remove_keyboard=False)
+        builder.button(text=bt.BACK_BTN, callback_data='receive_email')
+        builder.adjust(1)
 
+        logger.bind(user_id=user_id, action='on_my_rent_emails').log(
+            "USER_ACTION",
+            f"Отображено {len(mails)} арендованных почт"
+        )
+
+        await c.message.edit_text(text='Выберите почтовый ящик', reply_markup=builder.as_markup())
+        await manager.reset_stack(remove_keyboard=False)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_my_rent_emails: {e}")
