@@ -2,10 +2,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum, IntEnum
 import pytz
 from aiogram import types
-from sqlalchemy.dialects.postgresql.psycopg2 import logger
 from tortoise.models import Model
 from tortoise import fields, timezone
-from tortoise.queryset import QuerySet
 from loguru import logger
 
 class StatusResponse(IntEnum):
