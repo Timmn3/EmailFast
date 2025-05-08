@@ -1,4 +1,5 @@
 from typing import Union
+import logging
 from aiogram import types, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram_dialog import DialogManager, StartMode
@@ -9,150 +10,272 @@ from app.dialogs.receive_sms.selected import send_country_info
 from app.services import bot_texts as bt
 from app.services.keyboards import start_kb
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
+from loguru import logger
 
 router = Router()
 
 
 @router.message(F.text == '/id')
 async def get_id(message: types.Message):
-    await message.answer(text=str(message.chat.id))
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='get_id').log(
+            "USER_ACTION",
+            f"Пользователь запросил свой ID"
+        )
+        await message.answer(text=str(message.chat.id))
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /id: {e}")
 
 
 @router.callback_query(F.data == 'start')
 @router.message(Command('start'))
 async def start(message: Union[types.Message, types.CallbackQuery], dialog_manager: DialogManager,
                 command: CommandObject):
-    user = await models.User.get_user(message.from_user.id)
-    if not user:
-        refer_id = command.args
-        if refer_id and refer_id.isdigit():
-            refer_id = int(refer_id)
-            refer = await models.User.get_or_none(telegram_id=refer_id)
-            user = await models.User.add_user(message.from_user, refer)
-        else:
-            user = await models.User.add_user(message.from_user)
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='start').log(
+            "USER_ACTION",
+            f"Пользователь начал взаимодействие с ботом"
+        )
 
-    if isinstance(message, types.CallbackQuery):
-        await message.message.delete()
+        user = await models.User.get_user(user_id)
+        if not user:
+            refer_id = command.args
+            if refer_id and refer_id.isdigit():
+                logger.bind(user_id=user_id, action='start').log(
+                    "USER_ACTION",
+                    f"Обнаружен реферальный ID: {refer_id}"
+                )
+                refer_id = int(refer_id)
+                refer = await models.User.get_or_none(telegram_id=refer_id)
+                user = await models.User.add_user(message.from_user, refer)
+            else:
+                logger.bind(user_id=user_id, action='start').log(
+                    "USER_ACTION",
+                    f"Реферальный ID отсутствует или некорректен"
+                )
+                user = await models.User.add_user(message.from_user)
 
-    # else:
-    #     start_arg = command.args
-    #     if start_arg and start_arg.startswith('free_'):
-    #         payment_link = await models.PaymentLink.get_payment_link(start_arg)
-    #         if payment_link:
-    #             if len(payment_link.user_id_list) >= payment_link.limit:
-    #                 await message.answer(text='Лимит активаций исчерпан')
-    #                 return
-    #
-    #             elif message.from_user.id in payment_link.user_id_list:
-    #                 await message.answer(text='Вы уже активировали эту ссылку')
-    #                 return
-    #
-    #             payment_link.user_id_list.append(user.telegram_id)
-    #             await payment_link.save(update_fields=['user_id_list'])
-    #             user.balance += payment_link.amount
-    #             await user.save(update_fields=['balance'])
-    #             await message.answer(text=f'Вам начислено {payment_link.amount}₽')
-    #             return
+        if isinstance(message, types.CallbackQuery):
+            logger.bind(user_id=user_id, action='start').log(
+                "USER_ACTION",
+                f"Удаление сообщения после нажатия кнопки 'start'"
+            )
+            await message.message.delete()
 
-    sub = await check_subscribe(user)
-    if not sub:
-        await send_subscribe_msg(user)
-        return
+        sub = await check_subscribe(user)
+        if not sub:
+            logger.bind(user_id=user_id, action='start').log(
+                "USER_ACTION",
+                f"Подписка не оформлена"
+            )
+            await send_subscribe_msg(user)
+            return
 
-    await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        logger.bind(user_id=user_id, action='start').log(
+            "USER_ACTION",
+            f"Отправка главного меню"
+        )
+        await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
 
 
 @router.callback_query(F.data == 'check_subscribe')
 async def check_subscribe_handler(call: types.CallbackQuery):
-    user = await models.User.get_user(call.from_user.id)
-    sub = await check_subscribe(user)
-    if sub:
-        await call.message.delete()
-        await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
-    else:
-        await call.answer(text='Вы не подписаны на канал', show_alert=True)
+    try:
+        user_id = call.from_user.id
+        logger.bind(user_id=user_id, action='check_subscribe').log(
+            "USER_ACTION",
+            f"Проверка подписки пользователя"
+        )
+
+        user = await models.User.get_user(user_id)
+        sub = await check_subscribe(user)
+        if sub:
+            logger.bind(user_id=user_id, action='check_subscribe').log(
+                "USER_ACTION",
+                f"Подписка подтверждена"
+            )
+            await call.message.delete()
+            await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        else:
+            logger.bind(user_id=user_id, action='check_subscribe').log(
+                "USER_ACTION",
+                f"Подписка не найдена"
+            )
+            await call.answer(text='Вы не подписаны на канал', show_alert=True)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере check_subscribe: {e}")
 
 
 @router.message(Command("account"))
 @router.message(F.text == bt.PERSONAL_CABINET_BTN)
 async def personal_cabinet(message: types.Message, dialog_manager: DialogManager):
-    user = await models.User.get_user(message.from_user.id)
-    sub = await check_subscribe(user)
-    if not sub:
-        await send_subscribe_msg(user)
-        return
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='personal_cabinet').log(
+            "USER_ACTION",
+            f"Переход в личный кабинет"
+        )
 
-    await dialog_manager.start(PersonalMenu.user_info, mode=StartMode.RESET_STACK)
+        user = await models.User.get_user(user_id)
+        sub = await check_subscribe(user)
+        if not sub:
+            logger.bind(user_id=user_id, action='personal_cabinet').log(
+                "USER_ACTION",
+                f"Подписка не оформлена"
+            )
+            await send_subscribe_msg(user)
+            return
+
+        logger.bind(user_id=user_id, action='personal_cabinet').log(
+            "USER_ACTION",
+            f"Запуск диалога PersonalMenu.user_info"
+        )
+        await dialog_manager.start(PersonalMenu.user_info, mode=StartMode.RESET_STACK)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере personal_cabinet: {e}")
 
 
 @router.callback_query(F.data.startswith('mail:'))
 async def mail_info(call: types.CallbackQuery):
-    mail_id = int(call.data.split(':')[1])
-    mail = await models.Mail.get_or_none(id=mail_id)
-    if not mail:
-        await call.answer()
-        return
+    try:
+        user_id = call.from_user.id
+        mail_id = int(call.data.split(':')[1])
+        logger.bind(user_id=user_id, action='mail_info').log(
+            "USER_ACTION",
+            f"Пользователь запросил информацию о почте с ID={mail_id}"
+        )
 
-    msg_text = bt.PAID_EMAIL_INFO.format(email=mail.email, expire_at=mail.expire_at.strftime('%d.%m.%Y'))
-    mk = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                types.InlineKeyboardButton(text=bt.RECEIVE_MY_EMAIL_BTN, callback_data=f'receive_my_mail:{mail.id}'),
-            ],
-            [
-                types.InlineKeyboardButton(text=bt.EXTEND_EMAIL_BTN, callback_data=f'extend_email:{mail.id}')
-            ],
-            [
-                types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data='my_rent_emails')
+        mail = await models.Mail.get_or_none(id=mail_id)
+        if not mail:
+            logger.bind(user_id=user_id, action='mail_info').log(
+                "USER_ACTION",
+                f"Почта с ID={mail_id} не найдена"
+            )
+            await call.answer()
+            return
+
+        msg_text = bt.PAID_EMAIL_INFO.format(email=mail.email, expire_at=mail.expire_at.strftime('%d.%m.%Y'))
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text=bt.RECEIVE_MY_EMAIL_BTN, callback_data=f'receive_my_mail:{mail.id}'),
+                ],
+                [
+                    types.InlineKeyboardButton(text=bt.EXTEND_EMAIL_BTN, callback_data=f'extend_email:{mail.id}')
+                ],
+                [
+                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data='my_rent_emails')
+                ]
             ]
-        ]
-    )
-    await call.message.edit_text(text=msg_text, reply_markup=mk)
+        )
+        logger.bind(user_id=user_id, action='mail_info').log(
+            "USER_ACTION",
+            f"Отображение информации о почте '{mail.email}'"
+        )
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере mail_info: {e}")
 
 
 @router.callback_query(F.data.startswith('continue_payment:'))
 async def continue_payment(call: types.CallbackQuery, dialog_manager: DialogManager):
-    payment_id = int(call.data.split(':')[1])
-    payment = await models.Payment.get_or_none(id=payment_id)
-    if not payment:
-        await call.answer()
-        return
+    try:
+        user_id = call.from_user.id
+        payment_id = int(call.data.split(':')[1])
+        logger.bind(user_id=user_id, action='continue_payment').log(
+            "USER_ACTION",
+            f"Продолжение оплаты для платежа ID={payment_id}"
+        )
 
-    if 'email' in payment.continue_data:
-        await dialog_manager.start(ReceiveEmailMenu.rent_email_confirm, data=payment.continue_data,
-                                   mode=StartMode.RESET_STACK)
+        payment = await models.Payment.get_or_none(id=payment_id)
+        if not payment:
+            logger.bind(user_id=user_id, action='continue_payment').log(
+                "USER_ACTION",
+                f"Платёж с ID={payment_id} не найден"
+            )
+            await call.answer()
+            return
 
-    else:  # было (payment.continue_data['country_id'], payment.continue_data['service_code'], call, dialog_manager)
-        await send_country_info(payment.continue_data['service_code'], call,
-                                dialog_manager)
+        if 'email' in payment.continue_data:
+            logger.bind(user_id=user_id, action='continue_payment').log(
+                "USER_ACTION",
+                f"Старт диалога ReceiveEmailMenu.rent_email_confirm"
+            )
+            await dialog_manager.start(ReceiveEmailMenu.rent_email_confirm, data=payment.continue_data,
+                                       mode=StartMode.RESET_STACK)
+        else:
+            logger.bind(user_id=user_id, action='continue_payment').log(
+                "USER_ACTION",
+                f"Вызов send_country_info для продолжения оплаты"
+            )
+            await send_country_info(payment.continue_data['service_code'], call, dialog_manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере continue_payment: {e}")
 
 
 @router.callback_query(F.data.startswith('bonus_price:'))
 async def bonus_price(call: types.CallbackQuery, dialog_manager: DialogManager):
-    from app.dialogs.personal_cabinet.selected import send_payment_keyboard
-    price = call.data.split(':')[1]
-    user = await models.User.get_user(call.from_user.id)
-    if not user:
-        return
+    try:
+        user_id = call.from_user.id
+        price = call.data.split(':')[1]
+        logger.bind(user_id=user_id, action='bonus_price').log(
+            "USER_ACTION",
+            f"Выбрана сумма бонуса: {price}"
+        )
 
-    if price == 'other':
-        await call.message.edit_reply_markup()
-        await dialog_manager.start(PersonalMenu.enter_amount, mode=StartMode.RESET_STACK)
+        user = await models.User.get_user(user_id)
+        if not user:
+            logger.bind(user_id=user_id, action='bonus_price').log(
+                "USER_ACTION",
+                f"Пользователь не найден"
+            )
+            return
 
-    else:
-        await send_payment_keyboard(call, price=float(price))
+        if price == 'other':
+            logger.bind(user_id=user_id, action='bonus_price').log(
+                "USER_ACTION",
+                f"Запрос ввода произвольной суммы"
+            )
+            await call.message.edit_reply_markup()
+            await dialog_manager.start(PersonalMenu.enter_amount, mode=StartMode.RESET_STACK)
+        else:
+            logger.bind(user_id=user_id, action='bonus_price').log(
+                "USER_ACTION",
+                f"Отправка клавиатуры оплаты на сумму {price}"
+            )
+            from app.dialogs.personal_cabinet.selected import send_payment_keyboard
+            await send_payment_keyboard(call, price=float(price))
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере bonus_price: {e}")
 
 
 @router.message(Command('rent'))
 async def rent(message: types.Message, dialog_manager: DialogManager):
-    from app.dialogs.receive_email.selected import on_rent_email_check_discount
-    await on_rent_email_check_discount(message, dialog_manager)
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='rent').log(
+            "USER_ACTION",
+            f"Пользователь начал процесс аренды"
+        )
+        from app.dialogs.receive_email.selected import on_rent_email_check_discount
+        await on_rent_email_check_discount(message, dialog_manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /rent: {e}")
 
 
-# Обработчик для inline-кнопки "Продлить аренду"
 @router.callback_query(lambda c: c.data and c.data.startswith('rental'))
 async def process_rent_callback(message: types.Message, dialog_manager: DialogManager):
-    # Получаем пользователя и вызываем функцию on_rent_email_check_discount
-    from app.dialogs.receive_email.selected import on_rent_email_check_discount
-    await on_rent_email_check_discount(message, dialog_manager)
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action='process_rent_callback').log(
+            "USER_ACTION",
+            f"Обработка inline-кнопки 'Продлить аренду'"
+        )
+        from app.dialogs.receive_email.selected import on_rent_email_check_discount
+        await on_rent_email_check_discount(message, dialog_manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере process_rent_callback: {e}")
