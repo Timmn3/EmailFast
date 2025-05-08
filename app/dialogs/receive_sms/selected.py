@@ -518,6 +518,9 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_country_info: {e}")
 
+async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    await manager.switch_to(CountryMenu.select_country)
+
 
 def sort_countries_by_dict(countries_with_prices):
     """
