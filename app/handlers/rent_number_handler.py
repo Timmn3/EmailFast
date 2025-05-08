@@ -286,16 +286,18 @@ async def cancel_rent(callback_query: types.CallbackQuery):
         user = await models.User.get_user(user_id)
 
         if response.get("response"):
-            if rented.status == StatusResponse.STATUS_WAIT_CODE:
-                logger.bind(user_id=user_id, action="cancel_rent").log("USER_ACTION", "Возврат средств за ожидание кода")
+            rented.is_canceled = True  # Защищаем от повторной отмены
+
+            if rented.status == StatusResponse.STATUS_WAIT_CODE and not rented.refund_processed:
+                logger.bind(user_id=user_id, action="cancel_rent").info(
+                    f"Возврат средств за аренду ID={rent_id}, сумма={rented.cost}")
                 user.balance += rented.cost
                 await user.save()
+                rented.refund_processed = True  # Помечаем, что возврат сделан
 
-            rented.is_canceled = True
-            await rented.save()
-            logger.bind(user_id=user_id, action="cancel_rent").log("USER_ACTION", "Аренда успешно отменена")
+            await rented.save()  # Сохраняем все изменения
+
             await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
-
             await callback_query.message.delete()
             await send_rent_menu(user, callback_query=callback_query)
         else:
