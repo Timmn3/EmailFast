@@ -128,3 +128,16 @@ class LoggingMiddleware(BaseMiddleware):
         except Exception as e:
             logger.opt(exception=e).error(f"Ошибка при обработке события у пользователя {user_id}: {e}")
             raise
+
+
+
+def log_action(action_name: str):
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            update = args[0]  # предполагаем, что первый аргумент — это Update
+            user_id = getattr(update, "from_user", None)
+            user_id = user_id.id if user_id else None
+            logger.bind(user_id=user_id, action=action_name).log("USER_ACTION", f"Запуск действия: {action_name}")
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
