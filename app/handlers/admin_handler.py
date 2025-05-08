@@ -246,7 +246,7 @@ async def test_balance(message: types.Message):
         return
     sms = SmsReceive()
     balance = await sms.get_balance()
-    print(balance)
+    logger.info(f"Баланс: {balance}")
 
 
 @router.message(Command('test_delete'))
@@ -324,6 +324,7 @@ async def send_message(message: types.Message, state: FSMContext):
         return
 
     await state.clear()
+    logger.bind(user_id=message.from_user.id, action='init_broadcast').log('USER_ACTION', 'Инициализация рассылки')
     await state.set_state(BroadcastState.send_message)
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
@@ -396,6 +397,7 @@ async def on_confirm_send_message(c: types.CallbackQuery, state: FSMContext):
     # Получаем данные из состояния
     data = await state.get_data()
     campaign_id = data.get("campaign_id")  # Получаем campaign_id
+    logger.bind(user_id=c.from_user.id, action='confirm_broadcast').log('USER_ACTION', f'Запуск рассылки #{campaign_id}')
     await c.message.edit_text(f"Рассылка #{campaign_id} запущена!")
     # Запуск задачи Celery с campaign_id
     send_message_batch.delay(campaign_id)  # Передаем campaign_id в Celery-задачу
@@ -428,6 +430,7 @@ async def affiliate_stat(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
+    logger.bind(user_id=message.from_user.id, action='affiliate_stat').log('USER_ACTION', 'Команда /affiliate_stat вызвана')
     users = await models.User.filter(refer_id__isnull=False).all()
     referrers_dict = {}
     for user in users:
@@ -480,7 +483,8 @@ async def affiliate_stat(message: types.Message):
 
 @router.message(Command("refund"))
 async def handle_refund_command(message: types.Message):
-    logger.success(f'message.from_user.id: {message.from_user.id} '
+    logger.bind(user_id=message.from_user.id, action='refund').log('USER_ACTION', 'Команда /refund вызвана')
+    logger.info(f'message.from_user.id: {message.from_user.id} '
                    f'message.successful_payment.telegram_payment_charge_id: {message.successful_payment.telegram_payment_charge_id}')
     refund_star = await message.bot.refund_star_payment(message.from_user.id,
                                                         message.successful_payment.telegram_payment_charge_id)
@@ -513,6 +517,7 @@ async def add_balance(message: types.Message):
     user.balance += amount
     await user.save()
 
+    logger.bind(user_id=message.from_user.id, action='add_balance').log('USER_ACTION', f'Пополнение баланса {telegram_id} на {amount}')
     await message.answer(f"Баланс пользователя {user} пополнен на {amount}.")
 
     if amount > 0:
@@ -563,6 +568,7 @@ async def info_id(message: types.Message):
         await message.answer("Некорректный Telegram ID")
         return
 
+    logger.bind(user_id=message.from_user.id, action='info_id').log('USER_ACTION', f'Запрос информации по пользователю {telegram_id}')
     user = await models.User.get_user(telegram_id)
     if user is None:
         await message.answer("Пользователь с таким Telegram ID не найден.")
