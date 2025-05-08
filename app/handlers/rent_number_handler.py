@@ -20,72 +20,69 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
     """
     📞Арендовать номер
     """
+    user = await models.User.get_user(message.from_user.id)
 
-    pass
-    # user = await models.User.get_user(message.from_user.id)
-    #
-    # # Проверяем подписку
-    # sub = await check_subscribe(user)
-    # if not sub:
-    #     await send_subscribe_msg(user)
-    #     return
-    #
-    # # Проверяем аренды пользователя
-    # activation_list = await models.Rent.get_active_rent(user.id)
-    #
-    # # Если нет активных арендных номеров, то предлагаем
-    # if activation_list is None or not activation_list:
-    #     await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
-    #     return
-    #
-    # # Отправляем меню аренды
-    # await send_rent_menu(user, message=message)
+    # Проверяем подписку
+    sub = await check_subscribe(user)
+    if not sub:
+        await send_subscribe_msg(user)
+        return
+
+    # Проверяем аренды пользователя
+    activation_list = await models.Rent.get_active_rent(user.id)
+
+    # Если нет активных арендных номеров, то предлагаем
+    if activation_list is None or not activation_list:
+        await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
+        return
+
+    # Отправляем меню аренды
+    await send_rent_menu(user, message=message)
 
 
 async def send_rent_menu(user: "User", message: types.Message = None, callback_query: types.CallbackQuery = None):
     """
     Вспомогательная функция для отправки меню аренды номеров.
     """
-    pass
-    # # Проверяем аренды пользователя
-    # activation_list = await models.Rent.get_active_rent(user.id)
-    #
-    # # Создаем список для вывода информации
-    # rent_details = ["<i>Ваши арендованные номера⤵️</i>\n"]
-    #
-    # # Создаем inline клавиатуру
-    # keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
-    #
-    # # Проходим по всем арендам
-    # for activation in activation_list:
-    #     # Если аренда отменена, пропускаем ее
-    #     if activation.is_canceled:
-    #         continue
-    #
-    #     # Загружаем связанные данные о стране
-    #     await activation.fetch_related('country')
-    #     country = activation.country.name
-    #     # Формируем строку с флагом и номером
-    #     flag = country_flags.get(country, "")  # Получаем флаг по имени страны
-    #     phone_number = activation.phone_number
-    #
-    #     # Формируем текст кнопки (флаг + номер)
-    #     button_text = f"{flag} +{phone_number}"
-    #
-    #     # Создаем кнопку с уникальным callback_data для каждого номера
-    #     callback_data = f"number_{activation.id}"
-    #
-    #     # Добавляем кнопку в клавиатуру
-    #     keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=button_text, callback_data=callback_data)])
-    #
-    # # Добавляем кнопку для аренды нового номера
-    # keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")])
-    #
-    # # Отправляем сообщение с inline клавиатурой
-    # if message:
-    #     await message.answer("\n".join(rent_details), reply_markup=keyboard)
-    # else:
-    #     await callback_query.message.edit_text("\n".join(rent_details), reply_markup=keyboard)
+    # Проверяем аренды пользователя
+    activation_list = await models.Rent.get_active_rent(user.id)
+
+    # Создаем список для вывода информации
+    rent_details = ["<i>Ваши арендованные номера⤵️</i>\n"]
+
+    # Создаем inline клавиатуру
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+
+    # Проходим по всем арендам
+    for activation in activation_list:
+        # Если аренда отменена, пропускаем ее
+        if activation.is_canceled:
+            continue
+
+        # Загружаем связанные данные о стране
+        await activation.fetch_related('country')
+        country = activation.country.name
+        # Формируем строку с флагом и номером
+        flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+        phone_number = activation.phone_number
+
+        # Формируем текст кнопки (флаг + номер)
+        button_text = f"{flag} +{phone_number}"
+
+        # Создаем кнопку с уникальным callback_data для каждого номера
+        callback_data = f"number_{activation.id}"
+
+        # Добавляем кнопку в клавиатуру
+        keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=button_text, callback_data=callback_data)])
+
+    # Добавляем кнопку для аренды нового номера
+    keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")])
+
+    # Отправляем сообщение с inline клавиатурой
+    if message:
+        await message.answer("\n".join(rent_details), reply_markup=keyboard)
+    else:
+        await callback_query.message.edit_text("\n".join(rent_details), reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "back_to_rent_menu")
@@ -93,11 +90,10 @@ async def back_to_rent_menu(callback_query: types.CallbackQuery, dialog_manager:
     """
     Обработка кнопки 'Назад', возвращающая в меню аренды номеров.
     """
-    pass
-    # user = await models.User.get_user(callback_query.from_user.id)
-    #
-    # # Отправляем меню аренды
-    # await send_rent_menu(user, callback_query=callback_query)
+    user = await models.User.get_user(callback_query.from_user.id)
+
+    # Отправляем меню аренды
+    await send_rent_menu(user, callback_query=callback_query)
 
 
 # Обработчик для нажатия на кнопку арендованного номера
@@ -252,18 +248,17 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
 # 📞Арендовать новый номер
 @router.callback_query(F.data.startswith('new_number'))
 async def rent_new_number(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
-    pass
-    # # Передаем только необходимые данные для восстановления
-    # context_data = {
-    #     'chat_id': callback_query.message.chat.id,
-    #     'message_id': callback_query.message.message_id
-    # }
-    #
-    # # Завершаем текущий диалог или возвращаем в предыдущий
-    # await dialog_manager.start(
-    #     RentCountryMenu.select_country,  # Состояние для выбора страны
-    #     context_data  # Передаем только нужные данные
-    # )
+    # Передаем только необходимые данные для восстановления
+    context_data = {
+        'chat_id': callback_query.message.chat.id,
+        'message_id': callback_query.message.message_id
+    }
+
+    # Завершаем текущий диалог или возвращаем в предыдущий
+    await dialog_manager.start(
+        RentCountryMenu.select_country,  # Состояние для выбора страны
+        context_data  # Передаем только нужные данные
+    )
 
 
 @router.callback_query(F.data.startswith('cancel_rent_'))
@@ -329,48 +324,47 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
     """
     Обработка продления аренды.
     """
-    pass
-    # rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
-    # rented = await models.Rent.get_rent(id=rent_id)  # получаем объект Rent
-    #
-    # # Получаем состояние аренды через OnlineSimRentAPI
-    # api_client = OnlineSimRentAPI()
-    # rent_state = await api_client.get_rent_state(tzid=rented.rent_id)
-    #
-    # # Проверяем, если список пуст или extend отсутствует
-    # if not rent_state or not rent_state.get("list") or not rent_state["list"]:
-    #     await callback_query.answer(text=bt.RENTAL_CANCELED_OR_NOT_FOUND, show_alert=True)
-    #     return
-    #
-    # if "extend" not in rent_state["list"][0]:
-    #     await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
-    #     return
-    #
-    # rent_country_code = rented.country.country_id
-    # country = rented.country.name
-    #
-    # # Извлекаем тарифы для выбранной страны
-    # data = await api_client.get_tariffs()
-    # tariffs = data.get(str(rent_country_code), {})
-    # # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
-    # if tariffs:  # Проверяем, есть ли данные
-    #     updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
-    # else:
-    #     await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
-    #     return
-    #
-    # context_data = {
-    #         "selected_country": {
-    #             "rent_country_code": rent_country_code,
-    #             "country": country,
-    #             "tariffs": updated_tariffs,  # Сохраняем только нужные тарифы
-    #             "tzid": rented.rent_id,
-    #         }}
-    #
-    # await dialog_manager.start(
-    #     RentCountryMenu.country_details,  # Состояние для выбора страны
-    #     context_data  # Передаем только нужные данные
-    # )
+    rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
+    rented = await models.Rent.get_rent(id=rent_id)  # получаем объект Rent
+
+    # Получаем состояние аренды через OnlineSimRentAPI
+    api_client = OnlineSimRentAPI()
+    rent_state = await api_client.get_rent_state(tzid=rented.rent_id)
+
+    # Проверяем, если список пуст или extend отсутствует
+    if not rent_state or not rent_state.get("list") or not rent_state["list"]:
+        await callback_query.answer(text=bt.RENTAL_CANCELED_OR_NOT_FOUND, show_alert=True)
+        return
+
+    if "extend" not in rent_state["list"][0]:
+        await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
+        return
+
+    rent_country_code = rented.country.country_id
+    country = rented.country.name
+
+    # Извлекаем тарифы для выбранной страны
+    data = await api_client.get_tariffs()
+    tariffs = data.get(str(rent_country_code), {})
+    # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
+    if tariffs:  # Проверяем, есть ли данные
+        updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
+    else:
+        await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
+        return
+
+    context_data = {
+            "selected_country": {
+                "rent_country_code": rent_country_code,
+                "country": country,
+                "tariffs": updated_tariffs,  # Сохраняем только нужные тарифы
+                "tzid": rented.rent_id,
+            }}
+
+    await dialog_manager.start(
+        RentCountryMenu.country_details,  # Состояние для выбора страны
+        context_data  # Передаем только нужные данные
+    )
 
 
 @router.callback_query(F.data.startswith('top_up_balance'))
