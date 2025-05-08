@@ -1,7 +1,6 @@
-import logging
+# === Импорты ===
 from aiogram.filters import ExceptionTypeFilter
 from aiogram.types import Message
-from aiogram_dialog import DialogManager, StartMode, ShowMode
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
@@ -10,67 +9,65 @@ from app.db.database import init_db
 from app.dependencies import bot, ON_SCHEDULE
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.dialogs.bot_menu.states import BotMenu
-from app.handlers import (start_handler, affiliate_program, admin_handler, bot_handler, get_email_handler,
-                          receive_sms_handler, rent_number_handler, report)
+from app.handlers import (
+    start_handler, affiliate_program, admin_handler, bot_handler,
+    get_email_handler, receive_sms_handler, rent_number_handler, report
+)
 from app.handlers.health_check_router import health_check_router
 from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
-from app.services.periodic_tasks import check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify, \
-    check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay, \
-    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent, checking_inactive_rent, auto_renewal_of_rent, \
-    send_coder, check_payment_cryptomus
+from app.services.periodic_tasks import (
+    check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify,
+    check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay,
+    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
+    checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus
+)
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
-from loguru import logger
+from logger_config import logger
 from app.scheduler_instance import scheduler
 from app.services import bot_texts as bt
 
-# logger.remove()
-# Добавляем обработчик для записи в файл без цветного вывода
-logger.add("logs/loguru.log",
-           format="{level: <8} {time:YYYY.MM.DD HH:mm:ss} {module}:{function}:{line} - {message}",
-           level="DEBUG",
-           rotation="5 MB",
-           compression="zip")
+import signal
+import logging
+
+# Версия для отображения/отладки
+msg_text = "Версия 08.05.2025"
 
 
-# Уровни логирования в Loguru:
-# TRACE - Самый детализированный уровень. Используется для трассировки и детализированной отладки.
-# DEBUG - Для отладки и вывода информации, полезной для разработчиков.
-# INFO - Для общих информационных сообщений о нормальном выполнении программы.
-# SUCCESS - Для сообщений об успешном завершении операций.
-# WARNING - Для сообщений, указывающих на потенциальные проблемы, которые не являются критическими.
-# ERROR - Для сообщений об ошибках, которые препятствуют нормальному выполнению.
-# CRITICAL - Для критических ошибок, которые могут привести к серьезным последствиям или завершению программы.
-
-msg_text = "Версия 25.04.2025"  # git push production master
-
-
+# === Обработчики исключений Dialog Manager ===
 async def on_unknown_intent(message: Message):
+    logger.bind(user_id=message.from_user.id).log("USER_ACTION", "Неизвестный intent – возврат в главное меню")
     await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+
 
 async def on_unknown_state(message: Message):
+    logger.bind(user_id=message.from_user.id).log("USER_ACTION", "Неизвестный state – возврат в главное меню")
     await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
 
 
+# === Слушатель задач планировщика ===
 def job_listener(event):
     """
     Listener для обработки ошибок, выполнения и пропусков задач.
     """
     if event.code == EVENT_JOB_ERROR:
-        logger.error(f"Job {event.job_id} raised an exception: {event.exception}")
+        logger.error(f"Задача {event.job_id} вызвала исключение: {event.exception}")
     elif event.code == EVENT_JOB_MISSED:
-        logger.warning(f"Job {event.job_id} was missed at {event.scheduled_run_time}")
+        logger.warning(f"Задача {event.job_id} была пропущена в {event.scheduled_run_time}")
     elif event.code == EVENT_JOB_EXECUTED:
-        logger.info(f"Job {event.job_id} executed successfully at {event.scheduled_run_time}")
+        logger.log("SUCCESS", f"Задача {event.job_id} успешно выполнена в {event.scheduled_run_time}")
 
 
+# === Основной запуск бота ===
 async def main(dp: Dispatcher):
     """
     Основная функция запуска бота и планировщика.
     """
+    logger.success("Запуск Telegram-бота")
+
     main_routers = [
         admin_handler.router,
         report.router,
@@ -81,36 +78,49 @@ async def main(dp: Dispatcher):
         receive_sms_handler.router,
         rent_number_handler.router,
     ]
-    dp.errors.register(
-        on_unknown_intent,
-        ExceptionTypeFilter(UnknownIntent),
-    )
-    dp.errors.register(
-        on_unknown_state,
-        ExceptionTypeFilter(UnknownState),
-    )
 
+    # Регистрация глобальных обработчиков ошибок
+    dp.errors.register(on_unknown_intent, ExceptionTypeFilter(UnknownIntent))
+    dp.errors.register(on_unknown_state, ExceptionTypeFilter(UnknownState))
+
+    # Подключение диалогов и роутеров
     from app.dialogs import setup_dialogs
     dp.include_routers(bot_handler.router, *main_routers)
+    logger.success("Роутеры и диалоги зарегистрированы")
+
     setup_dialogs(dp)
 
+    # Команды для Telegram-бота
     await set_default_commands(bot)
-    await init_db()
-    await notify_wakeup_bot(bot)
+    logger.success("Установлены команды по умолчанию")
 
+    # Инициализация базы данных
+    await init_db()
+    logger.success("Инициализация базы данных завершена")
+
+    # Уведомление администратора о запуске
+    await notify_wakeup_bot(bot)
+    logger.success("Бот сообщил о пробуждении")
+
+    # Регистрация обработчика оплаты
     dp.pre_checkout_query.register(stars_pay.pre_checkout_handler)
 
+    # Планировщик задач
     set_scheduled_jobs(scheduler)
-    scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
+    scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_EXECUTED)
     if not scheduler.running:
         scheduler.start()
+        logger.info("Планировщик задач запущен")
 
+    # Прочие задачи перед polling
     await userbot_ping()
-
     await send_coder(msg_text)
 
+    # Старт polling
     await dp.start_polling(bot)
 
+
+# === Планировщик задач ===
 def set_scheduled_jobs(scheduler):
     try:
         if ON_SCHEDULE:
@@ -145,43 +155,50 @@ def set_scheduled_jobs(scheduler):
             # Проверка незавершенных аренд
             scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
         else:
-            print(f'ON_SCHEDULE {ON_SCHEDULE}')
+            logger.info(f'ON_SCHEDULE выключен ({ON_SCHEDULE})')
     except Exception as e:
-        # Логирование ошибки
-        logger.error(f"Error while adding scheduled jobs: {e}")
+        logger.opt(exception=e).error("Ошибка при добавлении задач в планировщик")
 
 
+# === Фильтры для подавления лишних логов apscheduler ===
 class SkipSpecificLogFilter(logging.Filter):
     def filter(self, record):
         return not (
-                "Execution of job" in record.getMessage() and
-                "skipped: maximum number of running instances reached" in record.getMessage()
+            "Execution of job" in record.getMessage() and
+            "skipped: maximum number of running instances reached" in record.getMessage()
         )
+
 
 class MissedJobLogFilter(logging.Filter):
     def filter(self, record):
         return "Job" not in record.getMessage() or "was missed" not in record.getMessage()
 
-import signal
 
+# === Обработка SIGTERM ===
 def shutdown_scheduler(scheduler):
-    logger.info("Shutting down scheduler...")
+    logger.info("Остановка планировщика...")
     scheduler.shutdown()
+
 
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 
 
+# === Точка входа ===
 if __name__ == '__main__':
     try:
         from app.dependencies import dp
-        logger.success("Starting")
-        logger = logging.getLogger('apscheduler')
-        logger.setLevel(logging.WARNING)
+        logger.success("=== Старт main.py ===")
+
+        # Подавление лишних логов apscheduler
+        aps_logger = logging.getLogger('apscheduler')
+        aps_logger.setLevel(logging.WARNING)
         logging.getLogger('apscheduler.executors.default').setLevel(logging.WARNING)
         handler = logging.StreamHandler()
         handler.addFilter(SkipSpecificLogFilter())
         handler.addFilter(MissedJobLogFilter())
-        logger.addHandler(handler)
+        aps_logger.addHandler(handler)
+
         asyncio.run(main(dp))
+
     except Exception as e:
-        logger.exception(f'Stop main\n{e}')
+        logger.opt(exception=e).critical(f'Критическая ошибка в main: {e}')
