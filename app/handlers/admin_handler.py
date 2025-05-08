@@ -242,15 +242,17 @@ async def stat(message: types.Message):
 
 @router.message(Command('test_balance'))
 async def test_balance(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="test_balance").log("USER_ACTION", "Команда /test_balance вызвана")
     if message.from_user.id not in ADMINS:
         return
     sms = SmsReceive()
     balance = await sms.get_balance()
-    logger.info(f"Баланс: {balance}")
+    logger.bind(user_id=message.from_user.id, action="info").log("USER_ACTION", f"Баланс: {balance}")
 
 
 @router.message(Command('test_delete'))
 async def test_delete(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="test_delete").log("USER_ACTION", "Команда /test_delete вызвана")
     if message.from_user.id not in ADMINS:
         return
     count = await Activation.delete_user_activations(message.from_user.id)
@@ -259,6 +261,7 @@ async def test_delete(message: types.Message):
 
 @router.message(Command('test_db'))
 async def test(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="test_db").log("USER_ACTION", "Команда /test_db вызвана")
     if message.from_user.id not in ADMINS:
         return
     await message.answer(f'тест ')
@@ -270,16 +273,18 @@ async def test(message: types.Message):
 
 @router.message(Command('test_state'))
 async def test_state(message: types.Message, dialog_manager: DialogManager):
+    logger.bind(user_id=message.from_user.id, action="test_state").log("USER_ACTION", "Команда /test_state вызвана")
     if message.from_user.id not in ADMINS:
         return
     try:
-        logger.success(dialog_manager.current_context())
+        logger.bind(user_id=message.from_user.id, action="success").log("USER_ACTION", dialog_manager.current_context())
     except Exception as e:
-        logger.success(e)
+        logger.bind(user_id=message.from_user.id, action="success").log("USER_ACTION", e)
 
 
 @router.message(Command('freemoney'))
 async def free_money(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="freemoney").log("USER_ACTION", "Команда /freemoney вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -323,8 +328,10 @@ async def send_message(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
 
+    logger.bind(user_id=message.from_user.id, action="clear_state").log("USER_ACTION", "Сброс состояния FSM")
     await state.clear()
     logger.bind(user_id=message.from_user.id, action='init_broadcast').log('USER_ACTION', 'Инициализация рассылки')
+    logger.bind(user_id=message.from_user.id, action="set_broadcast_state").log("USER_ACTION", "Установка состояния: send_message")
     await state.set_state(BroadcastState.send_message)
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
@@ -339,6 +346,7 @@ async def send_message(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == 'cancel_send_message')
 async def cancel_send_message(c: types.CallbackQuery, state: FSMContext):
     await c.message.edit_text(text='Ввод отменен')
+    logger.bind(user_id=c.from_user.id, action="clear_state").log("USER_ACTION", "Сброс состояния FSM")
     await state.clear()
 
 @router.message(BroadcastState.send_message)
@@ -346,6 +354,7 @@ async def on_send_message(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
 
+    logger.bind(user_id=message.from_user.id, action="clear_state").log("USER_ACTION", "Сброс состояния FSM")
     await state.clear()
 
     # Проверяем, есть ли у сообщения текст
@@ -401,6 +410,7 @@ async def on_confirm_send_message(c: types.CallbackQuery, state: FSMContext):
     await c.message.edit_text(f"Рассылка #{campaign_id} запущена!")
     # Запуск задачи Celery с campaign_id
     send_message_batch.delay(campaign_id)  # Передаем campaign_id в Celery-задачу
+    logger.bind(user_id=c.from_user.id, action="clear_state").log("USER_ACTION", "Сброс состояния FSM")
     await state.clear()
 
 
@@ -422,11 +432,13 @@ async def on_confirm_send_message(c: types.CallbackQuery, state: FSMContext):
             message_id=message_id
         )
     await c.message.answer(text=f'Сообщение отправлено {len(users)} пользователям')
+    logger.bind(user_id=c.from_user.id, action="clear_state").log("USER_ACTION", "Сброс состояния FSM")
     await state.clear()
 
 
 @router.message(Command('affiliate_stat'))
 async def affiliate_stat(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="affiliate_stat").log("USER_ACTION", "Команда /affiliate_stat вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -494,6 +506,7 @@ async def handle_refund_command(message: types.Message):
 
 @router.message(Command('add_balance'))
 async def add_balance(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="add_balance").log("USER_ACTION", "Команда /add_balance вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -529,6 +542,7 @@ async def add_balance(message: types.Message):
 
 @router.message(Command('services_update'))
 async def services(message: types.Message, state: FSMContext):
+    logger.bind(user_id=message.from_user.id, action="services_update").log("USER_ACTION", "Команда /services_update вызвана")
     if message.from_user.id not in ADMINS:
         return
     await message.answer("Обновляю список сервисов...")
@@ -538,6 +552,7 @@ async def services(message: types.Message, state: FSMContext):
 
 @router.message(Command('smsactivate'))
 async def set_smsactivate(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="smsactivate").log("USER_ACTION", "Команда /smsactivate вызвана")
     if message.from_user.id not in ADMINS:
         return
     await AdminSettings.update_setting("sms_rental_service", "SMS_Activate")
@@ -546,6 +561,7 @@ async def set_smsactivate(message: types.Message):
 
 @router.message(Command('onlinesim'))
 async def set_smsactivate(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="onlinesim").log("USER_ACTION", "Команда /onlinesim вызвана")
     if message.from_user.id not in ADMINS:
         return
     await AdminSettings.update_setting("sms_rental_service", "Onlinesim")
@@ -554,6 +570,7 @@ async def set_smsactivate(message: types.Message):
 
 @router.message(Command('info_id'))
 async def info_id(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="info_id").log("USER_ACTION", "Команда /info_id вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -622,6 +639,7 @@ async def info_id(message: types.Message):
 
 @router.message(Command('sending_status'))
 async def campaign_status(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="sending_status").log("USER_ACTION", "Команда /sending_status вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -652,6 +670,7 @@ import tempfile
 
 @router.message(Command('users_with_balance'))
 async def users_with_balance_html(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="users_with_balance").log("USER_ACTION", "Команда /users_with_balance вызвана")
     if message.from_user.id not in ADMINS:
         return
 
@@ -719,6 +738,7 @@ async def users_with_balance_html(message: types.Message):
 
 @router.message(Command('users_without_payments'))
 async def users_without_payments(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="users_without_payments").log("USER_ACTION", "Команда /users_without_payments вызвана")
     if message.from_user.id not in ADMINS:
         return
 
