@@ -1,11 +1,14 @@
+
 from loguru import logger
 import sys
 import os
 
-# Создаем директорию для логов
-os.makedirs("logs", exist_ok=True)
+# === Создание подкаталогов ===
+os.makedirs("logs/errors", exist_ok=True)
+os.makedirs("logs/users", exist_ok=True)
+os.makedirs("logs/general", exist_ok=True)
 
-# Удаляем стандартные обработчики
+# === Удаление стандартного обработчика ===
 logger.remove()
 
 # === Кастомные уровни логгирования ===
@@ -19,7 +22,7 @@ SAFE_USER_FORMAT = (
     "{message}"
 )
 
-# === Функция для добавления логгера с общими настройками ===
+# === Универсальная функция для добавления логгера ===
 def add_logger(
     file_path: str,
     level: str = "INFO",
@@ -29,7 +32,6 @@ def add_logger(
     enqueue: bool = True,
     **kwargs
 ):
-    """Добавляет логгер с заданными параметрами."""
     logger.add(
         file_path,
         level=level,
@@ -40,52 +42,67 @@ def add_logger(
         **kwargs
     )
 
-
-# === Логирование в консоль (для разработки) ===
+# === Логирование в консоль с цветами и мета-информацией ===
 logger.add(
     sys.stdout,
     level="DEBUG",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | {message}"
+    format=lambda record: (
+        f"<green>{record['time']:YYYY-MM-DD HH:mm:ss}</green> | "
+        f"<cyan>USER {record['extra'].get('user_id', '-')}</cyan> | "
+        f"<magenta>ACTION '{record['extra'].get('action', '-')}'</magenta> | "
+        f"<blue>{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']}</blue> | "
+        f"<level>{record['message']}</level>\n"
+    ),
+    backtrace=True,
+    diagnose=True
 )
 
-# === Логирование действий пользователей в отдельный файл ===
+# === Логирование действий пользователей ===
 add_logger(
-    "logs/user_actions_{time}.log",
+    "logs/users/user_actions_{time}.log",
     level="USER_ACTION",
     rotation="10 MB",
     format=lambda record: (
         f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
-        f"USER {record['extra'].get('user_id', '-')}" +
-        f" | ACTION '{record['extra'].get('action', '-')}' | " +
-        f"{record['message']}"
+        f"USER {record['extra'].get('user_id', '-')} | "
+        f"ACTION '{record['extra'].get('action', '-')}' | "
+        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
+        f"{record['message']}\n"
     )
 )
 
-
-# === Логирование ошибок с traceback ===
+# === Логирование ошибок с трассировкой ===
 add_logger(
-    "logs/error_{time}.log",
+    "logs/errors/error_{time}.log",
     level="ERROR",
     rotation="20 MB",
     backtrace=True,
     diagnose=True,
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message} | {exception}"
+    format=lambda record: (
+        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
+        f"{record['level'].name} | "
+        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
+        f"{record['message']} | {record['exception']}\n"
+    )
 )
 
-# === Все остальные логи ===
+# === Общие логи приложения ===
 add_logger(
-    "logs/all_logs_{time}.log",
+    "logs/general/all_logs_{time}.log",
     level="INFO",
     rotation="50 MB",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+    format=lambda record: (
+        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
+        f"{record['level'].name} | "
+        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
+        f"{record['message']}\n"
+    )
 )
-
 
 # === Middleware для логгирования действий пользователей ===
 from aiogram import BaseMiddleware
 from aiogram.types import Update
 from typing import Callable, Dict, Any, Awaitable
-
 
 class LoggingMiddleware(BaseMiddleware):
     async def __call__(
@@ -104,12 +121,10 @@ class LoggingMiddleware(BaseMiddleware):
             user_id = event.callback_query.from_user.id
             action = f"callback: {event.callback_query.data}"
 
-        # Логируем входящее событие
         logger.bind(user_id=user_id, action=action).log("USER_ACTION", "Событие от пользователя")
 
         try:
             return await handler(event, data)
         except Exception as e:
-            # Логируем исключение с трассировкой
             logger.opt(exception=e).error(f"Ошибка при обработке события у пользователя {user_id}: {e}")
             raise
