@@ -38,6 +38,7 @@ MONTHS_RU = {
 
 @router.message(Command('stat'))
 async def stat(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action='stat').log("USER_ACTION", "Команда /stat вызвана")
     utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
     if message.from_user.id not in ADMINS:
         return
@@ -506,6 +507,7 @@ async def handle_refund_command(message: types.Message):
 
 @router.message(Command('add_balance'))
 async def add_balance(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action='add_balance').log("USER_ACTION", "Команда /add_balance вызвана")
     logger.bind(user_id=message.from_user.id, action="add_balance").log("USER_ACTION", "Команда /add_balance вызвана")
     if message.from_user.id not in ADMINS:
         return
@@ -570,6 +572,7 @@ async def set_smsactivate(message: types.Message):
 
 @router.message(Command('info_id'))
 async def info_id(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action='info_id').log("USER_ACTION", "Команда /info_id вызвана")
     logger.bind(user_id=message.from_user.id, action="info_id").log("USER_ACTION", "Команда /info_id вызвана")
     if message.from_user.id not in ADMINS:
         return
@@ -738,7 +741,7 @@ async def users_with_balance_html(message: types.Message):
 
 @router.message(Command('users_without_payments'))
 async def users_without_payments(message: types.Message):
-    logger.bind(user_id=message.from_user.id, action="users_without_payments").log("USER_ACTION", "Команда /users_without_payments вызвана")
+    logger.bind(user_id=message.from_user.id, action='users_without_payments').log("USER_ACTION", "Команда /users_without_payments вызвана")
     if message.from_user.id not in ADMINS:
         return
 
