@@ -8,7 +8,7 @@ class OnlineSimRentAPI:
     Класс для работы с API аренды номеров OnlineSim.
     """
 
-    BASE_URL = "https://onlinesim.ru/api/rent  "
+    BASE_URL = "https://onlinesim.ru/api/rent"
 
     def __init__(self):
         self.api_key = API_KEY_ONLINESIM
