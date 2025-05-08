@@ -26,149 +26,158 @@ def log_exceptions(func):
         try:
             return await func(*args, **kwargs)
         except Exception as e:
-            logger.error(f"Ошибка в обработчике {func.__name__}: {e}")
-            raise  # Возможно, чтобы повторно вызвать ошибку и не скрывать её
-
+            logger.opt(exception=e).error(f"Ошибка в обработчике {func.__name__}: {e}")
+            raise
     return wrapper
 
 
 @router.message(Command("get_sms"))
 @router.message(F.text == bt.RECEIVE_SMS_BTN)
 async def receive_sms(message: types.Message, dialog_manager: DialogManager):
-    user = await models.User.get_user(message.from_user.id)
+    try:
+        user_id = message.from_user.id
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        user = await models.User.get_user(user_id)
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
-    activation = await models.Activation.get_active_activation(user.id)
-
-    if activation is None:
-        sub = await check_subscribe(user)
-        if not sub:
-            await send_subscribe_msg(user)
+        if not user:
             return
 
-        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
-    else:
-        await activation.fetch_related('country')
-        country = activation.country.name
-        service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
-        if service is None:
-            service = await models.ServicesOnlinesim.get_service_name_by_id(service_id=activation.service_2_id)
-        await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка активации")
+        activation = await models.Activation.get_active_activation(user.id)
+
+        if activation is None:
+            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка подписки")
+            sub = await check_subscribe(user)
+            if not sub:
+                logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Подписка неактивна, отправляем сообщение")
+                await send_subscribe_msg(user)
+                return
+            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Запуск диалога выбора сервиса")
+            await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+        else:
+            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Получение информации о текущей активации")
+            await activation.fetch_related('country')
+            country = activation.country.name
+            service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
+            if service is None:
+                service = await models.ServicesOnlinesim.get_service_name_by_id(service_id=activation.service_2_id)
+            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Текущая активация: сервис={service}, страна={country}")
+            await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms: {e}")
 
 
-# Обрабатываем кнопку принять смс для другого сервиса
-@router.callback_query(F.data.startswith('receive_sms_for_another_service'))
+@router.callback_query(F.data == 'receive_sms_for_another_service')
 async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_manager: DialogManager):
-    await dialog_manager.reset_stack()
-    await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+    try:
+        user_id = call.from_user.id
+        logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Пользователь выбрал другой сервис для получения SMS")
+        await dialog_manager.reset_stack()
+        logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Запуск диалога выбора сервиса")
+        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms_for_another_service: {e}")
 
 
-# Обработчик колл бека для принятия смс повторно, пока не используется
 @router.callback_query(F.data.startswith('request_code:'))
 @log_exceptions
 async def request_code(call: types.CallbackQuery, **kwargs):
-    # Извлечение id активации из данных колл бека
-    activation_id = int(call.data.split(':')[1])
-
-    # Поиск объекта активации по id
-    activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
-
-    # Если активация не найдена, завершить обработку колл бека
-    if not activation:
-        await call.answer()
-        return
-
-    # если активация относится к onlinesim
     try:
-        service = activation.service_2.code
-    except AttributeError:
-        return
-    if service in SERVICES_TRANSLATION:
-        client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-        try:
-            revise_response = await client.revise_order(operation_id=activation_id)
-            if revise_response.get("response") == '1':
-                await call.answer(text='ожидание повторной отправки смс', show_alert=True)
-                return
-            else:
-                await call.answer(text='Попробуйте позже')
-                return
-        except Exception as e:
-            logger.warning(f'Повторный запрос смс onlinesim {e}')
+        user_id = call.from_user.id
+        activation_id = int(call.data.split(':')[1])
+        logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Запрос к БД: получение активации ID={activation_id}")
+        activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
+        logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Результат из БД: активация найдена={activation is not None}")
+
+        if not activation:
+            await call.answer()
             return
 
-    else:
-        # Создание объекта для получения смс
-        sms = SmsReceive()
+        try:
+            service = activation.service_2.code
+        except AttributeError:
+            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: сервис не найден")
+            return
 
-        # Получение текущего статуса активации
-        status = str(await sms.get_activation_status(activation.activation_id))
-
-        # Проверка статуса активации на ожидание кода
-        if status:  # == models.StatusResponse.STATUS_WAIT_CODE.name and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
-
-            request_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                                 status=models.ActivationCode.RETRY_GET))
-            # Проверка если статус изменен на ожидание повторной отправки смс
-            if request_status == "STATUS_WAIT_RETRY ":
-                await call.answer(text='ожидание повторной отправки смс', show_alert=True)
+        if service in SERVICES_TRANSLATION:
+            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется сервис Onlinesim")
+            client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+            try:
+                revise_response = await client.revise_order(operation_id=activation_id)
+                if revise_response.get("response") == '1':
+                    logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ожидание повторной отправки SMS")
+                    await call.answer(text='ожидание повторной отправки смс', show_alert=True)
+                    return
+                else:
+                    logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: повторная отправка недоступна")
+                    await call.answer(text='Попробуйте позже')
+                    return
+            except Exception as e:
+                logger.opt(exception=e).warning(f'Повторный запрос смс onlinesim {e}')
                 return
+        else:
+            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется другой сервис")
+            sms = SmsReceive()
+            status = str(await sms.get_activation_status(activation.activation_id))
+            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Текущий статус активации: {status}")
 
-            # Если статус изменен на ожидание кода
-            if request_status != "STATUS_WAIT_CODE":
-                await call.answer(text='ожидание смс')
-                return
+            if status:
+                request_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
+                                                                     status=models.ActivationCode.RETRY_GET))
+                logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Новый статус: {request_status}")
 
-            # Если статус изменен на отмену
-            if request_status != "STATUS_CANCEL":
-                await call.answer(text='активация отменена')
-                return
+                if request_status == "STATUS_WAIT_RETRY":
+                    await call.answer(text='ожидание повторной отправки смс', show_alert=True)
+                    return
+                elif request_status != "STATUS_WAIT_CODE":
+                    await call.answer(text='ожидание смс')
+                    return
+                elif request_status != "STATUS_CANCEL":
+                    await call.answer(text='активация отменена')
+                    return
+                elif request_status != "STATUS_OK":
+                    await call.answer(text='код получен')
+                    return
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /request_code: {e}")
 
-            # Если статус изменен на успешное получение кода
-            if request_status != "STATUS_OK":
-                await call.answer(text='код получен')
-                return
-
-
-from aiogram.exceptions import TelegramAPIError
-from datetime import datetime
 
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
     try:
-        # Извлекаем идентификатор активации из данных callback
+        user_id = call.from_user.id
         activation_id = int(call.data.split(':')[1])
-
-        # Пытаемся получить объект активации из базы данных по идентификатору
+        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}")
         if await service_is_smsactivate():
             activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
         else:
             activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service_2')
+        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Результат из БД: активация найдена={activation is not None}")
 
-        # Если активация не найдена, просто отвечаем на callback и выходим
         if not activation:
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Активация не найдена")
             await call.answer(text='Номер автоматически отменится через 10 минут', show_alert=True)
             await call.answer()
             return
 
         formatted_time = activation.activation_expire_at.strftime("%H:%M")
-
-        # Проверяем, относится ли активация к service_onlinesim
         try:
             if await service_is_smsactivate():
                 service = activation.service.code
             else:
                 service = activation.service_2.code
         except AttributeError:
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Ошибка: сервис не найден")
             await call.answer(text=f'Номер автоматически отменится в {formatted_time}', show_alert=True)
             return
+
         cancellation_successful = False
-        # Выбор API клиента в зависимости от типа услуги
         if service in SERVICES_TRANSLATION or not await service_is_smsactivate():
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             cancel_status = await client.finish_order(operation_id=activation.activation_id, ban=False)
             cancellation_successful = cancel_status.get("response") == 1
-            # Unable to finish order - когда менее 2 минут
-            # Wrong operation ID - отмена не доступна
         else:
             sms = SmsReceive()
             status = str(await sms.set_activation_status(activation_id=activation.activation_id,
@@ -176,19 +185,16 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             if status == 'STATUS_WAIT_CODE':
                 await call.answer(text='Ожидание смс', show_alert=True)
                 return
-
-            if status == 'EARLY_CANCEL_DENIED':
+            elif status == 'EARLY_CANCEL_DENIED':
                 await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
                 return
-
-            if status == "ACCESS_CANCEL":
+            elif status == "ACCESS_CANCEL":
                 cancellation_successful = True
 
         if cancellation_successful:
             activation.activation_expire_at = None
             activation.status = models.StatusResponse.STATUS_CANCEL
             await activation.save()
-
             user = await models.User.get_user(telegram_id=call.from_user.id)
             if activation.sms_text is None:
                 user.balance += activation.cost
@@ -196,20 +202,16 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
             else:
                 msg_text = bt.SERVICE_CANCEL.strip()
-
-            # Проверяем, изменился ли текст или клавиатура, и выполняем изменения только при необходимости
-            if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
-                try:
+            try:
+                if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
                     await call.message.edit_text(text=msg_text)
                     await call.message.edit_reply_markup(reply_markup=None)
-                except TelegramAPIError as e:
-                    pass
+            except TelegramBadRequest as e:
+                logger.opt(exception=e).warning("Не удалось изменить сообщение или клавиатуру")
         else:
             await call.answer(text='Отмена больше не доступна', show_alert=True)
-
-
-    except TelegramAPIError as e:
-        logger.warning(f"Telegram server error: {e}")
+    except TelegramBadRequest as e:
+        logger.opt(exception=e).warning(f"Telegram server error: {e}")
     except Exception as e:
         error_text = str(e)
         if error_text == 'Unable to finish order':
@@ -223,69 +225,73 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             await call.answer(text='Повторите попытку позже', show_alert=True)
         else:
             text = error_text[0].upper() + error_text[1:] if error_text else "Неизвестная ошибка"
-            logger.error(f"Необработанное исключение: {text}")
-            await call.answer(text=f'Ошибка при отмене номера. \n{text}', show_alert=True)
+            logger.opt(exception=e).error(f"Необработанное исключение: {text}")
+            await call.answer(text=f'Ошибка при отмене номера.\n{text}', show_alert=True)
 
 
 @router.callback_query(F.data.startswith('full_unread_message|'))
-@log_exceptions
 async def unread_message(call: types.CallbackQuery, **kwargs):
-    _, message_id, mail_id = call.data.split("|")
-    mail_id = int(mail_id)
+    try:
+        user_id = call.from_user.id
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Пользователь запросил полный текст сообщения")
+        _, message_id, mail_id = call.data.split("|")
+        mail_id = int(mail_id)
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}")
+        mail = await models.Mail.get_or_none(id=mail_id).prefetch_related("user")
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Результат из БД: почта найдена={mail is not None}")
 
-    mail = await models.Mail.get_or_none(id=mail_id).prefetch_related("user")
-    if not mail:
-        print(f"Ошибка: Mail с id={mail_id} не найден")
-        return
+        if not mail:
+            logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Ошибка: почта не найдена")
+            print(f"Ошибка: Mail с id={mail_id} не найден")
+            return
 
-    text = await fetch_full_message(mail.token, message_id)
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Получение полного текста сообщения")
+        text = await fetch_full_message(mail.token, message_id)
 
-    # Удаляем HTML-теги <a> и <img>
-    soup = BeautifulSoup(text, "html.parser")
-    for a in soup.find_all("a"):
-        a.decompose()
-    for img in soup.find_all("img"):
-        img.decompose()
+        # Удаляем HTML-теги <a> и <img>
+        soup = BeautifulSoup(text, "html.parser")
+        for a in soup.find_all("a"):
+            a.decompose()
+        for img in soup.find_all("img"):
+            img.decompose()
 
-    # Получаем очищенный текст
-    cleaned_text = soup.get_text()
+        # Получаем очищенный текст
+        cleaned_text = soup.get_text()
+        # Удаляем ссылки вида "https://example.com "
+        cleaned_text = re.sub(r"https?://\S+", "", cleaned_text)
+        # Удаляем ссылки в формате [text](https://example.com )
+        cleaned_text = re.sub(r"\[.*?\]\(https?://\S+\)", "", cleaned_text)
+        # Экранируем HTML
+        cleaned_text = html.escape(cleaned_text)
 
-    # Удаляем ссылки вида "https://example.com"
-    cleaned_text = re.sub(r"https?://\S+", "", cleaned_text)
+        msg_text = (
+            f'📩<b>Полный текст сообщения</b> на почту: <b>{mail.email}</b>\n'
+            f'{cleaned_text}'
+        )
 
-    # Удаляем ссылки в формате [text](https://example.com)
-    cleaned_text = re.sub(r"\[.*?\]\(https?://\S+\)", "", cleaned_text)
-
-    # Экранируем HTML
-    cleaned_text = html.escape(cleaned_text)
-
-    msg_text = (
-        f'📩<b>Полный текст сообщения</b> на почту: <b>{mail.email}</b>\n\n'
-        f'{cleaned_text}'
-    )
-
-    if len(msg_text) <= 4096:
-        await bot.send_message(chat_id=mail.user.telegram_id, text=msg_text, parse_mode="HTML")
-    else:
-        parts = await split_message(msg_text, 4096)
-        for part in parts:
-            await bot.send_message(chat_id=mail.user.telegram_id, text=part, parse_mode="HTML")
-
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Отправка сообщения пользователю {mail.user.telegram_id}")
+        if len(msg_text) <= 4096:
+            await bot.send_message(chat_id=mail.user.telegram_id, text=msg_text, parse_mode="HTML")
+        else:
+            parts = await split_message(msg_text, 4096)
+            for part in parts:
+                await bot.send_message(chat_id=mail.user.telegram_id, text=part, parse_mode="HTML")
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /unread_message: {e}")
 
 
 async def split_message(text: str, max_length: int) -> list:
     """Разбивает длинное сообщение на части, не превышающие max_length."""
+    logger.bind(action="split_message").log("USER_ACTION", f"Разделение сообщения длиной {len(text)} символов")
     lines = text.split('\n')
     parts = []
     current_part = ""
-
     for line in lines:
         if len(current_part) + len(line) + 1 > max_length:
             parts.append(current_part)
             current_part = ""
         current_part += line + '\n'
-
     if current_part:
         parts.append(current_part)
-
+    logger.bind(action="split_message").log("USER_ACTION", f"Сообщение разделено на {len(parts)} частей")
     return parts
