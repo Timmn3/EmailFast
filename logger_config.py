@@ -10,8 +10,14 @@ logger.remove()
 
 # === Кастомные уровни логгирования ===
 logger.level("USER_ACTION", no=38, color="<yellow>")
-logger.level("SUCCESS", no=25, color="<green>")  # Дополнительно: успешные действия
 
+# === Универсальный безопасный форматтер ===
+SAFE_USER_FORMAT = (
+    "{time:YYYY-MM-DD HH:mm:ss} | "
+    "USER {extra[user_id]|-} | "
+    "ACTION '{extra[action]|-}' | "
+    "{message}"
+)
 
 # === Функция для добавления логгера с общими настройками ===
 def add_logger(
@@ -47,8 +53,14 @@ add_logger(
     "logs/user_actions_{time}.log",
     level="USER_ACTION",
     rotation="10 MB",
-    format="{time:YYYY-MM-DD HH:mm:ss} | USER {extra[user_id]} | ACTION '{extra[action]}'"
+    format=lambda record: (
+        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
+        f"USER {record['extra'].get('user_id', '-')}" +
+        f" | ACTION '{record['extra'].get('action', '-')}' | " +
+        f"{record['message']}"
+    )
 )
+
 
 # === Логирование ошибок с traceback ===
 add_logger(
@@ -93,7 +105,7 @@ class LoggingMiddleware(BaseMiddleware):
             action = f"callback: {event.callback_query.data}"
 
         # Логируем входящее событие
-        logger.bind(user_id=user_id).debug(f"Получено событие: {action}")
+        logger.bind(user_id=user_id, action=action).log("USER_ACTION", "Событие от пользователя")
 
         try:
             return await handler(event, data)
