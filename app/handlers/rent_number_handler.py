@@ -25,24 +25,24 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
     try:
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                              f"Запрос к БД: получение данных пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                              f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽")
         # Проверяем подписку
         sub = await check_subscribe(user)
         if not sub:
             logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                                  f"Подписка неактивна для пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                                  f"Подписка неактивна для пользователя {user_id}, баланс = {user.balance} ₽")
             await send_subscribe_msg(user)
             return
         # Проверяем аренды пользователя
         activation_list = await models.Rent.get_active_rent(user.id)
         logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                              f"Запрос к БД: получение активных аренд для пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                              f"Запрос к БД: получение активных аренд для пользователя {user_id}, баланс = {user.balance} ₽")
         logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
                                                               f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}")
         # Если нет активных арендных номеров, то предлагаем
         if activation_list is None or not activation_list:
             logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                                  f"Нет активных аренд, перенаправляем в выбор страны для пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                                  f"Нет активных аренд, перенаправляем в выбор страны для пользователя {user_id}, баланс = {user.balance} ₽")
             await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
             return
         # Отправляем меню аренды
@@ -56,7 +56,7 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
     Вспомогательная функция для отправки меню аренды номеров.
     """
     user_id = user.telegram_id
-    logger.bind(user_id=user_id, action='send_rent_menu').log("USER_ACTION", f"Формирование меню аренды для пользователя {user_id}, БАЛАНС={user.balance} ₽")
+    logger.bind(user_id=user_id, action='send_rent_menu').log("USER_ACTION", f"Формирование меню аренды для пользователя {user_id}, баланс = {user.balance} ₽")
     try:
         # Проверяем аренды пользователя
         activation_list = await models.Rent.get_active_rent(user.id)
@@ -107,7 +107,7 @@ async def back_to_rent_menu(callback_query: types.CallbackQuery, dialog_manager:
     try:
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action='back_to_rent_menu').log("USER_ACTION",
-                                                                    f"Запрос к БД: получение данных пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                                    f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽")
         # Отправляем меню аренды
         await send_rent_menu(user, callback_query=callback_query)
     except Exception as e:
@@ -122,7 +122,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
     """
     user_id = callback_query.from_user.id
     user = await models.User.get_user(user_id)
-    logger.bind(user_id=user_id, action='rent_number_selected').log("USER_ACTION", f"Пользователь выбрал арендованный номер, БАЛАНС={user.balance} ₽")
+    logger.bind(user_id=user_id, action='rent_number_selected').log("USER_ACTION", f"Пользователь выбрал арендованный номер, баланс = {user.balance} ₽")
     try:
         rent_id = int(callback_query.data.split('_')[1])  # Извлекаем id аренды из callback_data
         logger.bind(user_id=user_id, action='rent_number_selected').log("USER_ACTION",
@@ -135,7 +135,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             if rented.is_canceled:
                 await callback_query.answer("Эта аренда была отменена.", show_alert=True)
                 logger.bind(user_id=user_id, action='rent_number_selected').log("USER_ACTION",
-                                                                              f"Аренда ID={rent_id} отменена, БАЛАНС={user.balance} ₽")
+                                                                              f"Аренда ID={rent_id} отменена, баланс = {user.balance} ₽")
                 return
             # Формируем информацию о номере
             country = await models.Rent.get_country_by_rent(id=rent_id)
@@ -163,7 +163,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
                 # Логируем завершение обработки и текущий баланс
                 logger.bind(user_id=user_id, action='rent_number_selected').log(
                     "USER_ACTION",
-                    f"Отображение аренды: номер={phone_number}, страна={country}, истекает={expiry_date}, есть_sms={bool(sms)}, БАЛАНС={user.balance} ₽"
+                    f"Отображение аренды: номер={phone_number}, страна={country}, истекает={expiry_date}, есть_sms={bool(sms)}, баланс = {user.balance} ₽"
                 )
 
             # Создаем inline клавиатуру
@@ -188,7 +188,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             await callback_query.message.edit_text(rent_details, reply_markup=keyboard)
         else:
             logger.bind(user_id=user_id, action='rent_number_selected').log("USER_ACTION",
-                                                                          f"Аренда ID={rent_id} не найдена, БАЛАНС={user.balance} ₽")
+                                                                          f"Аренда ID={rent_id} не найдена, баланс = {user.balance} ₽")
             await callback_query.answer("Номер не найден.")
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /rent_number_selected: {e}")
@@ -202,7 +202,7 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
     """
     user_id = callback_query.from_user.id
     user = await models.User.get_user(user_id)
-    logger.bind(user_id=user_id, action='toggle_autorenew').log("USER_ACTION", f"Пользователь изменяет состояние автопродления, БАЛАНС={user.balance} ₽")
+    logger.bind(user_id=user_id, action='toggle_autorenew').log("USER_ACTION", f"Пользователь изменяет состояние автопродления, баланс = {user.balance} ₽")
     try:
         rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
         logger.bind(user_id=user_id, action='toggle_autorenew').log("USER_ACTION",
@@ -223,7 +223,7 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
         rented.is_notified = False
         await rented.save()
         logger.bind(user_id=user_id, action='toggle_autorenew').log("USER_ACTION",
-                                                                   f"Результат из БД: автопродление для аренды ID={rent_id} изменено с {old_state} на {rented.autorenew}, БАЛАНС={user.balance} ₽")
+                                                                   f"Результат из БД: автопродление для аренды ID={rent_id} изменено с {old_state} на {rented.autorenew}, баланс = {user.balance} ₽")
         # Сообщаем пользователю о новом состоянии
         new_state = "включено" if rented.autorenew else "выключено"
         await callback_query.answer(f"Автопродление {new_state}.")
@@ -317,27 +317,27 @@ async def cancel_rent(callback_query: types.CallbackQuery):
     """
     user_id = callback_query.from_user.id
     user = await models.User.get_user(user_id)
-    logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION", f"Пользователь начал отмену аренды, БАЛАНС={user.balance} ₽")
+    logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION", f"Пользователь начал отмену аренды, баланс = {user.balance} ₽")
     try:
         rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
         logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
                                                                f"Отмена аренды с ID={rent_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                               f"Запрос к БД: получение данных пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                               f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽")
         # Проверяем, существует ли аренда и не отменена ли она
         rented = await models.Rent.get_rent(id=rent_id)
         logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
                                                                f"Запрос к БД: получение аренды с ID={rent_id}")
         if not rented:
             logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                                   f"Аренда ID={rent_id} не найдена, БАЛАНС={user.balance} ₽")
+                                                                   f"Аренда ID={rent_id} не найдена, баланс = {user.balance} ₽")
             await callback_query.answer(bt.RENT_NOT_FOUND_MSG, show_alert=True)
             await callback_query.message.delete()
             return
         if rented.is_canceled:
             logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                                   f"Аренда ID={rent_id} уже отменена, БАЛАНС={user.balance} ₽")
+                                                                   f"Аренда ID={rent_id} уже отменена, баланс = {user.balance} ₽")
             await callback_query.answer(bt.RENT_ALREADY_CANCELED_MSG, show_alert=True)
             await callback_query.message.delete()
             return
@@ -350,7 +350,7 @@ async def cancel_rent(callback_query: types.CallbackQuery):
             await rented.save()
             await user.save()
             logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                                   f"Баланс пользователя увеличен на {rented.cost}, БАЛАНС={user.balance} ₽")
+                                                                   f"Баланс пользователя увеличен на {rented.cost}, баланс = {user.balance} ₽")
         try:
             response = await api.close_rent_num(tzid=rented.rent_id)  # Передаем ID операции аренды
             if response.get("response"):
@@ -358,7 +358,7 @@ async def cancel_rent(callback_query: types.CallbackQuery):
                 rented.is_canceled = True
                 await rented.save()  # Сохраняем изменения в базе данных
                 logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                                       f"Аренда ID={rent_id} успешно отменена, БАЛАНС={user.balance} ₽")
+                                                                       f"Аренда ID={rent_id} успешно отменена, баланс = {user.balance} ₽")
                 await callback_query.answer(bt.RENT_CANCEL_SUCCESS_MSG, show_alert=True)
                 # Удаляем сообщение о текущей аренде
                 await callback_query.message.delete()
@@ -381,7 +381,7 @@ async def cancel_rent(callback_query: types.CallbackQuery):
             rented.is_canceled = True
             await rented.save()  # Сохраняем изменения в базе данных
             logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
-                                                                   f"Аренда ID={rent_id} переведена в статус отмененной, БАЛАНС={user.balance} ₽")
+                                                                   f"Аренда ID={rent_id} переведена в статус отмененной, баланс = {user.balance} ₽")
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /cancel_rent: {e}")
 
@@ -394,7 +394,7 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
     """
     user_id = callback_query.from_user.id
     user = await models.User.get_user(user_id)
-    logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION", f"Пользователь начал продление аренды, БАЛАНС={user.balance} ₽")
+    logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION", f"Пользователь начал продление аренды, баланс = {user.balance} ₽")
     try:
         rent_id = int(callback_query.data.split('_')[2])  # Извлекаем id аренды из callback_data
         logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION",
@@ -433,7 +433,7 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
                 "tzid": rented.rent_id,
             }}
         logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION",
-                                                               f"Переход к деталям страны для продления аренды, БАЛАНС={user.balance} ₽")
+                                                               f"Переход к деталям страны для продления аренды, баланс = {user.balance} ₽")
         await dialog_manager.start(
             RentCountryMenu.country_details,  # Состояние для выбора страны
             context_data  # Передаем только нужные данные
@@ -453,7 +453,7 @@ async def top_up_balance(callback_query: types.CallbackQuery, dialog_manager: Di
     try:
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action='top_up_balance').log("USER_ACTION",
-                                                                 f"Запрос к БД: получение данных пользователя {user_id}, БАЛАНС={user.balance} ₽")
+                                                                 f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽")
         context_data = {
             'user_id': user.telegram_id,
             'auto_renewal': True,

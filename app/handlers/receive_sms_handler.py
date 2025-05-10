@@ -39,7 +39,7 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}, БАЛАНС={user.balance} ₽")
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}, баланс = {user.balance} ₽")
 
         if not user:
             return
@@ -150,7 +150,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
     try:
         user = await models.User.get_user(telegram_id=call.from_user.id)
         activation_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}, БАЛАНС = {user.balance} ₽")
+        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}, баланс = {user.balance} ₽")
         if await service_is_smsactivate():
             activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
         else:
@@ -200,7 +200,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             if activation.sms_text is None:
                 user.balance += activation.cost
                 await user.save()
-                logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Если нет смс, возвращаем деньги, БАЛАНС = {user.balance} ₽")
+                logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Если нет смс, возвращаем деньги, баланс = {user.balance} ₽")
                 msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
             else:
                 msg_text = bt.SERVICE_CANCEL.strip()

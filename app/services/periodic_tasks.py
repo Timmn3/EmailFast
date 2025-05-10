@@ -507,101 +507,107 @@ async def check_sms():
 
         # Обрабатываем каждую активную активацию
         for activation in activations:
-            user_id = activation.user.telegram_id if activation.user else None
-            activation_id = activation.activation_id
-            phone_number = activation.phone_number
+            # Получаем статус активации по её идентификатору
+            if len(str(activation.activation_id)) > 9:
+                sms = SmsReceive()
+                status = str(await sms.get_activation_status(activation.activation_id))
+                try:
+                    name = activation.service.name
+                except Exception:
+                    name = None
+                # STATUS_OK:1231
+            else:
+                client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+                order_info = await client.get_order_info(operation_id=activation.activation_id)
+                for_information = order_info
 
-            try:
-                # Определяем источник статуса
-                if len(str(activation.activation_id)) > 9:
-                    sms = SmsReceive()
-                    status = str(await sms.get_activation_status(activation.activation_id))
-                    try:
-                        name = activation.service.name
-                    except Exception:
-                        name = None
+                name = await activation.get_service_2_name()
+
+                if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
+                    sms_code = order_info[0]['msg']
+                    status = f'STATUS_OK:{sms_code}'
                 else:
-                    client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-                    order_info = await client.get_order_info(operation_id=activation.activation_id)
+                    continue
 
-                    name = await activation.get_service_2_name()
+            # Проверяем, начинается ли статус с 'STATUS_OK'
+            if status.startswith(models.StatusResponse.STATUS_OK.name):
+                # Обновляем статус активации на 'STATUS_OK'
+                activation.status = models.StatusResponse.STATUS_OK
 
-                    if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
-                        sms_code = order_info[0]['msg']
-                        status = f'STATUS_OK:{sms_code}'
+                # Смотрим какая смс в БД
+                current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
+
+                # Извлекаем текст SMS из статуса
+                sms_from_status = status.split(':', 1)[1]  # используем split только один раз
+
+                # Применяем регулярное выражение для извлечения цифр из текста
+                sms_digits = re.findall(r'\d+', sms_from_status)
+
+                if sms_digits:
+                    # Если цифры найдены, берем первую
+                    sms_from_status = sms_digits[0]
+                else:
+                    # Если цифры не найдены — оставляем оригинальный текст SMS
+                    sms_from_status = sms_from_status.strip()
+
+                activation.sms_text = sms_from_status
+                # Сохраняем изменения в базе данных
+                await activation.save()
+
+                # Загружаем связанные данные пользователя и сервиса
+                if await service_is_smsactivate():
+                    await activation.fetch_related('user', 'service')
+                else:
+                    await activation.fetch_related('user', 'service_2')
+
+                # Формируем текст сообщения для отправки пользователю если смс новая
+                if int(current_sms) != int(sms_from_status):
+                    if name:
+                        msg_text = (
+                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                            f"Ваш код активации для <b>{name}</b>:\n"
+                            f"<code>{activation.sms_text}</code>"
+                        )
+
                     else:
-                        continue
+                        msg_text = (
+                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                            f"Ваш код активации:\n"
+                            f"<code>{activation.sms_text}</code>"
+                        )
 
-                # Проверяем, начинается ли статус с 'STATUS_OK'
-                if status.startswith(models.StatusResponse.STATUS_OK.name):
-                    activation.status = models.StatusResponse.STATUS_OK
+                    # Отправляем сообщение пользователю в Telegram
+                    await bot.send_message(
+                        chat_id=activation.user.telegram_id,
+                        text=msg_text
+                    )
+                    await notice_of_arraignment("Получение смс", activation, name)
+                    logger.bind(
+                        user_id=activation.user.telegram_id,
+                        action="new_sms"
+                    ).log("USER_ACTION", f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status}")
 
-                    current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
-                    sms_from_status = status.split(':', 1)[1]
 
-                    sms_digits = re.findall(r'\d+', sms_from_status)
-                    if sms_digits:
-                        sms_from_status = sms_digits[0]
-                    else:
-                        sms_from_status = sms_from_status.strip()
+        # Получаем все истекшие активации
+        activations = await models.Activation.get_expired_activations()
 
-                    activation.sms_text = sms_from_status
-                    await activation.save()
-
-                    if await service_is_smsactivate():
-                        await activation.fetch_related('user', 'service')
-                    else:
-                        await activation.fetch_related('user', 'service_2')
-
-                    # Отправляем сообщение пользователю, если SMS обновился
-                    if int(current_sms) != int(sms_from_status):
-                        if name:
-                            msg_text = (
-                                f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
-                                f"Ваш код активации для <b>{name}</b>:\n"
-                                f"<code>{activation.sms_text}</code>"
-                            )
-                        else:
-                            msg_text = (
-                                f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
-                                f"Ваш код активации:\n"
-                                f"<code>{activation.sms_text}</code>"
-                            )
-
-                        try:
-                            await bot.send_message(
-                                chat_id=activation.user.telegram_id,
-                                text=msg_text
-                            )
-                            await notice_of_arraignment("Получение смс",activation, name)
-
-                            # Логируем событие получения нового SMS
-                            logger.bind(
-                                user_id=user_id,
-                                action="new_sms"
-                            ).log("USER_ACTION", f"Получено новое SMS для номера {phone_number}, код: {sms_from_status}")
-                        except TelegramBadRequest as e:
-                            logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
-
-            except Exception as inner_e:
-                logger.opt(exception=inner_e).error(f"Ошибка при обработке активации ID {activation_id} для пользователя {user_id}")
-
-        # Обработка истёкших активаций
-        expired_activations = await models.Activation.get_expired_activations()
-        for activation in expired_activations:
-            user_id = activation.user.telegram_id if activation.user else None
-            cost = activation.cost
+        # Обрабатываем каждую истекшую активацию
+        for activation in activations:
+            # Обновляем статус активации на 'STATUS_CANCEL'
             activation.status = models.StatusResponse.STATUS_CANCEL
+            # Сохраняем изменения в базе данных
             await activation.save()
 
-            activation.user.balance += cost
+            # Возвращаем стоимость активации пользователю
+            activation.user.balance += activation.cost
+            # Сохраняем изменения баланса пользователя в базе данных
             await activation.user.save()
 
             # Логируем возврат средств за истёкшую активацию
             logger.bind(
-                user_id=user_id,
+                user_id=activation.user.telegram_id,
                 action="refund_activation"
-            ).log("USER_ACTION", f"Возврат средств за активацию: {cost}₽")
+            ).log("USER_ACTION", f"Возврат средств за истёкшую активацию: {activation.cost}₽, Баланс = {activation.user.balance} ")
 
     except asyncio.CancelledError:
         pass
@@ -617,6 +623,7 @@ async def check_sms():
 
         ⚠️ Ошибка: {e}
         """
+
         await send_coder(error_info)
         logger.opt(exception=e).error("Необработанная ошибка в check_sms")
 
