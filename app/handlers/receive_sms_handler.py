@@ -73,10 +73,9 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
 async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_manager: DialogManager):
     try:
         user_id = call.from_user.id
-        logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Пользователь выбрал другой сервис для получения SMS")
+        logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Принять SMS для другого сервиса")
         await dialog_manager.reset_stack()
-        logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Запуск диалога выбора сервиса")
-        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.NORMAL)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms_for_another_service: {e}")
 
@@ -207,7 +206,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             try:
                 if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
                     await call.message.edit_text(text=msg_text)
-                    await call.message.edit_reply_markup(reply_markup=None)
+                    # await call.message.edit_reply_markup(reply_markup=None)
             except TelegramBadRequest as e:
                 logger.opt(exception=e).warning("Не удалось изменить сообщение или клавиатуру")
         else:

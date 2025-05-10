@@ -306,11 +306,6 @@ async def send_message_country_number(message: types.Message, activation, countr
 
     try:
         user_id = message.from_user.id
-        logger.bind(user_id=user_id, action='send_message_country_number').log(
-            "USER_ACTION",
-            f"Отправка информации о номере: {activation.phone_number}"
-        )
-
         country = country.strip()
         flag = country_flags.get(country, "")
         flag_and_country = f"{flag} {country}"

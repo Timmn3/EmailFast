@@ -381,7 +381,7 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
                                         callback_data=f"request_code:{activation.id}")],
             [types.InlineKeyboardButton(text=bt.CANCEL_SERVICE_BTN, callback_data=f"cancel_service:{activation.id}")],
             [types.InlineKeyboardButton(text=bt.REQUEST_ANOTHER_CODE,
-                                        callback_data=f"receive_sms_for_another_service:{activation.id}")],
+                                        callback_data=f"receive_sms_for_another_service")],
         ]
     )
     country = country.strip()
@@ -406,6 +406,12 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
             ),
             reply_markup=mk
         )
+
+    user_id = message.from_user.id
+    logger.bind(user_id=user_id, action='send_service_info_with_keyboard').log(
+        "USER_ACTION",
+        f"Ваш номер: {activation.phone_number}"
+    )
 
 
 @logger.catch()

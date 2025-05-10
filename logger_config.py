@@ -50,8 +50,8 @@ logger.add(
         f"<green>{record['time']:YYYY-MM-DD HH:mm:ss}</green> | "
         f"<cyan>USER {record['extra'].get('user_id', '-')}</cyan> | "
         f"<magenta>ACTION '{record['extra'].get('action', '-')}'</magenta> | "
-        f"<blue>{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']}</blue> | "
-        f"<level>{record['message']}</level>\n"
+        f"<blue>{record['file'].path}:{record['line']}</blue> | "
+        f"<level>{record['message']!r}</level>\n"  # <-- !r экранирует содержимое
     ),
     backtrace=True,
     diagnose=True

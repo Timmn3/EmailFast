@@ -82,10 +82,6 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
     """
     try:
         user_id = dialog_manager.event.from_user.id
-        logger.bind(user_id=user_id, action='get_country_details').log(
-            "USER_ACTION",
-            "Запрос информации по выбранной стране"
-        )
 
         selected_country = dialog_manager.dialog_data.get("selected_country")
         if selected_country is None:
