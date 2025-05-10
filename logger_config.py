@@ -1,7 +1,11 @@
-
 from loguru import logger
 import sys
 import os
+import traceback
+from aiogram import BaseMiddleware
+from aiogram.types import Update
+from typing import Callable, Dict, Any, Awaitable
+
 
 # === Создание подкаталогов ===
 os.makedirs("logs/errors", exist_ok=True)
@@ -14,96 +18,106 @@ logger.remove()
 # === Кастомные уровни логгирования ===
 logger.level("USER_ACTION", no=38, color="<yellow>")
 
-# === Универсальный безопасный форматтер ===
-SAFE_USER_FORMAT = (
-    "{time:YYYY-MM-DD HH:mm:ss} | "
-    "USER {extra[user_id]|-} | "
-    "ACTION '{extra[action]|-}' | "
-    "{message}"
-)
 
-# === Универсальная функция для добавления логгера ===
-def add_logger(
-    file_path: str,
-    level: str = "INFO",
-    rotation: str = "50 MB",
-    retention: str = "7 days",
-    compression: str = "zip",
-    enqueue: bool = True,
-    **kwargs
-):
-    logger.add(
-        file_path,
-        level=level,
-        rotation=rotation,
-        retention=retention,
-        compression=compression,
-        enqueue=enqueue,
-        **kwargs
+# === Форматтеры ===
+
+def formatter(record):
+    rel_path = os.path.relpath(record["file"].path, os.getcwd())
+    user_id = record["extra"].get("user_id", "-")
+    action = record["extra"].get("action", "-")
+
+    # Если есть exception, формируем трассировку
+    exc = record.get("exception")
+    tb = ""
+    if exc:
+        tb = "".join(traceback.format_exception(*exc))
+
+    return (
+        f"<green>{record['time']:YYYY-MM-DD HH:mm:ss}</green> | "
+        f"<level>{record['level']}</level> | "
+        f"<cyan>USER {user_id}</cyan> | "
+        f"<magenta>ACTION '{action}'</magenta> | "
+        f"<blue>{rel_path}:{record['line']}</blue>\n"
+        f"<level>{record['message']}</level>\n"
+        f"{tb}"
     )
+
+
+def user_action_formatter(record):
+    rel_path = os.path.relpath(record["file"].path, os.getcwd())
+    user_id = record["extra"].get("user_id", "-")
+    action = record["extra"].get("action", "-")
+
+    return (
+        f"{record['time']:YYYY-MM-DD HH:mm:ss} | USER {user_id} | ACTION '{action}' | "
+        f"{rel_path}:{record['line']} | {record['message']}\n"
+    )
+
+
+def error_formatter(record):
+    exc = record.get("exception")
+    tb = ""
+    if exc:
+        tb = "".join(traceback.format_exception(*exc))
+
+    rel_path = os.path.relpath(record["file"].path, os.getcwd())
+    user_id = record["extra"].get("user_id", "-")
+    action = record["extra"].get("action", "-")
+
+    return (
+        f"{record['time']:YYYY-MM-DD HH:mm:ss} | LEVEL {record['level']} | FILE {rel_path}:{record['line']}\n"
+        f"USER: {user_id} | ACTION: {action}\n"
+        f"MESSAGE: {record['message']}\n"
+        f"EXCEPTION:\n{tb}\n"
+    )
+
 
 # === Логирование в консоль с цветами и мета-информацией ===
 logger.add(
     sys.stdout,
     level="DEBUG",
-    format=lambda record: (
-        f"<green>{record['time']:YYYY-MM-DD HH:mm:ss}</green> | "
-        f"<cyan>USER {record['extra'].get('user_id', '-')}</cyan> | "
-        f"<magenta>ACTION '{record['extra'].get('action', '-')}'</magenta> | "
-        f"<blue>{record['file'].path}:{record['line']}</blue> | "
-        f"<level>{record['message']!r}</level>\n"  # <-- !r экранирует содержимое
-    ),
+    format=formatter,
     backtrace=True,
-    diagnose=True
+    diagnose=True,
+    colorize=True
 )
 
 # === Логирование действий пользователей ===
-add_logger(
+logger.add(
     "logs/users/user_actions_{time}.log",
     level="USER_ACTION",
     rotation="10 MB",
-    format=lambda record: (
-        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
-        f"USER {record['extra'].get('user_id', '-')} | "
-        f"ACTION '{record['extra'].get('action', '-')}' | "
-        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
-        f"{record['message']}\n"
-    )
+    format=user_action_formatter,
+    enqueue=True
 )
 
 # === Логирование ошибок с трассировкой ===
-add_logger(
+logger.add(
     "logs/errors/error_{time}.log",
     level="ERROR",
     rotation="20 MB",
+    format=error_formatter,
     backtrace=True,
     diagnose=True,
-    format=lambda record: (
-        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
-        f"{record['level'].name} | "
-        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
-        f"{record['message']} | {record['exception']}\n"
-    )
+    compression="zip",
+    enqueue=True
 )
 
-# === Общие логи приложения ===
-add_logger(
+# === Общие логи приложения (без user_id/action) ===
+logger.add(
     "logs/general/all_logs_{time}.log",
     level="INFO",
     rotation="50 MB",
-    format=lambda record: (
-        f"{record['time']:YYYY-MM-DD HH:mm:ss} | "
-        f"{record['level'].name} | "
-        f"{record['file'].path.replace(os.getcwd() + os.sep, '')}:{record['line']} | "
-        f"{record['message']}\n"
-    )
+    format=lambda r: (
+        f"{r['time']:YYYY-MM-DD HH:mm:ss} | {r['level']} | "
+        f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']}\n"
+        f"{r['message']}\n"
+    ),
+    enqueue=True
 )
 
-# === Middleware для логгирования действий пользователей ===
-from aiogram import BaseMiddleware
-from aiogram.types import Update
-from typing import Callable, Dict, Any, Awaitable
 
+# === Middleware для логгирования действий пользователей ===
 class LoggingMiddleware(BaseMiddleware):
     async def __call__(
         self,
@@ -126,11 +140,12 @@ class LoggingMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except Exception as e:
+            # Логируем ошибку с полным traceback
             logger.opt(exception=e).error(f"Ошибка при обработке события у пользователя {user_id}: {e}")
             raise
 
 
-
+# === Декоратор для логирования действий ===
 def log_action(action_name: str):
     def decorator(func):
         async def wrapper(*args, **kwargs):
