@@ -95,6 +95,8 @@ async def check_payment_lava():
                             refer.ref_balance += ref_sum
                             refer.total_ref_earnings += ref_sum
                             await refer.save()
+                            # Вызываем уведомление о реферальном бонусе
+                            await referral_bonus_notification(payment, refer, ref_sum)
 
                     # try:
                     #     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
@@ -169,6 +171,8 @@ async def check_payment_freekassa():
                             refer.ref_balance += ref_sum
                             refer.total_ref_earnings += ref_sum
                             await refer.save()
+                            # Вызываем уведомление о реферальном бонусе
+                            await referral_bonus_notification(payment, refer, ref_sum)
 
                         # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
                         # builder = InlineKeyboardBuilder()
@@ -227,6 +231,8 @@ async def check_payment_yoomoney():
                         refer.ref_balance += ref_sum
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
+                        # Вызываем уведомление о реферальном бонусе
+                        await referral_bonus_notification(payment, refer, ref_sum)
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
                     # builder = InlineKeyboardBuilder()
@@ -285,6 +291,8 @@ async def check_payment_anypay():
                         refer.ref_balance += ref_sum
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
+                        # Вызываем уведомление о реферальном бонусе
+                        await referral_bonus_notification(payment, refer, ref_sum)
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
                     # builder = InlineKeyboardBuilder()
@@ -342,6 +350,8 @@ async def check_payment_streampay():
                         refer.ref_balance += ref_sum
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
+                        # Вызываем уведомление о реферальном бонусе
+                        await referral_bonus_notification(payment, refer, ref_sum)
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
                     # builder = InlineKeyboardBuilder()
@@ -407,6 +417,8 @@ async def check_payment_ckassa():
                         refer.ref_balance += ref_sum
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
+                        # Вызываем уведомление о реферальном бонусе
+                        await referral_bonus_notification(payment, refer, ref_sum)
 
                 # # Если есть данные для продолжения операции после успешной оплаты, отправляем клавиатуру.
                 # builder = InlineKeyboardBuilder()
@@ -464,6 +476,8 @@ async def check_payment_cryptomus():
                         refer.ref_balance += ref_sum
                         refer.total_ref_earnings += ref_sum
                         await refer.save()
+                        # Вызываем уведомление о реферальном бонусе
+                        await referral_bonus_notification(payment, refer, ref_sum)
 
                     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
                     # builder = InlineKeyboardBuilder()
@@ -1064,32 +1078,86 @@ async def checking_inactive_rent():
 
 
 async def balance_replenishment_notification(payment, service):
-        msg_text = (f'💰💰💰\n'
-                    f'Пополнение {service}\n'
-                    f'пользователь {payment.user.mention}\n'
-                    f'id {payment.user.telegram_id}\n'
-                    f'сумма {payment.amount}\n'
-                    f'баланс: {payment.user.balance}')
-        await send_coder(msg_text)
+    user = payment.user
+    msg_text = (
+        f'💰💰💰\n'
+        f'Пополнение {service}\n'
+        f'пользователь {user.mention}\n'
+        f'id {user.telegram_id}\n'
+        f'сумма {payment.amount}\n'
+        f'баланс: {user.balance}'
+    )
+    await send_coder(msg_text)
+
+    logger.bind(
+        user_id=user.telegram_id,
+        action=f"top_up_balance_{service.lower()}"
+    ).log("USER_ACTION", f"Пополнение баланса на {payment.amount}₽ через {service}, Баланс={user.balance}₽")
 
 
 
 async def replenishment_error_message(payment, service):
-    msg_text = (f'❌ ошибка\n'
-                f'{service} \n'
-                f'пользователь {payment.user.mention}\n'
-                f'id {payment.user.telegram_id}\n'
-                f'сумма {payment.amount}\n'
-                f'баланс: {payment.user.balance}')
-
+    user = payment.user
+    msg_text = (
+        f'❌ ошибка\n'
+        f'{service} \n'
+        f'пользователь {user.mention}\n'
+        f'id {user.telegram_id}\n'
+        f'сумма {payment.amount}\n'
+        f'баланс: {user.balance}'
+    )
     await send_coder(msg_text)
+
+    logger.bind(
+        user_id=user.telegram_id,
+        action=f"top_up_balance_{service.lower()}_error"
+    ).error(f"Ошибка пополнения баланса через {service}, сумма: {payment.amount}₽, Баланс={user.balance}₽")
 
 
 async def notice_of_arraignment(activation, name):
-    msg_text = (f'✅ аренда\n'
-                f'{name} \n'
-                f'пользователь {activation.user.mention}\n'
-                f'id {activation.user.telegram_id}\n'
-                f'сумма аренды {activation.cost}\n'
-                f'баланс: {activation.user.balance}')
+    user = activation.user
+    msg_text = (
+        f'✅ аренда\n'
+        f'{name} \n'
+        f'пользователь {user.mention}\n'
+        f'id {user.telegram_id}\n'
+        f'сумма аренды {activation.cost}\n'
+        f'баланс: {user.balance}'
+    )
     await send_coder(msg_text)
+
+    logger.bind(
+        user_id=user.telegram_id,
+        action="rent_number"
+    ).log("USER_ACTION", f"Аренда номера сервиса '{name}', Стоимость: {activation.cost}₽, Баланс={user.balance}₽")
+
+
+async def referral_bonus_notification(payment, referrer, ref_sum):
+    """
+    Логгирует и уведомляет о начислении реферального бонуса.
+
+    :param payment: объект платежа
+    :param referrer: пользователь-реферал
+    :param ref_sum: сумма бонуса
+    """
+    user = payment.user
+    msg_text = (
+        f'🧾 <b>Начислен реферальный бонус</b>\n'
+        f'Реферер: {referrer.mention}\n'
+        f'id: {referrer.telegram_id}\n'
+        f'Пользователь: {user.mention} (id: {user.telegram_id})\n'
+        f'Сумма платежа: {payment.amount}₽\n'
+        f'Бонус: {ref_sum}₽\n'
+        f'Текущий реф. баланс: {referrer.ref_balance}₽'
+    )
+    await send_coder(msg_text)
+
+    # Логгируем в системные логи
+    logger.bind(
+        user_id=referrer.telegram_id,
+        action="referral_bonus"
+    ).log(
+        "REFERRAL_BONUS",
+        f"Реферальный бонус {ref_sum}₽ за пользователя {user.telegram_id}, "
+        f"платёж на сумму {payment.amount}₽"
+    )
