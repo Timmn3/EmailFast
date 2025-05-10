@@ -334,8 +334,10 @@ async def cancel_rent(callback_query: types.CallbackQuery):
         # Используем API для отмены аренды
         api = OnlineSimRentAPI()  # Создаем экземпляр API
         # Если статус аренды в ожидании, то возвращаем баланс
-        if rented.status == StatusResponse.STATUS_WAIT_CODE:
+        if rented.status == StatusResponse.STATUS_WAIT_CODE and not rented.refund_processed:
             user.balance += rented.cost
+            rented.refund_processed = True
+            await rented.save()
             await user.save()
             logger.bind(user_id=user_id, action='cancel_rent').log("USER_ACTION",
                                                                    f"Баланс пользователя увеличен на {rented.cost}")

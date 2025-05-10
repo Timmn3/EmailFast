@@ -1225,6 +1225,7 @@ class Rent(Model):
     is_notified: bool = fields.BooleanField(default=False)  # Поле для отслеживания отправки уведомления
     days: int = fields.IntField(default=0)  # Поле для отслеживания количества дней аренды
     purchase_count: int = fields.IntField(default=0)  # Поле для отслеживания количества покупок
+    refund_processed = fields.BooleanField(default=False)
 
     @classmethod
     async def add_rent(cls, user: "User", rent_id: int, country: "CountriesOnlinesim", cost: float,

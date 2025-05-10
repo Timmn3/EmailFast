@@ -882,9 +882,11 @@ async def check_rent_sms():
 
             # Здесь важно, чтобы user был загружен
             user = await expired_activation.user
-            if expired_activation.sms_text == '':
+            if expired_activation.sms_text == '' and not expired_activation.refund_processed:
                 user.balance += expired_activation.cost
-            await user.save()
+                expired_activation.refund_processed = True
+                await expired_activation.save()
+                await user.save()
 
 
     except asyncio.CancelledError:
