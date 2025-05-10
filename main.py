@@ -57,8 +57,8 @@ def job_listener(event):
         logger.error(f"Задача {event.job_id} вызвала исключение: {event.exception}")
     elif event.code == EVENT_JOB_MISSED:
         logger.warning(f"Задача {event.job_id} была пропущена в {event.scheduled_run_time}")
-    elif event.code == EVENT_JOB_EXECUTED:
-        logger.log("SUCCESS", f"Задача {event.job_id} успешно выполнена в {event.scheduled_run_time}")
+    # elif event.code == EVENT_JOB_EXECUTED:
+    #     logger.log("SUCCESS", f"Задача {event.job_id} успешно выполнена в {event.scheduled_run_time}")
 
 
 # === Основной запуск бота ===
