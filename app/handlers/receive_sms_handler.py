@@ -39,7 +39,7 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
+        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}, БАЛАНС={user.balance} ₽")
 
         if not user:
             return
@@ -146,10 +146,11 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
+    user_id = call.from_user.id
     try:
-        user_id = call.from_user.id
+        user = await models.User.get_user(telegram_id=call.from_user.id)
         activation_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}")
+        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}, БАЛАНС = {user.balance} ₽")
         if await service_is_smsactivate():
             activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
         else:
@@ -199,6 +200,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             if activation.sms_text is None:
                 user.balance += activation.cost
                 await user.save()
+                logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Если нет смс, возвращаем деньги, БАЛАНС = {user.balance} ₽")
                 msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
             else:
                 msg_text = bt.SERVICE_CANCEL.strip()
@@ -210,22 +212,31 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 logger.opt(exception=e).warning("Не удалось изменить сообщение или клавиатуру")
         else:
             await call.answer(text='Отмена больше не доступна', show_alert=True)
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
+                                                                      f"Отмена больше не доступна")
     except TelegramBadRequest as e:
         logger.opt(exception=e).warning(f"Telegram server error: {e}")
     except Exception as e:
         error_text = str(e)
         if error_text == 'Unable to finish order':
             await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
+                                                                      f"Нельзя отменить в первые 2 минуты")
         elif error_text == 'Wrong operation ID':
             activation.activation_expire_at = None
             activation.status = models.StatusResponse.STATUS_CANCEL
             await activation.save()
             await call.answer(text='Отмена больше не доступна', show_alert=True)
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
+                                                                      f"Отмена больше не доступна")
         elif error_text == 'Try again later':
             await call.answer(text='Повторите попытку позже', show_alert=True)
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
+                                                                      f"Повторите попытку позже")
         else:
             text = error_text[0].upper() + error_text[1:] if error_text else "Неизвестная ошибка"
-            logger.opt(exception=e).error(f"Необработанное исключение: {text}")
+            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
+                                                                      f"Ошибка при отмене номера.\n{text}")
             await call.answer(text=f'Ошибка при отмене номера.\n{text}', show_alert=True)
 
 
@@ -236,13 +247,12 @@ async def unread_message(call: types.CallbackQuery, **kwargs):
         logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Пользователь запросил полный текст сообщения")
         _, message_id, mail_id = call.data.split("|")
         mail_id = int(mail_id)
-        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}")
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Запрос к БД: получение сообщения ID={mail_id}")
         mail = await models.Mail.get_or_none(id=mail_id).prefetch_related("user")
-        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Результат из БД: почта найдена={mail is not None}")
+        logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", f"Результат из БД: сообщение найдено={mail is not None}")
 
         if not mail:
-            logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Ошибка: почта не найдена")
-            print(f"Ошибка: Mail с id={mail_id} не найден")
+            logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Ошибка: сообщение не найдено")
             return
 
         logger.bind(user_id=user_id, action="unread_message").log("USER_ACTION", "Получение полного текста сообщения")
