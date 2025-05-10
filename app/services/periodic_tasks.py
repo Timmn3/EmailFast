@@ -507,97 +507,101 @@ async def check_sms():
 
         # Обрабатываем каждую активную активацию
         for activation in activations:
-            # Получаем статус активации по её идентификатору
-            if len(str(activation.activation_id)) > 9:
-                sms = SmsReceive()
-                status = str(await sms.get_activation_status(activation.activation_id))
-                try:
-                    name = activation.service.name
-                except Exception:
-                    name = None
-                # STATUS_OK:1231
-            else:
-                client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-                order_info = await client.get_order_info(operation_id=activation.activation_id)
-                for_information = order_info
+            user_id = activation.user.telegram_id if activation.user else None
+            activation_id = activation.activation_id
+            phone_number = activation.phone_number
 
-                name = await activation.get_service_2_name()
-
-                if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
-                    sms_code = order_info[0]['msg']
-                    status = f'STATUS_OK:{sms_code}'
+            try:
+                # Определяем источник статуса
+                if len(str(activation.activation_id)) > 9:
+                    sms = SmsReceive()
+                    status = str(await sms.get_activation_status(activation.activation_id))
+                    try:
+                        name = activation.service.name
+                    except Exception:
+                        name = None
                 else:
-                    continue
+                    client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+                    order_info = await client.get_order_info(operation_id=activation.activation_id)
 
-            # Проверяем, начинается ли статус с 'STATUS_OK'
-            if status.startswith(models.StatusResponse.STATUS_OK.name):
-                # Обновляем статус активации на 'STATUS_OK'
-                activation.status = models.StatusResponse.STATUS_OK
+                    name = await activation.get_service_2_name()
 
-                # Смотрим какая смс в БД
-                current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
-
-                # Извлекаем текст SMS из статуса
-                sms_from_status = status.split(':', 1)[1]  # используем split только один раз
-
-                # Применяем регулярное выражение для извлечения цифр из текста
-                sms_digits = re.findall(r'\d+', sms_from_status)
-
-                if sms_digits:
-                    # Если цифры найдены, берем первую
-                    sms_from_status = sms_digits[0]
-                else:
-                    # Если цифры не найдены — оставляем оригинальный текст SMS
-                    sms_from_status = sms_from_status.strip()
-
-                activation.sms_text = sms_from_status
-                # Сохраняем изменения в базе данных
-                await activation.save()
-
-                # Загружаем связанные данные пользователя и сервиса
-                if await service_is_smsactivate():
-                    await activation.fetch_related('user', 'service')
-                else:
-                    await activation.fetch_related('user', 'service_2')
-
-                # Формируем текст сообщения для отправки пользователю если смс новая
-                if int(current_sms) != int(sms_from_status):
-                    if name:
-                        msg_text = (
-                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
-                            f"Ваш код активации для <b>{name}</b>:\n"
-                            f"<code>{activation.sms_text}</code>"
-                        )
-
+                    if order_info and isinstance(order_info, list) and 'msg' in order_info[0]:
+                        sms_code = order_info[0]['msg']
+                        status = f'STATUS_OK:{sms_code}'
                     else:
-                        msg_text = (
-                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
-                            f"Ваш код активации:\n"
-                            f"<code>{activation.sms_text}</code>"
-                        )
+                        continue
 
-                    # Отправляем сообщение пользователю в Telegram
-                    await bot.send_message(
-                        chat_id=activation.user.telegram_id,
-                        text=msg_text
-                    )
-                    await notice_of_arraignment(activation, name)
+                # Проверяем, начинается ли статус с 'STATUS_OK'
+                if status.startswith(models.StatusResponse.STATUS_OK.name):
+                    activation.status = models.StatusResponse.STATUS_OK
 
+                    current_sms = int(activation.sms_text) if activation.sms_text is not None else 1
+                    sms_from_status = status.split(':', 1)[1]
 
-        # Получаем все истекшие активации
-        activations = await models.Activation.get_expired_activations()
+                    sms_digits = re.findall(r'\d+', sms_from_status)
+                    if sms_digits:
+                        sms_from_status = sms_digits[0]
+                    else:
+                        sms_from_status = sms_from_status.strip()
 
-        # Обрабатываем каждую истекшую активацию
-        for activation in activations:
-            # Обновляем статус активации на 'STATUS_CANCEL'
+                    activation.sms_text = sms_from_status
+                    await activation.save()
+
+                    if await service_is_smsactivate():
+                        await activation.fetch_related('user', 'service')
+                    else:
+                        await activation.fetch_related('user', 'service_2')
+
+                    # Отправляем сообщение пользователю, если SMS обновился
+                    if int(current_sms) != int(sms_from_status):
+                        if name:
+                            msg_text = (
+                                f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                                f"Ваш код активации для <b>{name}</b>:\n"
+                                f"<code>{activation.sms_text}</code>"
+                            )
+                        else:
+                            msg_text = (
+                                f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                                f"Ваш код активации:\n"
+                                f"<code>{activation.sms_text}</code>"
+                            )
+
+                        try:
+                            await bot.send_message(
+                                chat_id=activation.user.telegram_id,
+                                text=msg_text
+                            )
+                            await notice_of_arraignment("Получение смс",activation, name)
+
+                            # Логируем событие получения нового SMS
+                            logger.bind(
+                                user_id=user_id,
+                                action="new_sms"
+                            ).log("USER_ACTION", f"Получено новое SMS для номера {phone_number}, код: {sms_from_status}")
+                        except TelegramBadRequest as e:
+                            logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
+
+            except Exception as inner_e:
+                logger.opt(exception=inner_e).error(f"Ошибка при обработке активации ID {activation_id} для пользователя {user_id}")
+
+        # Обработка истёкших активаций
+        expired_activations = await models.Activation.get_expired_activations()
+        for activation in expired_activations:
+            user_id = activation.user.telegram_id if activation.user else None
+            cost = activation.cost
             activation.status = models.StatusResponse.STATUS_CANCEL
-            # Сохраняем изменения в базе данных
             await activation.save()
 
-            # Возвращаем стоимость активации пользователю
-            activation.user.balance += activation.cost
-            # Сохраняем изменения баланса пользователя в базе данных
+            activation.user.balance += cost
             await activation.user.save()
+
+            # Логируем возврат средств за истёкшую активацию
+            logger.bind(
+                user_id=user_id,
+                action="refund_activation"
+            ).log("USER_ACTION", f"Возврат средств за активацию: {cost}₽")
 
     except asyncio.CancelledError:
         pass
@@ -613,9 +617,8 @@ async def check_sms():
 
         ⚠️ Ошибка: {e}
         """
-
         await send_coder(error_info)
-        logger.error(error_info)
+        logger.opt(exception=e).error("Необработанная ошибка в check_sms")
 
 
 import asyncio
@@ -633,7 +636,6 @@ async def check_email():
     Исключения:
         TelegramBadRequest: В случае ошибки при отправке сообщения через Telegram API.
     """
-
     try:
         # Получаем список просроченных почтовых ящиков
         expired_emails = await models.Mail.get_expired_mails()
@@ -642,6 +644,10 @@ async def check_email():
             # Деактивируем просроченные почтовые ящики
             mail.is_active = False
             await mail.save()
+            logger.bind(
+                user_id=mail.user.telegram_id,
+                action="deactivate_mail"
+            ).log("USER_ACTION", f"Почтовый ящик {mail.email} деактивирован (истёк срок аренды)")
             await asyncio.sleep(0)  # Позволяет другим задачам выполняться
 
         # Получаем список активных почтовых ящиков и связанных с ними пользователей
@@ -651,6 +657,7 @@ async def check_email():
             for unread_message in unread_messages:
                 # Если ящик бесплатный и сообщений больше 10, выходим из функции
                 if not mail.is_paid_mail and len(mail.old_messages_id) > 10:
+                    logger.warning(f"Бесплатный ящик {mail.email} превысил лимит сообщений")
                     return
 
                 # Проверяем, было ли сообщение уже обработано
@@ -690,15 +697,26 @@ async def check_email():
                             text=msg_text,
                             reply_markup=mk
                         )
+                        # Логгируем успешное получение нового письма
+                        logger.bind(
+                            user_id=mail.user.telegram_id,
+                            action="new_email"
+                        ).log("USER_ACTION", f"Новое сообщение на ящике {mail.email}: {unread_message['subject']}")
+
                     except TelegramBadRequest as e:
-                        # Обрабатываем исключение, если возникает ошибка при отправке сообщения
-                        logger.warning(f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}")
+                        # Логируем ошибку отправки Telegram-сообщения
+                        logger.opt(exception=e).warning(
+                            f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}"
+                        )
 
                 await asyncio.sleep(0)  # Уступаем управление другим задачам
+
     except asyncio.CancelledError:
         pass
+
     except Exception as e:
-        pass
+        # Логируем любую необработанную ошибку
+        logger.opt(exception=e).error("Необработанная ошибка в check_email()")
 
 
 async def get_services_names():
@@ -719,7 +737,8 @@ async def get_services_names():
 
         return services_dict
     except Exception as e:
-        logger.error(e)
+        logger.opt(exception=e).error("Критическая ошибка при получении списка сервисов из SMS-Activate")
+        await send_coder(f"❌ Ошибка получения сервисов из SMS-Activate:\n{e}")
 
 
 async def update_countries_and_services():
@@ -794,7 +813,7 @@ async def check_mail_expiration_and_notify():
     # Проходим по каждому ID и получаем почту вместе с пользователем
     for mail_id in expiring_mail_ids:
         mail = await models.Mail.get(id=mail_id).prefetch_related('user')
-
+        user = mail.user
         inline_kb = types.InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -816,9 +835,14 @@ async def check_mail_expiration_and_notify():
             # Обновляем флаг уведомления
             mail.notification_sent = True
             await mail.save()
+            logger.bind(user_id=user.telegram_id, action="mail_expiration_notification").log(
+                "USER_ACTION",
+                f"Пользователь {user.telegram_id} получил уведомление об истечении срока аренды ящика {mail.email}"
+            )
         except TelegramBadRequest as e:
             # Обрабатываем исключение, если возникает ошибка при отправке сообщения
-            logger.warning(f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}")
+            await send_coder(f"❌ Ошибка при отправке уведомления о сроке аренды ящика:\n"
+                             f"Пользователь: {user.telegram_id}\nОшибка: {e}")
 
 
 async def send_coder(msg_text):
@@ -828,10 +852,10 @@ async def send_coder(msg_text):
 
 async def check_rent_sms():
     try:
-        # Получаем все активные активации
+        # Получаем все активные аренды
         activations = await models.Rent.get_all_active_rents()
 
-        # Обрабатываем каждую активную активацию
+        # Обрабатываем каждую активную аренду
         for activation in activations:
             # Получаем состояние аренды через OnlineSimRentAPI
             api_client = OnlineSimRentAPI()
@@ -882,16 +906,19 @@ async def check_rent_sms():
                             parse_mode="HTML"
                         )
 
+                        # Логгируем событие аренды (или получения SMS)
+                        name = service
+                        await notice_of_arraignment("Аренда номера",activation, name)
+
         # Если в течение 20 минут не воспользовался номером
         expired_activations = await models.Rent.get_expired_activations()
 
-        # Обрабатываем каждую истекшую активацию
+        # Обрабатываем каждую истекшую аренду
         for expired_activation in expired_activations:
-            # Обновляем статус активации на 'STATUS_CANCEL'
+            # Обновляем статус аренды на 'STATUS_CANCEL'
             expired_activation.status = models.StatusResponse.STATUS_CANCEL
             expired_activation.is_canceled = True
             expired_activation.purchase_count -= 1
-            # Сохраняем изменения в базе данных
             await expired_activation.save()
 
             # Здесь важно, чтобы user был загружен
@@ -901,12 +928,20 @@ async def check_rent_sms():
                 expired_activation.refund_processed = True
                 await expired_activation.save()
                 await user.save()
+                # Логируем возврат средств за истёкшую аренду
+                logger.bind(
+                    user_id=user.telegram_id,
+                    action="refund_rent"
+                ).log(
+                    "USER_ACTION",
+                    f"Возврат средств за истёкшую аренду номера {expired_activation.phone_number}: {expired_activation.cost}₽"
+                )
 
 
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(e)
+        logger.opt(exception=True).error(f"Критическая ошибка в check_rent_sms(): {e}")
 
 
 async def rents_ending_soon():
@@ -933,7 +968,14 @@ async def rents_ending_soon():
 
                 # Отправляем сообщение пользователю
                 await bot.send_message(chat_id=user_id, text=msg_text, reply_markup=inline_kb)
-
+                # Логгируем действие пользователя
+                logger.bind(
+                    user_id=user_id,
+                    action="rent_expiration_notification"
+                ).log(
+                    "USER_ACTION",
+                    f"Пользователь {user_id} получил уведомление об истечении срока аренды номера +{ending.phone_number}"
+                )
                 # Обновляем статус уведомления
                 ending.is_notified = True
                 await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
@@ -941,7 +983,7 @@ async def rents_ending_soon():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(e)
+        logger.opt(exception=True).error(f"Критическая ошибка в rents_ending_soon(): {e}")
 
 
 async def auto_renewal_of_rent():
@@ -961,19 +1003,33 @@ async def auto_renewal_of_rent():
                     )
                     # Отправляем сообщение пользователю
                     await bot.send_message(chat_id=user_id, text=bt.NOT_ENOUGH_FUNDS_FOR_RENT, reply_markup=inline_replenish)
+
+                    # Логируем недостаток средств
+                    logger.bind(
+                        user_id=user_id,
+                        action="autorenew_not_enough_funds"
+                    ).log("USER_ACTION", f"Недостаточно средств для автопродления аренды номера +{ending.phone_number}")
+
                     # Обновляем статус уведомления
                     ending.is_notified = True
-                    await ending.save(update_fields=["is_notified"])  # Сохраняем только это поле
+                    await ending.save(update_fields=["is_notified"])
+
                 else:
                     # Создаем экземпляр API клиента и делаем запрос аренды
                     api_client = OnlineSimRentAPI()
                     try:
                         rent_result = await api_client.extend_rent_state(tzid=ending.rent_id, days=ending.days)
                     except Exception as e:
+                        error_msg = f"Ошибка при продлении аренды через API: {str(e)}"
+                        logger.opt(exception=e).error(f"{error_msg} (user_id={user_id})")
+
                         await bot.send_message(chat_id=user_id, text=f"Ошибка при аренде: {str(e)}", show_alert=True)
                         return
 
                     if rent_result is None:
+                        no_numbers_msg = "Не удалось продлить аренду: нет доступных номеров"
+                        logger.warning(f"{no_numbers_msg} (user_id={user_id}, phone={ending.phone_number})")
+
                         await bot.send_message(chat_id=user_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                         return
 
@@ -983,6 +1039,9 @@ async def auto_renewal_of_rent():
                     minutes = int(rent_result.get("time", 0))
 
                     if phone_number is None:
+                        no_numbers_msg = "Не удалось продлить аренду: отсутствует номер"
+                        logger.warning(f"{no_numbers_msg} (user_id={user_id}, phone={ending.phone_number})")
+
                         await bot.send_message(chat_id=user_id, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                         return
 
@@ -1000,9 +1059,15 @@ async def auto_renewal_of_rent():
                         autorenew=ending.autorenew
                     )
 
+                    # Логируем успешное продление аренды
+                    logger.bind(
+                        user_id=user_id,
+                        action="autorenew_rent_success"
+                    ).log("USER_ACTION", f"Аренда номера +{activation.phone_number} продлена на {activation.days} дней. Списано: {activation.cost}₽")
+
                     # Отправляем пользователю сообщение о номере телефона
                     country = activation.country.name.strip()
-                    flag = country_flags.get(country, "")  # Получаем флаг, если страны нет в словаре, возвращается пустая строка
+                    flag = country_flags.get(country, "")
                     flag_and_country = f"{flag} {country}"
 
                     # Сообщение о количестве дней аренды
@@ -1017,10 +1082,21 @@ async def auto_renewal_of_rent():
                     ending.user.balance -= ending.cost
                     await ending.user.save(update_fields=['balance'])
 
+                    # Логируем событие списания средств за автопродление аренды
+                    logger.bind(
+                        user_id=ending.user.telegram_id,
+                        action="autorenew_rent_payment"
+                    ).log(
+                        "USER_ACTION",
+                        f"Списано {activation.cost}₽ за автопродление аренды номера +{activation.phone_number}. "
+                        f"Новый баланс: {ending.user.balance}₽"
+                    )
+
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(e)
+        logger.opt(exception=e).error(f"Критическая ошибка в auto_renewal_of_rent(): {e}")
+
 
 async def close_rent():
     """
@@ -1029,6 +1105,8 @@ async def close_rent():
     rents_closes = await models.Rent.close_rent_before_end()
 
     for rent in rents_closes:
+        user_id = rent.user.telegram_id if rent.user else None
+
         # Обновляем статус аренды в базе данных
         rent.is_canceled = True
         await rent.save()
@@ -1037,6 +1115,10 @@ async def close_rent():
         try:
             response = await api.close_rent_num(tzid=rent.rent_id)  # Передаем ID операции аренды
             if response.get("response"):
+                logger.bind(
+                    user_id=user_id,
+                    action="close_rent_success"
+                ).log("USER_ACTION", f"Аренда номера {rent.phone_number} успешно закрыта")
                 await bot.send_message(chat_id=rent.user.telegram_id, text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
             else:
                 # Если API вернул неизвестный ответ
@@ -1047,9 +1129,18 @@ async def close_rent():
             if str(e) == "Ошибка API: {'response': '1'}":
                 await bot.send_message(chat_id=rent.user.telegram_id,
                                        text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
+                logger.bind(
+                    user_id=user_id,
+                    action="close_rent_already_closed"
+                ).log("USER_ACTION", f"Срок аренды номера {rent.phone_number} истек")
             else:
                 # Обработка остальных ошибок
-                logger.error(f'Ошибка закрытия аренды {e}\nпользователь {rent.user.id} номер {rent.phone_number}')
+                logger.bind(
+                    user_id=rent.user.id,
+                    action="close_rent_error"
+                ).opt(exception=e).error(
+                    f"Ошибка при закрытии аренды номера {rent.phone_number}: {str(e)}"
+                )
                 await bot.send_message(chat_id=rent.user.telegram_id,
                                        text=bt.NUMBER_RENTAL_CLOSED.format(number=rent.phone_number))
 
@@ -1114,10 +1205,10 @@ async def replenishment_error_message(payment, service):
     ).error(f"Ошибка пополнения баланса через {service}, сумма: {payment.amount}₽, Баланс={user.balance}₽")
 
 
-async def notice_of_arraignment(activation, name):
+async def notice_of_arraignment(name_rent, activation, name):
     user = activation.user
     msg_text = (
-        f'✅ аренда\n'
+        f'✅ {name_rent}\n'
         f'{name} \n'
         f'пользователь {user.mention}\n'
         f'id {user.telegram_id}\n'
