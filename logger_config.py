@@ -37,7 +37,7 @@ def formatter(record):
         f"<level>{record['level']}</level> | "
         f"<cyan>USER {user_id}</cyan> | "
         f"<magenta>ACTION '{action}'</magenta> | "
-        f"<blue>{rel_path}:{record['line']}</blue>\n"
+        f"<blue>{rel_path}:{record['line']}</blue> | "
         f"<level>{record['message']}</level>\n"
         f"{tb}"
     )
@@ -110,7 +110,7 @@ logger.add(
     rotation="50 MB",
     format=lambda r: (
         f"{r['time']:YYYY-MM-DD HH:mm:ss} | {r['level']} | "
-        f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']}\n"
+        f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']} | "
         f"{r['message']}\n"
     ),
     enqueue=True
