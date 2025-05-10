@@ -271,7 +271,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
             return
 
-        await c.message.answer(text=NUMBER_REQUEST_SENT)
+        sent_message = await c.message.answer(text=NUMBER_REQUEST_SENT)
+        sent_message_id = sent_message.message_id
 
         if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
@@ -351,6 +352,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=10)
             )
             service = activation.service_2.name
+
+        await bot.delete_message(chat_id=c.from_user.id, message_id=sent_message_id)
 
         country = activation.country.name
         await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
