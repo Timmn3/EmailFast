@@ -375,15 +375,27 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     :param service: Название сервиса.
     :param country: Страна.
     """
-    mk = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [types.InlineKeyboardButton(text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
-                                        callback_data=f"request_code:{activation.id}")],
-            [types.InlineKeyboardButton(text=bt.CANCEL_SERVICE_BTN, callback_data=f"cancel_service:{activation.id}")],
-            [types.InlineKeyboardButton(text=bt.REQUEST_ANOTHER_CODE,
-                                        callback_data=f"receive_sms_for_another_service")],
-        ]
-    )
+
+    buttons = []
+
+    # Добавляем первую кнопку только если длина activation_id > 9
+    if len(str(activation.activation_id)) > 9:
+        buttons.append([types.InlineKeyboardButton(
+            text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
+            callback_data=f"request_code:{activation.id}"
+        )])
+
+    # Вторая и третья кнопки всегда добавляются
+    buttons.append([types.InlineKeyboardButton(
+        text=bt.CANCEL_SERVICE_BTN,
+        callback_data=f"cancel_service:{activation.id}"
+    )])
+    buttons.append([types.InlineKeyboardButton(
+        text=bt.REQUEST_ANOTHER_CODE,
+        callback_data="receive_sms_for_another_service"
+    )])
+
+    mk = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     country = country.strip()
     flag = country_flags.get(country, "")
     flag_and_country = f"{flag} {country}"
