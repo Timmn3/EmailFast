@@ -722,7 +722,8 @@ async def check_email():
 
     except Exception as e:
         # Логируем любую необработанную ошибку
-        logger.opt(exception=e).error("Необработанная ошибка в check_email()")
+        # logger.opt(exception=e).error("Необработанная ошибка в check_email()")
+        logger.error(e)
 
 
 async def get_services_names():
