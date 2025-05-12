@@ -93,7 +93,7 @@ logger.add(
 
 # === Логирование ошибок с трассировкой ===
 logger.add(
-    "logs/errors/error_{time}.log",
+    "logs/errors/error_{time:YYYY-MM-DD_HH-mm-SS}.log",
     level="ERROR",
     rotation="20 MB",
     format=error_formatter,
@@ -105,7 +105,7 @@ logger.add(
 
 # === Общие логи приложения (без user_id/action) ===
 logger.add(
-    "logs/general/all_logs_{time}.log",
+    "logs/general/all_logs_{time:YYYY-MM-DD_HH-mm-SS}.log",
     level="INFO",
     rotation="50 MB",
     format=lambda r: (
@@ -113,7 +113,7 @@ logger.add(
         f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']} | "
         f"{r['message']}\n"
     ),
-    enqueue=True
+    enqueue=True  # полезно при многопоточности
 )
 
 
