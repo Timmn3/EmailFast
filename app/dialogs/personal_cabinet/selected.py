@@ -197,6 +197,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         price = float(ctx.dialog_data['price'])
         continue_data = ctx.start_data
     else:
+        ctx = None
         continue_data = None
 
     user = await models.User.get_user(user_id)
@@ -298,9 +299,14 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         else:
             await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
     elif state == 'RentCountryMenu':
-        rent_country_code = ctx.dialog_data['rent_country_code']
-        selected_country = ctx.dialog_data['selected_country']
-        day_index = ctx.dialog_data['day_index']
+        if ctx and 'rent_country_code' in ctx.dialog_data:
+            rent_country_code = ctx.dialog_data['rent_country_code']
+            selected_country = ctx.dialog_data.get('selected_country', '')
+            day_index = ctx.dialog_data.get('day_index', '')
+        else:
+            rent_country_code = ''
+            selected_country = ''
+            day_index = ''
         if price >= 300:
             await manager.start(RentCountryMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
