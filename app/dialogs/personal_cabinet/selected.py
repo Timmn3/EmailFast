@@ -4,7 +4,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
-
 import re
 from app.db import models
 from app.dialogs.personal_cabinet.states import PersonalMenu
@@ -22,93 +21,122 @@ from app.services.payments.cryptomus import link_to_cryptomus
 from app.services.payments.freekassa import generate_fk_link
 from app.services.payments.lava import LavaApi
 from app.services.payments.streampay import create_payment_streampay
+from loguru import logger
 
 
 async def on_deposit(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Пополнить баланс".
     Переключает состояние диалога на меню пополнения баланса.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    await manager.switch_to(PersonalMenu.deposit)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_deposit').log("USER_ACTION", "Переход к пополнению баланса")
+        await manager.switch_to(PersonalMenu.deposit)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_deposit: {e}")
 
 
 async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик кнопки "Партнерская программа".
     Вызывает функцию send_affiliate_message с передачей сообщения из CallbackQuery.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    # Передаем сообщение из CallbackQuery в send_affiliate_message
-    await send_affiliate_message(m=c.message, user_id=c.from_user.id)
-    await c.answer()  # Уведомляем Telegram об обработке CallbackQuery
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='affiliate').log("USER_ACTION", "Открытие партнерской программы")
+        await send_affiliate_message(m=c.message, user_id=user_id)
+        await c.answer()
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в Открытие партнерской программы: {e}")
 
 
 async def on_payment_method(c: types.CallbackQuery, widget: Button, manager: DialogManager):
-    await send_payment_keyboard(c, manager=manager)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_payment_method').log("USER_ACTION", "Выбор способа оплаты")
+        await send_payment_keyboard(c, manager=manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_payment_method: {e}")
 
 
 async def on_deposit_new(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Новое пополнение".
     Переключает состояние диалога на меню пополнения баланса с сохранением текущих данных.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    ctx = manager.current_context()
-    await manager.start(PersonalMenu.deposit, data=ctx.dialog_data)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_deposit_new').log("USER_ACTION", "Запуск нового пополнения")
+        ctx = manager.current_context()
+        await manager.start(PersonalMenu.deposit, data=ctx.dialog_data)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_deposit_new: {e}")
 
 
 async def on_deposit_state(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "пополнение с установленным значением".
     Переключает состояние диалога на меню пополнения баланса с сохранением текущих данных.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    ctx = manager.current_context()
-    price = ctx.dialog_data['cost']
-    ctx.dialog_data['price'] = price
-    await send_payment_keyboard(c, manager=manager)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_deposit_state').log("USER_ACTION", "Выбрана фиксированная сумма")
+        ctx = manager.current_context()
+        price = ctx.dialog_data['cost']
+        ctx.dialog_data['price'] = price
+        await send_payment_keyboard(c, manager=manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_deposit_state: {e}")
 
 
 async def on_deposit_price(c: types.CallbackQuery, widget: Select, manager: DialogManager, price_id: str):
     """
     Обработчик для выбора суммы пополнения.
     Отправляет клавиатуру для выбора способа оплаты.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Select.
     :param manager: Объект DialogManager.
     :param price_id: Идентификатор выбранной суммы.
     """
-    await c.message.delete()
-    price = bt.prices_data[int(price_id) - 1]['price']
-    ctx = manager.current_context()
-    ctx.dialog_data['price'] = price
-    await send_payment_keyboard(c, manager=manager, price=price)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_deposit_price').log("USER_ACTION", f"Выбрана сумма: {price_id}")
+        await c.message.delete()
+        price = bt.prices_data[int(price_id) - 1]['price']
+        ctx = manager.current_context()
+        ctx.dialog_data['price'] = price
+        await send_payment_keyboard(c, manager=manager, price=price)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_deposit_price: {e}")
 
 
 async def on_other_price(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Другая сумма".
     Переключает состояние диалога на ввод суммы пополнения.
-
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
     :param manager: Объект DialogManager.
     """
-    await switch_state(manager)
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='on_other_price').log("USER_ACTION", "Выбрана произвольная сумма")
+        await switch_state(manager)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_other_price: {e}")
 
 
 async def switch_state(manager: DialogManager):
@@ -127,37 +155,43 @@ async def on_enter_other_price(m: types.Message, widget: TextInput, manager: Dia
     """
     Обработчик для ввода другой суммы пополнения.
     Проверяет корректность введенной суммы и отправляет клавиатуру для выбора способа оплаты.
-
     :param m: Объект Message.
     :param widget: Объект TextInput.
     :param manager: Объект DialogManager.
     :param price_text: Введенная сумма пополнения.
     """
-    if not price_text.isdigit():
-        await m.answer(text='Сумма должна быть числом')
-        await switch_state(manager)
-        return
+    try:
+        user_id = m.from_user.id
+        logger.bind(user_id=user_id, action='on_enter_other_price').log("USER_ACTION", f"Введена сумма: {price_text}")
 
-    price = int(price_text)
-    if price < 50:
-        await m.answer(text='Минимальная сумма - 50₽')
-        await switch_state(manager)
-        return
-
-    ctx = manager.current_context()
-    ctx.dialog_data['price'] = price
-    await send_payment_keyboard(m, manager=manager, price=price)
+        if not price_text.isdigit():
+            await m.answer(text='Сумма должна быть числом')
+            await switch_state(manager)
+            return
+        price = int(price_text)
+        if price < 50:
+            await m.answer(text='Минимальная сумма - 50₽')
+            await switch_state(manager)
+            return
+        ctx = manager.current_context()
+        ctx.dialog_data['price'] = price
+        await send_payment_keyboard(m, manager=manager, price=price)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_enter_other_price: {e}")
 
 
 async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], manager: DialogManager = None,
                                 price: float = None):
     """
     Отправляет клавиатуру для выбора способа оплаты.
-
     :param m: Объект Message или CallbackQuery.
     :param manager: Объект DialogManager.
     :param price: Сумма пополнения.
     """
+
+    user_id = m.from_user.id
+    logger.bind(user_id=user_id, action='send_payment_keyboard').log("USER_ACTION", f"Формирование платежной ссылки")
+
     if manager:
         ctx = manager.current_context()
         price = float(ctx.dialog_data['price'])
@@ -165,7 +199,6 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     else:
         continue_data = None
 
-    user_id = m.from_user.id
     user = await models.User.get_user(user_id)
 
     # формируем ссылку на оплату Lava
@@ -301,16 +334,17 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
 
 
 async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: DialogManager):
-    # Получаем URL из контекста
+
+    user_id = c.from_user.id
+
     current_context = manager.current_context()
     url_key = f"{button.widget_id}_url"
     url = current_context.dialog_data.get(url_key)
-
-    # Проверка правильности URL
     url_pattern = re.compile(r'https?://[^\s]+')
+
+    logger.bind(user_id=user_id, action='switch_to_payment').log("USER_ACTION", f"Переход к оплате {url}")
+
     if not url or not url_pattern.match(url):
-        # Если URL некорректный, отправляем сообщение об ошибке
-        # await c.message.edit_text(text=ERROR_PAYMENT_METHOD)
         await c.answer(text=bt.ERROR_PAYMENT_METHOD, show_alert=True)
         return
 
@@ -349,69 +383,70 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
 
 
 async def send_payment_keyboard_anypay(c: types.CallbackQuery, button: Button, manager: DialogManager):
-    ctx = manager.current_context()
     """
-    Отправляет клавиатуру для выбора способа оплаты.
+        Отправляет клавиатуру для выбора способа оплаты.
 
-    :param m: Объект Message или CallbackQuery.
-    :param manager: Объект DialogManager.
-    :param price: Сумма пополнения.
-    """
-    price = 0
-    if manager:
+        :param m: Объект Message или CallbackQuery.
+        :param manager: Объект DialogManager.
+        :param price: Сумма пополнения.
+        """
+
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action='send_payment_keyboard_anypay').log("USER_ACTION", "Формирование AnyPay-ссылки")
+
         ctx = manager.current_context()
-        price = float(ctx.dialog_data['price'])
-        continue_data = ctx.start_data
-    else:
-        continue_data = None
+        price = float(ctx.dialog_data['price']) if manager else 0
+        continue_data = ctx.start_data if manager else None
 
-    user = await models.User.get_user(c.from_user.id)
+        user = await models.User.get_user(c.from_user.id)
+        payment_anypay = await models.Payment.create_payment(
+            user=user,
+            method=models.PaymentMethod.ANYPAY,
+            amount=price,
+            continue_data=continue_data
+        )
 
-    payment_anypay = await models.Payment.create_payment(
-        user=user,
-        method=models.PaymentMethod.ANYPAY,
-        amount=price,
-        continue_data=continue_data
-    )
-    # формируем ссылку на оплату AnyPay
-    api = AnypayAPI()
-    url_card = await api.create_payment(amount=price, desc=payment_anypay.id, method='card')
-    url_sbp = await api.create_payment(amount=price, desc=payment_anypay.id, method='sbp')
-    url_btc = await api.create_payment(amount=price, desc=payment_anypay.id, method='btc')
+        api = AnypayAPI()
+        url_card = await api.create_payment(amount=price, desc=payment_anypay.id, method='card')
+        url_sbp = await api.create_payment(amount=price, desc=payment_anypay.id, method='sbp')
+        url_btc = await api.create_payment(amount=price, desc=payment_anypay.id, method='btc')
 
-    state = manager.current_context().state.group.__name__
+        state = manager.current_context().state.group.__name__
+        ctx = manager.current_context()
 
-    # Передаем URL-адреса в контекстное состояние
-    country_id = ''
-    service_code = ''
-    service_price = ''
-    url_pattern = re.compile(r'https?://[^\s]+')
-    if state == 'CountryMenu':
-        country_id = ctx.dialog_data['country_id']
-        service_code = ctx.dialog_data['service_code']
-        service_price = ctx.dialog_data['service_price']
-        if url_pattern.match(url_sbp):
-            await manager.start(CountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+        country_id = ''
+        service_code = ''
+        service_price = ''
+        url_pattern = re.compile(r'https?://[^\s]+')
+
+        if state == 'CountryMenu':
+            country_id = ctx.dialog_data['country_id']
+            service_code = ctx.dialog_data['service_code']
+            service_price = ctx.dialog_data['service_price']
+            if url_pattern.match(url_sbp):
+                await manager.start(CountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+            else:
+                await manager.start(CountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
+        elif state == 'RentCountryMenu':
+            if url_pattern.match(url_sbp):
+                await manager.start(RentCountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+            else:
+                await manager.start(RentCountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
         else:
-            await manager.start(CountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
-    elif state == 'RentCountryMenu':
-        if url_pattern.match(url_sbp):
-            await manager.start(RentCountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
-        else:
-            await manager.start(RentCountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
-    else:
-        if url_pattern.match(url_sbp):
-            await manager.start(PersonalMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
-        else:
-            await manager.start(PersonalMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
-    # Получаем текущий контекст и обновляем dialog_data
-    ctx = manager.current_context()
-    ctx.dialog_data.update({
-        'card_url': url_card,
-        'sbp_url': url_sbp,
-        'btc_url': url_btc,
-        'price': price,
-        'country_id': country_id,
-        'service_code': service_code,
-        'service_price': service_price
-    })
+            if url_pattern.match(url_sbp):
+                await manager.start(PersonalMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+            else:
+                await manager.start(PersonalMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
+
+        ctx.dialog_data.update({
+            'card_url': url_card,
+            'sbp_url': url_sbp,
+            'btc_url': url_btc,
+            'price': price,
+            'country_id': country_id,
+            'service_code': service_code,
+            'service_price': service_price
+        })
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в send_payment_keyboard_anypay: {e}")
