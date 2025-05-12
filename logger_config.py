@@ -84,7 +84,7 @@ logger.add(
 
 # === Логирование действий пользователей ===
 logger.add(
-    "logs/users/user_actions_{time:DD-MM-YYYY HH-mm-SS}.log",
+    "logs/users/user_actions_{time:DD-MM-YYYY HH:mm}.log",
     level="USER_ACTION",
     rotation="10 MB",
     format=user_action_formatter,
@@ -93,7 +93,7 @@ logger.add(
 
 # === Логирование ошибок с трассировкой ===
 logger.add(
-    "logs/errors/error_{time:DD-MM-YYYY HH-mm-SS}.log",
+    "logs/errors/error_{time:DD-MM-YYYY HH:mm}.log",
     level="ERROR",
     rotation="20 MB",
     format=error_formatter,
@@ -105,7 +105,7 @@ logger.add(
 
 # === Общие логи приложения (без user_id/action) ===
 logger.add(
-    "logs/general/all_logs_{time:DD-MM-YYYY HH-mm-SS}.log",
+    "logs/general/all_logs_{time:DD-MM-YYYY HH:mm}.log",
     level="INFO",
     rotation="50 MB",
     format=lambda r: (
