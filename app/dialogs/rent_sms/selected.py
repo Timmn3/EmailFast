@@ -14,7 +14,7 @@ from app.services import bot_texts as bt
 import asyncio
 from typing import Optional
 from loguru import logger
-
+from app.dependencies import bot
 
 # Функция для обработки нажатия кнопки поиска страны
 async def rent_on_search_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):

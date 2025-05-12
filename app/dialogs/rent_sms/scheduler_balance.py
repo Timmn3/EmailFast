@@ -78,7 +78,7 @@ async def start_balance_check_rent(user_id, price, day_index, selected_country, 
         scheduler.add_job(
             check_balance_and_send_service_rent,
             IntervalTrigger(seconds=5),
-            args=[user_id, price, day_index, country, c, manager],
+            args=[user_id, price, day_index, selected_country, c, manager],
             id=job_id
         )
 
