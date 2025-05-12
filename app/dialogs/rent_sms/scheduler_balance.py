@@ -23,7 +23,7 @@ async def check_balance_and_send_service_rent(user_id, price, day_index, selecte
     try:
         logger.bind(user_id=user_id, action='check_balance_and_send_service_rent').log(
             "USER_ACTION",
-            f"Проверка баланса для аренды номера: цена={price}, страна={selected_country}, дни={day_index}"
+            f"Проверка баланса для аренды номера: цена={price}, страна={selected_country.get('country', 'неизвестная')}, дни={day_index}"
         )
 
         # Получаем информацию о пользователе из базы данных
@@ -65,7 +65,7 @@ async def start_balance_check_rent(user_id, price, day_index, selected_country, 
     try:
         logger.bind(user_id=user_id, action='start_balance_check_rent').log(
             "USER_ACTION",
-            f"Запуск проверки баланса для аренды номера: цена={price}, страна={selected_country}, дни={day_index}"
+            f"Запуск проверки баланса для аренды номера: цена={price}, страна={selected_country.get('country', 'неизвестная')}, дни={day_index}"
         )
 
         job_id = f'balance_check_rent_{user_id}'
