@@ -45,10 +45,10 @@ async def user_subscribe(event: ChatMemberUpdated):
 async def user_unsubscribe(event: ChatMemberUpdated):
     try:
         user_id = event.from_user.id
-        logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", "Пользователь отписался от канала")
         if str(event.chat.id) != dependencies.CHANNEL_ID:
             return
 
+        logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", "Пользователь отписался от канала")
         # logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         # logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
