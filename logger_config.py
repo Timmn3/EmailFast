@@ -33,7 +33,7 @@ def formatter(record):
         tb = "".join(traceback.format_exception(*exc))
 
     return (
-        f"<green>{record['time']:YYYY-MM-DD HH:mm:ss}</green> | "
+        f"<green>{record['time']:DD-MM-YYYY HH-mm-SS}</green> | "
         f"<level>{record['level']}</level> | "
         f"<cyan>USER {user_id}</cyan> | "
         f"<magenta>ACTION '{action}'</magenta> | "
@@ -65,7 +65,7 @@ def error_formatter(record):
     action = record["extra"].get("action", "-")
 
     return (
-        f"{record['time']:YYYY-MM-DD HH:mm:ss} | LEVEL {record['level']} | FILE {rel_path}:{record['line']}\n"
+        f"{record['time']:DD-MM-YYYY HH-mm-SS} | LEVEL {record['level']} | FILE {rel_path}:{record['line']}\n"
         f"USER: {user_id} | ACTION: {action}\n"
         f"MESSAGE: {record['message']}\n"
         f"EXCEPTION:\n{tb}\n"
@@ -84,7 +84,7 @@ logger.add(
 
 # === Логирование действий пользователей ===
 logger.add(
-    "logs/users/user_actions_{time:YYYY-MM-DD_HH-mm-SS}.log",
+    "logs/users/user_actions_{time:DD-MM-YYYY HH-mm-SS}.log",
     level="USER_ACTION",
     rotation="10 MB",
     format=user_action_formatter,
@@ -93,7 +93,7 @@ logger.add(
 
 # === Логирование ошибок с трассировкой ===
 logger.add(
-    "logs/errors/error_{time:YYYY-MM-DD_HH-mm-SS}.log",
+    "logs/errors/error_{time:DD-MM-YYYY HH-mm-SS}.log",
     level="ERROR",
     rotation="20 MB",
     format=error_formatter,
@@ -105,7 +105,7 @@ logger.add(
 
 # === Общие логи приложения (без user_id/action) ===
 logger.add(
-    "logs/general/all_logs_{time:YYYY-MM-DD_HH-mm-SS}.log",
+    "logs/general/all_logs_{time:DD-MM-YYYY HH-mm-SS}.log",
     level="INFO",
     rotation="50 MB",
     format=lambda r: (
