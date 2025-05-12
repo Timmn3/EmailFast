@@ -10,11 +10,6 @@ from loguru import logger
 # Асинхронная функция для проверки баланса и отправки сервиса
 async def check_balance_and_send_service(user_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
     try:
-        logger.bind(user_id=user_id, action='check_balance_and_send_service').log(
-            "USER_ACTION",
-            f"Проверка баланса для покупки услуги: цена={price}, страна={country_id}, сервис={service_code}"
-        )
-
         # Получаем информацию о пользователе из базы данных
         user = await models.User.get_user(user_id)
 

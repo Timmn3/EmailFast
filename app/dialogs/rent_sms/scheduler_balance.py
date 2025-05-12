@@ -21,11 +21,6 @@ async def check_balance_and_send_service_rent(user_id, price, day_index, selecte
     :param manager: Менеджер диалогов aiogram_dialog.
     """
     try:
-        logger.bind(user_id=user_id, action='check_balance_and_send_service_rent').log(
-            "USER_ACTION",
-            f"Проверка баланса для аренды номера: цена={price}, страна={selected_country.get('country', 'неизвестная')}, дни={day_index}"
-        )
-
         # Получаем информацию о пользователе из базы данных
         user = await models.User.get_user(user_id)
 
