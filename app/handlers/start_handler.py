@@ -86,25 +86,25 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
 async def check_subscribe_handler(call: types.CallbackQuery):
     try:
         user_id = call.from_user.id
-        logger.bind(user_id=user_id, action='check_subscribe').log(
-            "USER_ACTION",
-            f"Проверка подписки пользователя"
-        )
+        # logger.bind(user_id=user_id, action='check_subscribe').log(
+        #     "USER_ACTION",
+        #     f"Проверка подписки пользователя"
+        # )
 
         user = await models.User.get_user(user_id)
         sub = await check_subscribe(user)
         if sub:
-            logger.bind(user_id=user_id, action='check_subscribe').log(
-                "USER_ACTION",
-                f"Подписка подтверждена"
-            )
+            # logger.bind(user_id=user_id, action='check_subscribe').log(
+            #     "USER_ACTION",
+            #     f"Подписка подтверждена"
+            # )
             await call.message.delete()
             await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
         else:
-            logger.bind(user_id=user_id, action='check_subscribe').log(
-                "USER_ACTION",
-                f"Подписка не найдена"
-            )
+            # logger.bind(user_id=user_id, action='check_subscribe').log(
+            #     "USER_ACTION",
+            #     f"Подписка не найдена"
+            # )
             await call.answer(text='Вы не подписаны на канал', show_alert=True)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере check_subscribe: {e}")

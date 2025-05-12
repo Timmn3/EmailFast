@@ -19,13 +19,13 @@ router = Router()
 async def user_subscribe(event: ChatMemberUpdated):
     try:
         user_id = event.from_user.id
-        logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", "Пользователь подписался на канал")
+        # logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", "Пользователь подписался на канал")
         if str(event.chat.id) != dependencies.CHANNEL_ID:
             return
 
-        logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
+        # logger.bind(user_id=user_id, action="user_subscribe").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
         if user is None:
             return
@@ -49,9 +49,9 @@ async def user_unsubscribe(event: ChatMemberUpdated):
         if str(event.chat.id) != dependencies.CHANNEL_ID:
             return
 
-        logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
+        # logger.bind(user_id=user_id, action="user_unsubscribe").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
         if user is None:
             return

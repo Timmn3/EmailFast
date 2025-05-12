@@ -37,7 +37,7 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
     try:
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
-        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}, баланс = {user.balance} ₽")
 
@@ -48,7 +48,7 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         activation = await models.Activation.get_active_activation(user.id)
 
         if activation is None:
-            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка подписки")
+            # logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка подписки")
             sub = await check_subscribe(user)
             if not sub:
                 logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Подписка неактивна, отправляем сообщение")

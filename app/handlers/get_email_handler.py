@@ -28,14 +28,14 @@ async def receive_email(message: Union[types.Message, types.CallbackQuery], dial
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", "Пользователь запросил получение email")
 
-        logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
+        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
         if not user:
             return
 
-        logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", "Проверка подписки")
+        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", "Проверка подписки")
         sub = await check_subscribe(user)
 
         if not sub:
@@ -83,9 +83,9 @@ async def my_rent_emails(call: types.CallbackQuery):
         user_id = call.from_user.id
         logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", "Пользователь открыл список арендованных почт")
 
-        logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
+        # logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
         if not user:
             return
@@ -173,9 +173,9 @@ async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):
         }
         logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Пользователь выбрал срок: {data}")
 
-        logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Результат из БД: баланс={user.balance}")
+        # logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Результат из БД: баланс={user.balance}")
 
         if user.balance < rent_data[data][0]:
             logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", "Ошибка: недостаточно средств")
@@ -222,7 +222,7 @@ async def confirm_extend_email(call: types.CallbackQuery):
             await call.answer()
             return
 
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Результат из БД: баланс={user.balance}")
 

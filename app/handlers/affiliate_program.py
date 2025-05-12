@@ -85,9 +85,9 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         me = await m.bot.me()
         link = f'https://t.me/ {me.username}?start={user_id}'
         qr_code_bytes = await generate_qr_code(link)
-        logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Результат из БД: пользователь {user_id} найден")
+        # logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Результат из БД: пользователь {user_id} найден")
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -130,10 +130,10 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
 async def affiliate_program(message: types.Message):
     try:
         user_id = message.from_user.id
-        logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", "Пользователь открыл программу аффилиата")
-        logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", "Пользователь открыл Партнерская программа")
+        # logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", f"Результат из БД: пользователь {user_id} найден")
+        # logger.bind(user_id=user_id, action="affiliate_program").log("USER_ACTION", f"Результат из БД: пользователь {user_id} найден")
         sub = await check_subscribe(user)
         if not sub:
             await send_subscribe_msg(user)
@@ -146,7 +146,7 @@ async def affiliate_program(message: types.Message):
 async def affiliate_program(call: types.CallbackQuery):
     try:
         user_id = call.from_user.id
-        logger.bind(user_id=user_id, action="callback_affiliate_program").log("USER_ACTION", "Пользователь вернулся к программе аффилиата")
+        logger.bind(user_id=user_id, action="callback_affiliate_program").log("USER_ACTION", "Пользователь вернулся к Партнерская программа")
         await call.message.delete()
         await send_affiliate_message(call.message)
     except Exception as e:
@@ -240,7 +240,7 @@ async def enter_withdraw_amount(m: types.Message, state: FSMContext):
             logger.bind(user_id=user_id, action="enter_withdraw_amount").log("USER_ACTION", "Ошибка: сумма меньше минимальной для крипты")
             await m.answer(text=f'Минимальная сумма вывода: {bt.MIN_CRYPT_AMOUNT}₽', reply_markup=back_mk)
             return
-        logger.bind(user_id=user_id, action="enter_withdraw_amount").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="enter_withdraw_amount").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="enter_withdraw_amount").log("USER_ACTION", f"Результат из БД: баланс={user.ref_balance}")
         if user.ref_balance < amount:
@@ -341,7 +341,7 @@ async def confirm_withdrawal(call: types.CallbackQuery, state: FSMContext):
         address = user_data.get('address')
         network = user_data.get('withdraw_network')
 
-        logger.bind(user_id=user_id, action="confirm_withdrawal").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="confirm_withdrawal").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="confirm_withdrawal").log("USER_ACTION", f"Результат из БД: баланс={user.ref_balance}")
 
@@ -399,7 +399,7 @@ async def enter_withdraw_requisites(m: types.Message, state: FSMContext):
         logger.bind(user_id=user_id, action="enter_withdraw_requisites").log("USER_ACTION", f"Введено: реквизиты={requisites}, сумма={amount}")
         await state.update_data(requisites=requisites)
 
-        logger.bind(user_id=user_id, action="enter_withdraw_requisites").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="enter_withdraw_requisites").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="enter_withdraw_requisites").log("USER_ACTION", f"Результат из БД: баланс={user.ref_balance}")
 
@@ -432,7 +432,7 @@ async def confirm_withdraw(call: types.CallbackQuery, state: FSMContext):
         amount = float(data.get('amount'))
         requisites = data.get('requisites')
 
-        logger.bind(user_id=user_id, action="confirm_withdraw").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        # logger.bind(user_id=user_id, action="confirm_withdraw").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="confirm_withdraw").log("USER_ACTION", f"Результат из БД: баланс={user.ref_balance}")
 

@@ -61,10 +61,10 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
 
         dialog_manager.dialog_data["rent_countries"] = countries
 
-        logger.bind(user_id=user_id, action='get_rent_countries').log(
-            "USER_ACTION",
-            f"Получено {len(countries)} стран для аренды"
-        )
+        # logger.bind(user_id=user_id, action='get_rent_countries').log(
+        #     "USER_ACTION",
+        #     f"Получено {len(countries)} стран для аренды"
+        # )
 
         return {"rent_countries": countries}
     except Exception as e:
