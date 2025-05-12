@@ -169,7 +169,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
     :param widget: Виджет Select от aiogram_dialog.
     :param manager: Менеджер диалогов от aiogram_dialog.
     :param day_index: Индекс выбранного количества дней.
-    :param selected_country: Данные о выбранной стране (опционально).
+    :param selected_country: selected_country.
     """
     try:
         user_id = c.from_user.id
@@ -180,48 +180,63 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
 
         tzid = None
         if selected_country is None:
+            # Получаем данные о выбранной стране
             selected_country = manager.dialog_data.get("selected_country")
             if selected_country is None:
                 selected_country = manager.start_data.get("selected_country")
-                tzid = selected_country.get("tzid")
+                tzid = selected_country["tzid"]
 
             if not selected_country:
+                await c.answer("Ошибка: данные о стране отсутствуют.", show_alert=True)
                 logger.bind(user_id=user_id, action='rent_number_in_days').log(
                     "USER_ACTION",
                     "Данные о стране отсутствуют"
                 )
-                await c.answer("Ошибка: данные о стране отсутствуют.", show_alert=True)
                 return
 
+        # Преобразуем индекс дней в число
         days = int(day_index.split()[0])
+
         price = selected_country['tariffs'].get(str(days))
-        user = await models.User.get_user(user_id)
+        # Получаем информацию о пользователе
+        user = await models.User.get_user(c.from_user.id)
+        country_code = selected_country["rent_country_code"]  # Код страны из context
 
-        country_code = selected_country["rent_country_code"]
-
+        # Проверяем, достаточно ли у пользователя средств на балансе
         if user.balance < price:
             logger.bind(user_id=user_id, action='rent_number_in_days').log(
                 "USER_ACTION",
                 f"Недостаточно средств для аренды. Требуется: {price}, доступно: {user.balance}"
             )
-            await manager.switch_to(RentCountryMenu.deposit)
+
+            missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
+            manager.current_context().dialog_data.update({'day_index': day_index, 'selected_country': selected_country,
+                                                          'rent_country_code': country_code, 'price': missing_amount})
+            from app.dialogs.personal_cabinet.selected import send_payment_keyboard
+            await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
+
+            # await manager.switch_to(RentCountryMenu.deposit)
             return
+
 
         await c.message.answer(text=NUMBER_REQUEST_SENT)
 
+        # Проверяем, прошло ли 10 секунд с последнего запроса
         if user.last_request_time is not None and (
                 datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
+            await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
             logger.bind(user_id=user_id, action='rent_number_in_days').log(
                 "USER_ACTION",
                 "Слишком частый запрос"
             )
-            await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
             return
 
+        # Получаем текущее время в московском часовом поясе
         current_time = datetime.now(pytz.timezone('Europe/Moscow'))
+        # Обновляем время последнего запроса
         user.last_request_time = current_time.astimezone(pytz.utc)
         await user.save(update_fields=['last_request_time'])
-
+        # Создаем экземпляр API клиента и делаем запрос аренды
         api_client = OnlineSimRentAPI()
 
         try:
@@ -230,7 +245,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
                     "USER_ACTION",
                     f"Запрос аренды номера: страна={country_code}, дни={days}"
                 )
-                rent_result = await api_client.rent_number(country=int(country_code), days=days)
+                rent_result = await api_client.rent_number(country=int(country_code), days=days) # Запрос номера
             else:
                 logger.bind(user_id=user_id, action='rent_number_in_days').log(
                     "USER_ACTION",
@@ -242,6 +257,7 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
             await c.answer(f"Ошибка при аренде: {str(e)}", show_alert=True)
             return
 
+        # Выводим результат аренды
         if rent_result is None:
             logger.bind(user_id=user_id, action='rent_number_in_days').log(
                 "USER_ACTION",
@@ -250,19 +266,21 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
             await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
             return
 
+            # Извлекаем данные активации
         rent_id = int(rent_result.get("tzid", 0))
         phone_number = rent_result.get("number", None)
         country = await models.CountriesOnlinesim.get_country_onlinesim(country_id=country_code)
         minutes = int(rent_result.get("time", 0))
 
         if phone_number is None:
+            await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
             logger.bind(user_id=user_id, action='rent_number_in_days').log(
                 "USER_ACTION",
                 "Номер не получен"
             )
-            await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
             return
 
+        # Добавляем запись об активации в базу данных
         activation = await models.Rent.add_rent(
             user=user,
             rent_id=rent_id,
@@ -273,20 +291,24 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
             days=days
         )
 
+        # обновляем количество покупок номеров
         activation.purchase_count += 1
         await activation.save(update_fields=["purchase_count"])
-
         logger.bind(user_id=user_id, action='rent_number_in_days').log(
             "USER_ACTION",
             f"Успешная аренда номера: {activation.phone_number}, истекает {activation.rent_expire_at}"
         )
 
+        # Отправляем пользователю сообщение о номере телефона
         await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)
 
+        # Списываем средства с баланса пользователя
         user.balance -= price
         await user.save(update_fields=['balance'])
 
+        # Проверяем, низкий ли баланс у пользователя после списания средств
         low_balance = await check_low_balance(user, price)
+        # Ждем 1 секунду перед отправкой уведомления о низком балансе, если это необходимо
         await asyncio.sleep(1)
         if low_balance:
             await send_low_balance_alert(user)
