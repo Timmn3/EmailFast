@@ -219,7 +219,8 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
             return
 
 
-        await c.message.answer(text=NUMBER_REQUEST_SENT)
+        sent_message = await c.message.answer(text=NUMBER_REQUEST_SENT)
+        sent_message_id = sent_message.message_id
 
         # Проверяем, прошло ли 10 секунд с последнего запроса
         if user.last_request_time is not None and (
@@ -298,6 +299,8 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
             "USER_ACTION",
             f"Успешная аренда номера: {activation.phone_number}, истекает {activation.rent_expire_at}"
         )
+
+        await bot.delete_message(chat_id=c.from_user.id, message_id=sent_message_id)
 
         # Отправляем пользователю сообщение о номере телефона
         await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)
