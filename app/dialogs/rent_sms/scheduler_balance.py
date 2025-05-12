@@ -58,9 +58,11 @@ async def start_balance_check_rent(user_id, price, day_index, selected_country, 
     :param manager: Менеджер диалогов aiogram_dialog.
     """
     try:
+        country = selected_country.get('country', 'неизвестная')
+
         logger.bind(user_id=user_id, action='start_balance_check_rent').log(
             "USER_ACTION",
-            f"Запуск проверки баланса для аренды номера: цена={price}, страна={selected_country.get('country', 'неизвестная')}, дни={day_index}"
+            f"Запуск проверки баланса для аренды номера: цена={price}, страна={country}, дни={day_index}"
         )
 
         job_id = f'balance_check_rent_{user_id}'
@@ -76,7 +78,7 @@ async def start_balance_check_rent(user_id, price, day_index, selected_country, 
         scheduler.add_job(
             check_balance_and_send_service_rent,
             IntervalTrigger(seconds=5),
-            args=[user_id, price, day_index, selected_country, c, manager],
+            args=[user_id, price, day_index, country, c, manager],
             id=job_id
         )
 
