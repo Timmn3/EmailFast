@@ -84,7 +84,7 @@ logger.add(
 
 # === Логирование действий пользователей ===
 logger.add(
-    "logs/users/user_actions_{time}.log",
+    "logs/users/user_actions_{time:YYYY-MM-DD_HH-mm-SS}.log",
     level="USER_ACTION",
     rotation="10 MB",
     format=user_action_formatter,
