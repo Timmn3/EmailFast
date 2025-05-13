@@ -518,7 +518,7 @@ async def check_sms():
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-                order_info = await client.get_order_info(operation_id=activation.activation_id)
+                order_info = await client.get_order_info(operation_id=activation.activation_id, get_full_message=True)
                 for_information = order_info
                 name = await activation.get_service_2_name()
 
