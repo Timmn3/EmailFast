@@ -83,7 +83,7 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", "Запрос на отправку реферального сообщения")
         loading_msg = await m.answer("⏳Идёт загрузка, ожидайте...")
         me = await m.bot.me()
-        link = f'https://t.me/ {me.username}?start={user_id}'
+        link = f'https://t.me/{me.username}?start={user_id}'
         qr_code_bytes = await generate_qr_code(link)
         # logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
