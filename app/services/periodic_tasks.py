@@ -69,7 +69,7 @@ async def check_payment_lava():
                     await payment.save()
 
                     # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                    if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                         # Если бонус активен, увеличиваем сумму платежа на 10%.
                         amount = floor(payment.amount * 1.1)
                         # Сбрасываем срок действия бонуса.
@@ -145,7 +145,7 @@ async def check_payment_freekassa():
                     await payment.save()
 
                     # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                    if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                    if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                         # Если бонус активен, увеличиваем сумму платежа на 10%.
                         amount = floor(payment.amount * 1.1)
                         # Сбрасываем срок действия бонуса.
@@ -205,7 +205,7 @@ async def check_payment_yoomoney():
                 await payment.save()
 
                 # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                     # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
                     # Сбрасываем срок действия бонуса.
@@ -265,7 +265,7 @@ async def check_payment_anypay():
                 await payment.save()
 
                 # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                     # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
                     # Сбрасываем срок действия бонуса.
@@ -324,7 +324,7 @@ async def check_payment_streampay():
                 await payment.save()
 
                 # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                     # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
                     # Сбрасываем срок действия бонуса.
@@ -390,7 +390,7 @@ async def check_payment_ckassa():
                 await payment.save()
 
                 # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                     # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
                     # Сбрасываем срок действия бонуса.
@@ -450,7 +450,7 @@ async def check_payment_cryptomus():
                 await payment.save()
 
                 # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
-                if payment.user.bonus_end_at and payment.user.bonus_end_at > timezone.now():
+                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
                     # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
                     # Сбрасываем срок действия бонуса.
