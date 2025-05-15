@@ -227,6 +227,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
     try:
+        await c.answer()
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='send_service_on_country').log(
             "USER_ACTION",
@@ -252,7 +253,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             if tariffs is None:
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION",
-                    "Нет доступных номеров"
+                    "Нет доступных номеров OnlineSim"
                 )
                 await c.message.answer(text=NOT_NUMBERS_ALERT)
                 return
@@ -277,6 +278,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             try:
+                logger.bind(user_id=user_id, action='send_service_on_country').log(
+                    "USER_ACTION",
+                    f"OnlineSim"
+                )
                 order_number_response = await client.order_number(service=service_code, country=country_id)
                 activation_id = order_number_response.get('tzid')
                 phone_number = (await client.get_order_info(operation_id=activation_id))[0].get('number').lstrip('+')
@@ -290,7 +295,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 error_message = str(e)
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION",
-                    f"Ошибка при получении номера: {error_message}"
+                    f"Ошибка при получении номера сервиса OnlineSim: {error_message}"
                 )
                 if "No available numbers for this service" in error_message:
                     await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)

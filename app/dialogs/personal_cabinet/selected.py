@@ -35,7 +35,8 @@ async def on_deposit(c: types.CallbackQuery, widget: Button, manager: DialogMana
     try:
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='on_deposit').log("USER_ACTION", "Переход к пополнению баланса")
-        await manager.switch_to(PersonalMenu.deposit)
+        await manager.done()
+        await manager.start(PersonalMenu.deposit)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_deposit: {e}")
 
