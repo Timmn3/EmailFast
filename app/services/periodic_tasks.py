@@ -185,7 +185,8 @@ async def check_payment_freekassa():
                         #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
                         #     reply_markup=builder.as_markup()
                         # )
-
+            except TelegramBadRequest:
+                pass
             except Exception as e:
                 # Логируем любые исключения, возникшие в процессе обработки платежа.
                 logger.warning(e)
@@ -245,7 +246,8 @@ async def check_payment_yoomoney():
                     #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
                     #     reply_markup=builder.as_markup()
                     # )
-
+        except TelegramBadRequest:
+            pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
@@ -306,6 +308,8 @@ async def check_payment_anypay():
                     #     reply_markup=builder.as_markup()
                     # )
 
+        except TelegramBadRequest:
+            pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
@@ -364,7 +368,8 @@ async def check_payment_streampay():
                     #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
                     #     reply_markup=builder.as_markup()
                     # )
-
+        except TelegramBadRequest:
+            pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
@@ -429,9 +434,10 @@ async def check_payment_ckassa():
                 #         text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
                 #         reply_markup=builder.as_markup()
                 #     )
-
+        except TelegramBadRequest:
+            pass
         except Exception as e:
-            # Логируем любые исключения.
+            # Логгируем любые исключения.
             logger.warning(e)
             await replenishment_error_message(payment, "CKassa")
 
@@ -490,7 +496,8 @@ async def check_payment_cryptomus():
                     #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
                     #     reply_markup=builder.as_markup()
                     # )
-
+        except TelegramBadRequest:
+            pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
@@ -1246,7 +1253,7 @@ async def referral_bonus_notification(payment, referrer, ref_sum):
         f'Пользователь: {user.mention} (id: {user.telegram_id})\n'
         f'Сумма платежа: {payment.amount}₽\n'
         f'Бонус: {ref_sum}₽\n'
-        f'Текущий реф. баланс: {referrer.ref_balance}₽'
+        f'Текущий реф. баланс: {round(referrer.ref_balance)}₽'
     )
     await send_coder(msg_text)
 
