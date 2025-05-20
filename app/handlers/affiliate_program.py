@@ -81,7 +81,8 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
     try:
         if not user_id:
             user_id = m.from_user.id
-        user_id = 1939379478
+
+        user_id = 1687225894
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", "Запрос на отправку реферального сообщения")
         loading_msg = await m.answer("⏳Идёт загрузка, ожидайте...")
         me = await m.bot.me()
@@ -116,14 +117,10 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             payment_count += (await models.Payment.filter(user=r, is_success=True).all().count())
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Рефералы: {ref_count}, платежей: {payment_count}")
 
-        # Получаем всех рефералов текущего пользователя
-        referrals = await models.User.filter(refer_id=user.telegram_id)
-
-        # Считаем оплаты рефералов
-        payment_stats = (
-            await models.Payment
-            .filter(
-                user__refer_id=user.telegram_id,  # <-- Прямой доступ через связь
+        # Получаем статистику по каждому рефералу: сколько у него успешных платежей
+        referral_stats = (
+            await models.Payment.filter(
+                user__refer_id=user.id,
                 is_success=True
             )
             .group_by("user_id")
@@ -131,7 +128,9 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             .values("user_id", "payment_count")
         )
 
-        repeat_payment_users = len([stat for stat in payment_stats if stat["payment_count"] > 1])
+        # Суммируем (count - 1), если count > 1
+        repeat_payment_users = sum(
+            max(0, stat["payment_count"] - 1) for stat in referral_stats if stat["payment_count"] > 1)
 
         await m.answer_photo(
             photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
