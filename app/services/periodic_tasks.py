@@ -1203,20 +1203,20 @@ async def balance_replenishment_notification(payment, service):
 
 async def replenishment_error_message(payment, service):
     user = payment.user
-    msg_text = (
-        f'❌ ошибка\n'
-        f'{service} \n'
-        f'пользователь {user.mention}\n'
-        f'id {user.telegram_id}\n'
-        f'сумма {payment.amount}\n'
-        f'баланс: {user.balance}'
-    )
-    await send_coder(msg_text)
-
-    logger.bind(
-        user_id=user.telegram_id,
-        action=f"top_up_balance_{service.lower()}_error"
-    ).error(f"Ошибка пополнения баланса через {service}, сумма: {payment.amount}₽, Баланс={user.balance}₽")
+    # msg_text = (
+    #     f'❌ ошибка\n'
+    #     f'{service} \n'
+    #     f'пользователь {user.mention}\n'
+    #     f'id {user.telegram_id}\n'
+    #     f'сумма {payment.amount}\n'
+    #     f'баланс: {user.balance}'
+    # )
+    # await send_coder(msg_text)
+    #
+    # logger.bind(
+    #     user_id=user.telegram_id,
+    #     action=f"top_up_balance_{service.lower()}_error"
+    # ).error(f"Ошибка пополнения баланса через {service}, сумма: {payment.amount}₽, Баланс={user.balance}₽")
 
 
 async def notice_of_arraignment(name_rent, activation, name):
@@ -1255,7 +1255,7 @@ async def referral_bonus_notification(payment, referrer, ref_sum):
         f'Бонус: {ref_sum}₽\n'
         f'Текущий реф. баланс: {round(referrer.ref_balance)}₽'
     )
-    # await send_coder(msg_text)
+    await send_coder(msg_text)
 
     # Логгируем в системные логи
     logger.bind(
