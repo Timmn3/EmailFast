@@ -8,6 +8,7 @@ from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.payments.cryptomus import create_a_payout
 from app.services.qr_code import generate_qr_code
 from loguru import logger
+from tortoise.functions import Count
 
 router = Router()
 
@@ -80,6 +81,7 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
     try:
         if not user_id:
             user_id = m.from_user.id
+        user_id = 1939379478
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", "Запрос на отправку реферального сообщения")
         loading_msg = await m.answer("⏳Идёт загрузка, ожидайте...")
         me = await m.bot.me()
@@ -113,11 +115,26 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         for r in ref:
             payment_count += (await models.Payment.filter(user=r, is_success=True).all().count())
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Рефералы: {ref_count}, платежей: {payment_count}")
+
+        # Получаем всех рефералов текущего пользователя
+        referrals = await models.User.filter(refer_id=user.telegram_id)
+
+        # Считаем оплаты рефералов
+        payment_stats = (
+            await models.Payment
+            .filter(user_id__in=[u.id for u in referrals], is_success=True)
+            .group_by("user_id")
+            .annotate(payment_count=Count("id"))
+            .values("user_id", "payment_count")
+        )
+
+        repeat_payment_users = len([stat for stat in payment_stats if stat["payment_count"] > 1])
+
         await m.answer_photo(
             photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
             caption=bt.AFFILIATE_PROGRAM_TEXT.format(link=link, ref_balance=round(user.ref_balance),
                                                      ref_count=ref_count, ref_balance_total=round(user.total_ref_earnings),
-                                                     payment_count=payment_count),
+                                                     payment_count=payment_count, repeat_payment_count=repeat_payment_users),
             reply_markup=mk
         )
         await loading_msg.delete()

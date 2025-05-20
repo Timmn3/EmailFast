@@ -196,6 +196,7 @@ AFFILIATE_PROGRAM_TEXT = """
 🏅Статистика:
 ├ Лично приглашённых: <b>{ref_count}</b>
 ├ Количество оплат: <b>{payment_count}</b>
+├ Повторные оплаты: <b>{repeat_payment_count}</b>
 ├ Всего заработано: <b>{ref_balance_total}₽</b>
 └ Доступно к выводу: <b>{ref_balance}₽</b>
 """
