@@ -122,7 +122,10 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         # Считаем оплаты рефералов
         payment_stats = (
             await models.Payment
-            .filter(user_id__in=[u.id for u in referrals], is_success=True)
+            .filter(
+                user__refer_id=user.telegram_id,  # <-- Прямой доступ через связь
+                is_success=True
+            )
             .group_by("user_id")
             .annotate(payment_count=Count("id"))
             .values("user_id", "payment_count")
