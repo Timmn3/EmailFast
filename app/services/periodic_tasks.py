@@ -1255,7 +1255,7 @@ async def referral_bonus_notification(payment, referrer, ref_sum):
         f'Бонус: {ref_sum}₽\n'
         f'Текущий реф. баланс: {round(referrer.ref_balance)}₽'
     )
-    await send_coder(msg_text)
+    # await send_coder(msg_text)
 
     # Логгируем в системные логи
     logger.bind(
