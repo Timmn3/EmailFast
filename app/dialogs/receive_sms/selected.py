@@ -358,13 +358,17 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             )
             service = activation.service_2.name
 
-        await bot.delete_message(chat_id=c.from_user.id, message_id=sent_message_id)
-
-        country = activation.country.name
-        await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
-
         user.balance -= price
         await user.save(update_fields=['balance'])
+
+        await bot.delete_message(chat_id=c.from_user.id, message_id=sent_message_id)
+        try:
+            country = activation.country.name
+        except Exception as e:
+            country = None
+            logger.opt(exception=e).error(f"country = None")
+
+        await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
 
         low_balance = await check_low_balance(user, price)
         await asyncio.sleep(1)
