@@ -1,14 +1,12 @@
 from aiogram_dialog.widgets.kbd import Group, Button
 from aiogram_dialog.widgets.text import Const
-
-from app.dialogs.receive_email.selected import on_rent_email_item
 from app.services import bot_texts as bt
 
-def rent_email_kb(data):
-    on_click = on_rent_email_item
+def rent_email_kb(on_click, is_free_week: bool):
     buttons = []
 
-    if data.get("is_free_week", False):
+    # Только если бесплатная неделя ещё не использована
+    if not is_free_week:
         buttons.append(Button(Const(bt.RENT_EMAIL_WEEK_BTN), id='rent_email_week', on_click=on_click))
 
     buttons.extend([
@@ -17,8 +15,7 @@ def rent_email_kb(data):
         Button(Const(bt.RENT_EMAIL_YEAR_BTN), id='rent_email_year', on_click=on_click),
     ])
 
-    return Group(*buttons, id='rent_email_kb', width=1)
-
+    return Group(*buttons)
 
 
 

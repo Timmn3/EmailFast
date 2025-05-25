@@ -42,19 +42,25 @@ def receive_email_window():
 
 
 def rent_email_window():
-    """
-    Создает окно для выбора периода аренды почтового ящика.
-
-    :return: Объект Window для выбора периода аренды.
-    """
-
+    buttons = rent_email_kb(on_rent_email_item, is_free_week=False)  # неделя ДОСТУПНА
     return Window(
         Format(bt.MY_EMAIL),
-        *rent_email_kb,  # теперь это callable, принимает data от getter
+        buttons,
         Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
         state=states.ReceiveEmailMenu.rent_email,
-        getter=get_email_info
+        getter=get_email_info,
     )
+
+def rent_email_no_discount_window():
+    buttons = rent_email_kb(on_rent_email_item, is_free_week=True)  # неделя ИСПОЛЬЗОВАНА
+    return Window(
+        Format(bt.MY_EMAIL),
+        buttons,
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        state=states.ReceiveEmailMenu.rent_email_no_discount,
+        getter=get_email_info,
+    )
+
 
 
 def confirm_rent_email_window():
@@ -122,7 +128,7 @@ def rent_email_no_discount_window():
     :return: Объект Window для выбора периода аренды без скидки.
     """
     return Window(Const(RENT_EMAIL_NO_DISCOUNT),
-        rent_email_kb(on_rent_email_item_discount),
+        rent_email_kb(on_rent_email_item_discount, is_free_week=True),
         state=states.ReceiveEmailMenu.rent_email_no_discount,
         getter=get_email_info
     )

@@ -106,7 +106,8 @@ async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogM
 async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для выбора периода аренды почтового ящика.
-    Проверяет баланс пользователя и переключает состояние диалога на подтверждение аренды или уведомление о недостаточном балансе.
+    Проверяет баланс пользователя и переключает состояние диалога на подтверждение аренды
+    или уведомление о недостаточном балансе.
 
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
@@ -128,8 +129,13 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
 
         mail = await models.Mail.get_mail(mail_id=ctx.dialog_data['mail_id'])
         if not mail:
+            logger.bind(user_id=user_id, action='on_rent_email_item').log(
+                "USER_ACTION",
+                "Почта не найдена по mail_id"
+            )
             return
 
+        # Проверка: если пользователь пытается повторно арендовать бесплатную неделю
         if widget_id == "rent_email_week" and mail.is_free_week:
             logger.bind(user_id=user_id, action='on_rent_email_item').log(
                 "USER_ACTION",
@@ -137,7 +143,6 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
             )
             await c.answer("Вы уже использовали бесплатную неделю", show_alert=True)
             return
-
 
         ctx.dialog_data['email'] = mail.email
 
@@ -155,8 +160,10 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
         )
 
         await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_item: {e}")
+
 
 
 async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, manager: DialogManager):

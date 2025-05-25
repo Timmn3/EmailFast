@@ -2,20 +2,18 @@ from datetime import datetime
 import pytz
 from aiogram_dialog import DialogManager
 from app.db import models
+from app.dialogs.receive_email.keyboards import rent_email_kb
+from app.dialogs.receive_email.selected import on_rent_email_item
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 
 
 async def get_email_info(dialog_manager: DialogManager, **middleware_data):
-    """
-    Получает информацию о почтовом ящике для отображения в интерфейсе.
-    :param dialog_manager: Объект DialogManager.
-    :param middleware_data: Дополнительные данные из middleware.
-    """
     try:
         user_id = dialog_manager.event.from_user.id
         user = await models.User.get_user(user_id)
         mail = await models.Mail.filter(user=user).order_by('-id').first()
+
         logger.bind(user_id=user_id, action='get_email_info').log(
             "USER_ACTION",
             "Запрос информации о почтовом ящике"
@@ -41,18 +39,16 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
 
         paid_mails_count = await models.Mail.filter(is_active=True, is_paid_mail=True).count()
 
-        is_free_week = False
-        # Определяем временную зону +3
         tz = pytz.timezone('Europe/Moscow')
-
-        # Получаем текущее время в UTC и переводим в нужную временную зону
         now = datetime.now(pytz.utc).astimezone(tz)
+
         if mail and mail.is_free_week and mail.expire_at <= now:
-            # Неделя истекла, снимаем флаг
             mail.is_free_week = False
             await mail.save(update_fields=["is_free_week"])
-        elif mail and mail.is_free_week:
-            is_free_week = True
+
+        is_free_week = not mail.is_free_week if mail else True
+
+        rent_keyboard = rent_email_kb(on_rent_email_item, is_free_week)
 
         logger.bind(user_id=user_id, action='get_email_info').log(
             "USER_ACTION",
@@ -60,14 +56,15 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
         )
 
         return {
-            'email': mail.email,
-            'paid_mails_count': paid_mails_count,
-            'is_free_week': not is_free_week  # показываем кнопку, если неделя ещё не была использована
+            "email": mail.email,
+            "is_free_week": not mail.is_free_week,
+            "rent_keyboard": rent_email_kb(on_rent_email_item, not mail.is_free_week),
         }
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в get_email_info: {e}")
         return {}
+
 
 
 async def get_balance(dialog_manager: DialogManager, **middleware_data):

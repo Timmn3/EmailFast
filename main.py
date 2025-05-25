@@ -34,7 +34,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 15.05.2025"
+msg_text = "Версия 25.05.2025"
 
 
 # === Обработчики исключений Dialog Manager ===
