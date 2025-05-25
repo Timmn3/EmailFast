@@ -121,9 +121,16 @@ async def generate_user_report_html(user):
 
         <h3>Активации SMS (всего {total_sms}):</h3>
         {make_table(['Номер', 'Сервис', 'Страна', 'Цена', 'Текст SMS', 'Дата'], [
-        [a.phone_number, (a.service.name if a.service else a.service_2.name) or '-', a.country.name, f"{a.cost:.2f} ₽", a.sms_text or '-', fmt(a.created_at)]
+        [
+            a.phone_number,
+            (lambda a: "-" if not a.service and not a.service_2 else a.service.name if a.service else a.service_2.name)(a),
+            a.country.name if a.country else "-",
+            f"{a.cost:.2f} ₽",
+            a.sms_text or '-',
+            fmt(a.created_at)
+        ]
         for a in activations
-    ])}
+        ])}
 
         <h3>Аренды номеров (всего {total_rents}):</h3>
         {make_table(['Номер', 'Страна', 'Цена', 'SMS', 'Дата', 'Автопродление'], [
