@@ -130,6 +130,15 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
         if not mail:
             return
 
+        if widget_id == "rent_email_week" and mail.is_free_week:
+            logger.bind(user_id=user_id, action='on_rent_email_item').log(
+                "USER_ACTION",
+                "Попытка повторной аренды бесплатной недели"
+            )
+            await c.answer("Вы уже использовали бесплатную неделю", show_alert=True)
+            return
+
+
         ctx.dialog_data['email'] = mail.email
 
         if user.balance < ctx.dialog_data['cost']:
@@ -270,7 +279,7 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
         if not user:
             return
 
-        if user.balance < cost:
+        if user.balance < cost and cost > 0:
             logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
                 "USER_ACTION",
                 f"Недостаточно средств для аренды: требуется {cost}, доступно {user.balance}"
@@ -294,6 +303,8 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
         await mail.save(update_fields=['is_paid_mail', 'expire_at', 'is_active', 'days', 'is_free_week'])
 
         low_balance = await check_low_balance(user, cost)
+
+        # Деньги списываем только если аренда платная
         if cost > 0:
             user.balance -= cost
             await user.save(update_fields=['balance'])
@@ -311,6 +322,7 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             await send_low_balance_alert(user)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_confirm_rent_email: {e}")
+
 
 
 async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: DialogManager):
