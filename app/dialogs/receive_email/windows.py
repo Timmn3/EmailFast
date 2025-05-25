@@ -49,11 +49,11 @@ def rent_email_window():
     """
 
     return Window(
-        Format(bt.MY_EMAIL),  # Форматированный текст с информацией о почтовом ящике
-        rent_email_kb(on_rent_email_item),  # Клавиатура для выбора периода аренды
-        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),  # Кнопка для возврата назад
-        state=states.ReceiveEmailMenu.rent_email,  # Состояние окна
-        getter=get_email_info  # Функция для получения информации о почтовом ящике
+        Format(bt.MY_EMAIL),
+        *rent_email_kb,  # теперь это callable, принимает data от getter
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        state=states.ReceiveEmailMenu.rent_email,
+        getter=get_email_info
     )
 
 

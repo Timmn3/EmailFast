@@ -859,6 +859,46 @@ async def check_mail_expiration_and_notify():
                              f"Пользователь: {user.telegram_id}\nОшибка: {e}")
 
 
+async def notify_week_expiration():
+    tz = pytz.timezone('Europe/Moscow')
+    now = datetime.datetime.now(pytz.utc).astimezone(tz)
+    notify_start = now + datetime.timedelta(hours=23, minutes=50)
+    notify_end = now + datetime.timedelta(hours=24, minutes=10)
+
+    mails = await models.Mail.filter(
+        is_active=True,
+        is_free_week=True,
+        notification_sent=False,
+        expire_at__gte=notify_start,
+        expire_at__lte=notify_end
+    ).prefetch_related("user")
+
+    for mail in mails:
+        try:
+            await bot.send_message(
+                chat_id=mail.user.telegram_id,
+                text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!"
+            )
+            mail.notification_sent = True
+            await mail.save()
+        except Exception as e:
+            logger.opt(exception=e).error("Ошибка уведомления о завершении недели")
+            continue
+
+    # отключение флага is_free_week, если неделя уже истекла
+    expired = await models.Mail.filter(
+        is_active=False,
+        is_free_week=True,
+        expire_at__lt=now
+    )
+
+    for mail in expired:
+        mail.is_free_week = False
+        await mail.save()
+
+
+
+
 async def send_coder(msg_text):
     if CODER:
         await bot.send_message(chat_id=CODER, text=msg_text)

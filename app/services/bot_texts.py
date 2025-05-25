@@ -339,33 +339,30 @@ ERROR_OCCURED_MSG = "Произошла ошибка при отмене аре�
 RENTAL_CANCELED_OR_NOT_FOUND = "Невозможно продлить аренду: аренда отменена или не найдена."
 FAILED_TO_GET_AVAILABLE_DAYS = "Не удалось получить доступные дни для продления аренды."
 NOT_ENOUGH_FUNDS_FOR_RENT = "Недостаточно средств для автопродления аренды\nПополните баланс по кнопке⤵"
-
+RENT_WEEK_EXPIRING = """⏳ Срок бесплатной аренды недели заканчивается.
+Хотите продлить аренду? Выберите подходящий тариф ниже."""
 
 # Аренда электронной почты
-RENT_EMAIL_WEEK_BTN = 'Неделя, 99₽'
+RENT_EMAIL_WEEK_BTN = 'Неделя, 0₽'
 RENT_EMAIL_MONTH_BTN = 'Месяц, 199₽'
-RENT_EMAIL_TWO_MONTHS_BTN = '2 месяца, 369₽'
 RENT_EMAIL_SIX_MONTHS_BTN = '6 месяцев, 599₽'
 RENT_EMAIL_YEAR_BTN = 'Год, 999₽'
 
 # Константы для данных аренды
-RENT_EMAIL_WEEK = (99, 7, '1 неделя')
+RENT_EMAIL_WEEK = (0, 7, '1 неделя')
 RENT_EMAIL_MONTH = (199, 30, '1 месяц')
-RENT_EMAIL_TWO_MONTHS = (369, 61, '2 месяца')
 RENT_EMAIL_SIX_MONTHS = (599, 183, '6 месяцев')
 RENT_EMAIL_YEAR = (999, 365, '1 год')
 
 # Аренда электронной почты со скидкой
-RENT_EMAIL_WEEK_BTN_DISCOUNT = 'Неделя 99₽ > 89₽ (-10%)'
+RENT_EMAIL_WEEK_BTN_DISCOUNT = 'Неделя 0₽'
 RENT_EMAIL_MONTH_BTN_DISCOUNT = 'Месяц 199₽ > 169₽ (-15%)'
-RENT_EMAIL_TWO_MONTHS_BTN_DISCOUNT = '2 месяца 369₽ > 289₽ (-19%)'
 RENT_EMAIL_SIX_MONTHS_BTN_DISCOUNT = '6 месяцев 599₽ > 459₽ (-23%)'
 RENT_EMAIL_YEAR_BTN_DISCOUNT = 'Год 999₽ > 749₽ (-25%)'
 
 # Константы для данных аренды с учетом скидок
-RENT_EMAIL_WEEK_DISCOUNT = (89, 7, '1 неделя с учетом скидки')
+RENT_EMAIL_WEEK_DISCOUNT = (0, 7, '1 неделя с учетом скидки')
 RENT_EMAIL_MONTH_DISCOUNT = (169, 30, '1 месяц с учетом скидки')
-RENT_EMAIL_TWO_MONTHS_DISCOUNT = (289, 61, '2 месяца с учетом скидки')
 RENT_EMAIL_SIX_MONTHS_DISCOUNT = (459, 183, '6 месяцев с учетом скидки')
 RENT_EMAIL_YEAR_DISCOUNT = (749, 365, '1 год с учетом скидки')
 
@@ -373,7 +370,6 @@ RENT_EMAIL_YEAR_DISCOUNT = (749, 365, '1 год с учетом скидки')
 RENT_DATA = {
     'rent_email_week': RENT_EMAIL_WEEK,
     'rent_email_month': RENT_EMAIL_MONTH,
-    'rent_email_two_months': RENT_EMAIL_TWO_MONTHS,
     'rent_email_six_months': RENT_EMAIL_SIX_MONTHS,
     'rent_email_year': RENT_EMAIL_YEAR,
 }
@@ -381,7 +377,6 @@ RENT_DATA = {
 RENT_DATA_DISCOUNT = {
     'rent_email_week_discount': RENT_EMAIL_WEEK_DISCOUNT,
     'rent_email_month_discount': RENT_EMAIL_MONTH_DISCOUNT,
-    'rent_email_two_months_discount': RENT_EMAIL_TWO_MONTHS_DISCOUNT,
     'rent_email_six_months_discount': RENT_EMAIL_SIX_MONTHS_DISCOUNT,
     'rent_email_year_discount': RENT_EMAIL_YEAR_DISCOUNT,
 }

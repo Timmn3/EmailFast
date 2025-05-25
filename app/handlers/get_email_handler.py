@@ -10,7 +10,7 @@ from aiogram_dialog import DialogManager, StartMode
 from app.db import models
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.services import bot_texts as bt
-from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_TWO_MONTHS, RENT_EMAIL_SIX_MONTHS, \
+from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_SIX_MONTHS, \
     RENT_EMAIL_YEAR
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
@@ -149,7 +149,6 @@ async def extend_email(call: types.CallbackQuery):
         builder = InlineKeyboardBuilder()
         builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_email_week:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_MONTH_BTN, callback_data=f'extend_email_month:{mail_id}')
-        builder.button(text=bt.RENT_EMAIL_TWO_MONTHS_BTN, callback_data=f'extend_email_two_months:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_SIX_MONTHS_BTN, callback_data=f'extend_email_six_months:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_YEAR_BTN, callback_data=f'extend_email_year:{mail_id}')
         builder.button(text=bt.BACK_BTN, callback_data=f'mail:{mail_id}')
@@ -167,7 +166,6 @@ async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):
         rent_data = {
             'rent_email_week': RENT_EMAIL_WEEK,
             'rent_email_month': RENT_EMAIL_MONTH,
-            'rent_email_two_months': RENT_EMAIL_TWO_MONTHS,
             'rent_email_six_months': RENT_EMAIL_SIX_MONTHS,
             'rent_email_year': RENT_EMAIL_YEAR,
         }
@@ -233,7 +231,6 @@ async def confirm_extend_email(call: types.CallbackQuery):
         rent_data = {
             'rent_email_week': RENT_EMAIL_WEEK,
             'rent_email_month': RENT_EMAIL_MONTH,
-            'rent_email_two_months': RENT_EMAIL_TWO_MONTHS,
             'rent_email_six_months': RENT_EMAIL_SIX_MONTHS,
             'rent_email_year': RENT_EMAIL_YEAR,
         }

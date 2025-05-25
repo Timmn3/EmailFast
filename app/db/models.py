@@ -695,6 +695,8 @@ class Mail(Model):
     expire_at: datetime = fields.DatetimeField()
     notification_sent: bool = fields.BooleanField(default=False)
     token: str = fields.CharField(max_length=512, null=True)
+    is_free_week = fields.BooleanField(default=False)
+    days = fields.IntField(default=0)  # Длительность аренды в днях
 
     @classmethod
     async def add_mail(cls, user: User, email: str, token: str = None):

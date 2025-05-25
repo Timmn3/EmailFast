@@ -264,6 +264,7 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
 
         mail_id = ctx.dialog_data.get('mail_id')
         cost = ctx.dialog_data.get('cost')
+        rent_days = ctx.dialog_data.get('rent_days')  # Получаем длительность аренды
 
         user = await models.User.get_user(user_id)
         if not user:
@@ -281,14 +282,21 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
         if not mail:
             return
 
+        # Устанавливаем флаг бесплатной недели и days только если арендована неделя
+        is_free_week = rent_days == 7
+
         mail.is_paid_mail = True
-        mail.expire_at = timezone.now() + timedelta(days=ctx.dialog_data['rent_days'])
+        mail.expire_at = timezone.now() + timedelta(days=rent_days)
         mail.is_active = True
-        await mail.save(update_fields=['is_paid_mail', 'expire_at'])
+        mail.days = rent_days  # Устанавливаем длительность аренды
+        mail.is_free_week = is_free_week  # Устанавливаем флаг бесплатной недели
+
+        await mail.save(update_fields=['is_paid_mail', 'expire_at', 'is_active', 'days', 'is_free_week'])
 
         low_balance = await check_low_balance(user, cost)
-        user.balance -= cost
-        await user.save(update_fields=['balance'])
+        if cost > 0:
+            user.balance -= cost
+            await user.save(update_fields=['balance'])
 
         logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
             "USER_ACTION",

@@ -21,7 +21,7 @@ from app.services.periodic_tasks import (
     check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify,
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
-    checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus
+    checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
@@ -145,6 +145,8 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(userbot_ping, "interval", seconds=300, max_instances=3)
             # Проверка истечения срока почты и уведомления
             scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
+            # Проверка истечения срока почты арендованной на неделю
+            scheduler.add_job(notify_week_expiration, "interval", hours=24)
             # Проверка арендованных SMS
             scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
             # Уведомление об аренде, которая скоро завершится
