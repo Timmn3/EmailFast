@@ -193,8 +193,6 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
         if cancellation_successful:
             activation.activation_expire_at = None
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
             user = await models.User.get_user(telegram_id=call.from_user.id)
             if activation.sms_text is None and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
                     user.balance += activation.cost
@@ -203,6 +201,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                     msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
             else:
                 msg_text = bt.SERVICE_CANCEL.strip()
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save()
             try:
                 if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
                     await call.message.edit_text(text=msg_text)
