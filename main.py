@@ -146,7 +146,7 @@ def set_scheduled_jobs(scheduler):
             # Проверка истечения срока почты и уведомления
             scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
             # Проверка истечения срока почты арендованной на неделю
-            scheduler.add_job(notify_week_expiration, "interval", hours=24)
+            scheduler.add_job(notify_week_expiration, "interval", minutes=10)
             # Проверка арендованных SMS
             scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
             # Уведомление об аренде, которая скоро завершится

@@ -878,7 +878,8 @@ async def notify_week_expiration():
         try:
             await bot.send_message(
                 chat_id=mail.user.telegram_id,
-                text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!",
+                text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!\n"
+                     "Для продления аренды выберите тариф:",
                 reply_markup=get_extend_email_kb(mail.id, False)
             )
             mail.notification_sent = True
