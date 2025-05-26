@@ -150,7 +150,7 @@ async def extend_email(call: types.CallbackQuery):
 
         mail = await models.Mail.filter(user=user).order_by('-id').first()
 
-        keyboard = get_extend_email_kb(mail_id, mail.is_free_week)
+        keyboard = get_extend_email_kb(mail_id, False)
         await call.message.edit_reply_markup(reply_markup=keyboard)
 
     except Exception as e:
@@ -175,47 +175,83 @@ def get_extend_email_kb(mail_id: int, is_free_week: bool):
 async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):
     try:
         user_id = call.from_user.id
-        data = call.data.split(':')[0]
+        callback_data = call.data.split(':')  # ['extend_email_month', '6901']
+        data_key = callback_data[0]  # например, 'extend_email_month'
+
         rent_data = {
-            'rent_email_week': RENT_EMAIL_WEEK,
-            'rent_email_month': RENT_EMAIL_MONTH,
-            'rent_email_six_months': RENT_EMAIL_SIX_MONTHS,
-            'rent_email_year': RENT_EMAIL_YEAR,
+            'extend_email_week': RENT_EMAIL_WEEK,
+            'extend_email_month': RENT_EMAIL_MONTH,
+            'extend_email_six_months': RENT_EMAIL_SIX_MONTHS,
+            'extend_email_year': RENT_EMAIL_YEAR,
         }
-        logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Пользователь выбрал срок: {data}")
 
-        # logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        if data_key not in rent_data:
+            logger.bind(user_id=user_id, action="extend_email_confirm").log(
+                "USER_ACTION", f"Ошибка: неизвестный ключ срока аренды: {data_key}"
+            )
+            await call.answer("Неверный формат запроса.", show_alert=True)
+            return
+
+        logger.bind(user_id=user_id, action="extend_email_confirm").log(
+            "USER_ACTION", f"Пользователь выбрал срок: {data_key}"
+        )
+
         user = await models.User.get_user(user_id)
-        # logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Результат из БД: баланс={user.balance}")
 
-        if user.balance < rent_data[data][0]:
-            logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", "Ошибка: недостаточно средств")
+        price, _, rent_text = rent_data[data_key]
+        if user.balance < price:
+            logger.bind(user_id=user_id, action="extend_email_confirm").log(
+                "USER_ACTION", "Ошибка: недостаточно средств"
+            )
             await call.answer(text='Недостаточно средств', show_alert=True)
             return
 
-        mail_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}")
+        mail_id = int(callback_data[1])
+        logger.bind(user_id=user_id, action="extend_email_confirm").log(
+            "USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}"
+        )
         mail = await models.Mail.get_or_none(id=mail_id)
-        logger.bind(user_id=user_id, action="extend_email_confirm").log("USER_ACTION", f"Результат из БД: почта={mail.email}")
+
+        if not mail:
+            logger.bind(user_id=user_id, action="extend_email_confirm").log(
+                "USER_ACTION", f"Ошибка: почта с ID={mail_id} не найдена"
+            )
+            await call.answer("Почта не найдена.", show_alert=True)
+            return
+
+        logger.bind(user_id=user_id, action="extend_email_confirm").log(
+            "USER_ACTION", f"Результат из БД: почта={mail.email}"
+        )
 
         msg_text = bt.CONFIRM_EXTEND_EMAIL.format(
             email=mail.email,
-            rent_text=rent_data[data][2],
-            cost=rent_data[data][0]
+            rent_text=rent_text,
+            cost=price
         )
+
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    types.InlineKeyboardButton(text=bt.CONFIRM_BTN, callback_data=f'confirm_{data}:{mail_id}')
+                    types.InlineKeyboardButton(
+                        text=bt.CONFIRM_BTN,
+                        callback_data=f'confirm_{data_key}:{mail_id}'
+                    )
                 ],
                 [
-                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data=f'mail:{mail_id}')
+                    types.InlineKeyboardButton(
+                        text=bt.BACK_BTN,
+                        callback_data=f'mail:{mail_id}'
+                    )
                 ]
             ]
         )
+
         await call.message.edit_text(text=msg_text, reply_markup=mk)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /extend_email_confirm: {e}")
+        await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+
 
 
 @router.callback_query(F.data.startswith('confirm_extend_email_'))
@@ -223,24 +259,35 @@ async def confirm_extend_email(call: types.CallbackQuery):
     try:
         user_id = call.from_user.id
         mail_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Подтверждение продления почты ID={mail_id}")
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Подтверждение продления почты ID={mail_id}"
+        )
 
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}")
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}"
+        )
         mail = await models.Mail.get_or_none(id=mail_id)
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Результат из БД: почта={mail.email}")
 
         if not mail:
-            await call.answer()
+            await call.answer("Почта не найдена.", show_alert=True)
             return
 
-        # logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Результат из БД: почта={mail.email}"
+        )
+
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Результат из БД: баланс={user.balance}")
-
         if not user:
+            await call.answer("Пользователь не найден.", show_alert=True)
             return
 
-        data = call.data.split(':')[0]
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Результат из БД: баланс={user.balance}"
+        )
+
+        raw_key = call.data.split(':')[0]  # confirm_extend_email_month
+        data_key = raw_key.replace('confirm_extend_', 'rent_')
+
         rent_data = {
             'rent_email_week': RENT_EMAIL_WEEK,
             'rent_email_month': RENT_EMAIL_MONTH,
@@ -248,30 +295,49 @@ async def confirm_extend_email(call: types.CallbackQuery):
             'rent_email_year': RENT_EMAIL_YEAR,
         }
 
-        if user.balance < rent_data[data][0]:
-            logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", "Ошибка: недостаточно средств")
+        if data_key not in rent_data:
+            logger.bind(user_id=user_id, action="confirm_extend_email").log(
+                "USER_ACTION", f"Ошибка: неизвестный ключ срока аренды: {data_key}"
+            )
+            await call.answer("Неверный срок аренды.", show_alert=True)
+            return
+
+        price, days, rent_text = rent_data[data_key]
+
+        if user.balance < price:
+            logger.bind(user_id=user_id, action="confirm_extend_email").log(
+                "USER_ACTION", "Ошибка: недостаточно средств"
+            )
             await call.answer(text='Недостаточно средств', show_alert=True)
             return
 
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Обновление срока аренды: +{rent_data[data][1]} дней")
-        mail.expire_at += timedelta(days=rent_data[data][1])
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Обновление срока аренды: +{days} дней"
+        )
+        mail.expire_at += timedelta(days=days)
         await mail.save(update_fields=['expire_at'])
 
-        low_balance = await check_low_balance(user, rent_data[data][0])
-        user.balance -= rent_data[data][0]
+        low_balance = await check_low_balance(user, price)
+        user.balance -= price
         await user.save(update_fields=['balance'])
-        logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", f"Баланс обновлён: новый баланс={user.balance}")
+        logger.bind(user_id=user_id, action="confirm_extend_email").log(
+            "USER_ACTION", f"Баланс обновлён: новый баланс={user.balance}"
+        )
 
         msg_text = bt.EXTEND_EMAIL_SUCCESS.format(
             email=mail.email,
-            rent_text=rent_data[data][2]
+            rent_text=rent_text
         )
         await call.message.edit_text(text=msg_text)
         await call.answer()
         await asyncio.sleep(2)
 
         if low_balance:
-            logger.bind(user_id=user_id, action="confirm_extend_email").log("USER_ACTION", "Отправка уведомления о низком балансе")
+            logger.bind(user_id=user_id, action="confirm_extend_email").log(
+                "USER_ACTION", "Отправка уведомления о низком балансе"
+            )
             await send_low_balance_alert(user)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /confirm_extend_email: {e}")
+        await call.answer("Произошла ошибка.", show_alert=True)
