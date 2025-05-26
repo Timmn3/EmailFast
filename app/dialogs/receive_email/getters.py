@@ -59,6 +59,7 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
             "email": mail.email,
             "is_free_week": not mail.is_free_week,
             "rent_keyboard": rent_email_kb(on_rent_email_item, not mail.is_free_week),
+            "paid_mails_count": paid_mails_count
         }
 
     except Exception as e:

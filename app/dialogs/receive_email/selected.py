@@ -88,7 +88,8 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Арендовать почтовый ящик".
-    Переключает состояние диалога на меню аренды почтового ящика.
+    Переключает состояние диалога на меню аренды почтового ящика,
+    выбирая нужное окно в зависимости от доступности бесплатной недели.
 
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
@@ -98,9 +99,31 @@ async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogM
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='on_rent_email').log("USER_ACTION", "Переход к аренде почты")
 
-        await manager.switch_to(ReceiveEmailMenu.rent_email)
+        user = await models.User.get_user(user_id)
+        mail = await models.Mail.filter(user=user).order_by('-id').first()
+
+        if not mail:
+            logger.bind(user_id=user_id, action='on_rent_email').log(
+                "USER_ACTION", "Не найдена почта, связанная с пользователем"
+            )
+            await c.answer("Не удалось найти почтовый ящик", show_alert=True)
+            return
+
+        # Проверка флага бесплатной недели
+        if mail.is_free_week:
+            await manager.switch_to(ReceiveEmailMenu.rent_email_no_free_week)
+            logger.bind(user_id=user_id, action='on_rent_email').log(
+                "USER_ACTION", "Открыто окно аренды без бесплатной недели"
+            )
+        else:
+            await manager.switch_to(ReceiveEmailMenu.rent_email)
+            logger.bind(user_id=user_id, action='on_rent_email').log(
+                "USER_ACTION", "Открыто окно аренды с бесплатной неделей"
+            )
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email: {e}")
+
 
 
 async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: DialogManager):

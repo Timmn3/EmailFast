@@ -91,7 +91,7 @@ async def my_rent_emails(call: types.CallbackQuery):
             return
 
         logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Запрос к БД: получение арендованных почт для {user_id}")
-        mails = await models.Mail.filter(user=user, is_paid_mail=True).all()
+        mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
         logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Результат из БД: найдено почт={len(mails)}")
 
         if len(mails) == 0:
@@ -144,10 +144,12 @@ async def extend_email(call: types.CallbackQuery):
     try:
         user_id = call.from_user.id
         mail_id = int(call.data.split(':')[1])
+        user = await models.User.get_user(user_id)
         logger.bind(user_id=user_id, action="extend_email").log("USER_ACTION", f"Пользователь начал продление почты ID={mail_id}")
-
+        mail = await models.Mail.filter(user=user).order_by('-id').first()
         builder = InlineKeyboardBuilder()
-        builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_email_week:{mail_id}')
+        if mail.is_free_week:
+            builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_email_week:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_MONTH_BTN, callback_data=f'extend_email_month:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_SIX_MONTHS_BTN, callback_data=f'extend_email_six_months:{mail_id}')
         builder.button(text=bt.RENT_EMAIL_YEAR_BTN, callback_data=f'extend_email_year:{mail_id}')

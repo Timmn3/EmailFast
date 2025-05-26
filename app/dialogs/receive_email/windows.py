@@ -57,7 +57,7 @@ def rent_email_no_discount_window():
         Format(bt.MY_EMAIL),
         buttons,
         Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
-        state=states.ReceiveEmailMenu.rent_email_no_discount,
+        state=states.ReceiveEmailMenu.rent_email_no_free_week,
         getter=get_email_info,
     )
 

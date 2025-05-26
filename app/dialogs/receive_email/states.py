@@ -8,4 +8,5 @@ class ReceiveEmailMenu(StatesGroup):
     rent_email_success = State()
     not_enough_balance = State()
     rent_email_discount = State()  # Состояние для аренды с учетом скидки
+    rent_email_no_free_week = State()
     rent_email_no_discount = State()  # Состояние для аренды без скидки
