@@ -145,20 +145,31 @@ async def extend_email(call: types.CallbackQuery):
         user_id = call.from_user.id
         mail_id = int(call.data.split(':')[1])
         user = await models.User.get_user(user_id)
+
         logger.bind(user_id=user_id, action="extend_email").log("USER_ACTION", f"Пользователь начал продление почты ID={mail_id}")
+
         mail = await models.Mail.filter(user=user).order_by('-id').first()
-        builder = InlineKeyboardBuilder()
-        if mail.is_free_week:
-            builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_email_week:{mail_id}')
-        builder.button(text=bt.RENT_EMAIL_MONTH_BTN, callback_data=f'extend_email_month:{mail_id}')
-        builder.button(text=bt.RENT_EMAIL_SIX_MONTHS_BTN, callback_data=f'extend_email_six_months:{mail_id}')
-        builder.button(text=bt.RENT_EMAIL_YEAR_BTN, callback_data=f'extend_email_year:{mail_id}')
-        builder.button(text=bt.BACK_BTN, callback_data=f'mail:{mail_id}')
-        builder.adjust(1)
-        await call.message.edit_reply_markup(reply_markup=builder.as_markup())
+
+        keyboard = get_extend_email_kb(mail_id, mail.is_free_week)
+        await call.message.edit_reply_markup(reply_markup=keyboard)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /extend_email: {e}")
 
+
+
+def get_extend_email_kb(mail_id: int, is_free_week: bool):
+    builder = InlineKeyboardBuilder()
+
+    if is_free_week:
+        builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_email_week:{mail_id}')
+    builder.button(text=bt.RENT_EMAIL_MONTH_BTN, callback_data=f'extend_email_month:{mail_id}')
+    builder.button(text=bt.RENT_EMAIL_SIX_MONTHS_BTN, callback_data=f'extend_email_six_months:{mail_id}')
+    builder.button(text=bt.RENT_EMAIL_YEAR_BTN, callback_data=f'extend_email_year:{mail_id}')
+    builder.button(text=bt.BACK_BTN, callback_data=f'mail:{mail_id}')
+
+    builder.adjust(1)
+    return builder.as_markup()
 
 @router.callback_query(F.data.startswith('extend_email_'))
 async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):

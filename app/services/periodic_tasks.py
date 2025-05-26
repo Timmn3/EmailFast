@@ -11,6 +11,7 @@ from app.db import models
 from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.rent_sms.getters import get_day_string
+from app.handlers.get_email_handler import get_extend_email_kb
 from app.services.bot_texts import country_flags
 from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
@@ -877,7 +878,8 @@ async def notify_week_expiration():
         try:
             await bot.send_message(
                 chat_id=mail.user.telegram_id,
-                text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!"
+                text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!",
+                reply_markup=get_extend_email_kb(mail.id, False)
             )
             mail.notification_sent = True
             await mail.save()

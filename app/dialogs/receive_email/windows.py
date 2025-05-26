@@ -51,7 +51,7 @@ def rent_email_window():
         getter=get_email_info,
     )
 
-def rent_email_no_discount_window():
+def rent_email_no_free_week():
     buttons = rent_email_kb(on_rent_email_item, is_free_week=True)  # неделя ИСПОЛЬЗОВАНА
     return Window(
         Format(bt.MY_EMAIL),
@@ -60,7 +60,6 @@ def rent_email_no_discount_window():
         state=states.ReceiveEmailMenu.rent_email_no_free_week,
         getter=get_email_info,
     )
-
 
 
 def confirm_rent_email_window():
