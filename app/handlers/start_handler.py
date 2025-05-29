@@ -4,6 +4,7 @@ from aiogram import types, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram_dialog import DialogManager, StartMode
 from app.db import models
+from app.dependencies import bot
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info
@@ -50,6 +51,8 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
                 refer_id = int(refer_id)
                 refer = await models.User.get_or_none(telegram_id=refer_id)
                 user = await models.User.add_user(message.from_user, refer)
+                await bot.send_message(chat_id=refer.telegram_id,
+                                       text=f"📈 У Вас новый реферал\n└ Аккаунт: {user.telegram_id}")
             else:
                 logger.bind(user_id=user_id, action='start').log(
                     "USER_ACTION",

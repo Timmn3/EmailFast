@@ -8,13 +8,13 @@ url = "https://emailfast.info/ckassa/"
 data = {
     "regPayNum": "185663662",
     "property": {
-        "ЛОГИН": "5635586329_20250520214717"
+        "ЛОГИН": "5635586329_20250529123932"
     },
     "rrn": "006390142417",
     "irn": None,
     "approvalCode": None,
     "cardPan": None,
-    "amount": 5000,
+    "amount": 300,
     "state": "PAYED",
     "result": {
         "code": 0,

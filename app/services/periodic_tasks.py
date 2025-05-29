@@ -1237,11 +1237,25 @@ async def balance_replenishment_notification(payment, service):
     )
     await send_coder(msg_text)
 
+    # Уведомление рефереру
+    if user.refer_id:
+        referrer = await models.User.get_or_none(id=user.refer_id)
+        if referrer:
+            bonus = round(payment.amount * 0.1)
+            await bot.send_message(
+                chat_id=referrer.telegram_id,
+                text=(
+                    "✅Партнерское вознаграждение\n"
+                    f"├ Аккаунт: {user.telegram_id}\n"
+                    f"├ Сумма зачисления: {payment.amount} ₽\n"
+                    f"└ Ваш доход: {bonus}₽ (10%)"
+                )
+            )
+
     logger.bind(
         user_id=user.telegram_id,
         action=f"top_up_balance_{service.lower()}"
     ).log("USER_ACTION", f"Пополнение баланса на {payment.amount}₽ через {service}, Баланс={user.balance}₽")
-
 
 
 async def replenishment_error_message(payment, service):
