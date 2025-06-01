@@ -321,6 +321,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             max_price = math.ceil(retail_price)
             phone_number_data = await sms.get_phone_number(country_id=country_id, service_code=service_code,
                                                            max_price=max_price)
+            logger.bind(user_id=user_id, action='send_service_on_country').log(
+                "USER_ACTION",
+                f"SMSActivate"
+            )
             if 'activationId' not in phone_number_data:
                 max_price = math.ceil(retail_price * 1.05)
                 phone_number_data = await sms.get_phone_number(country_id=country_id, service_code=service_code,
@@ -391,7 +395,7 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     buttons = []
 
     # Добавляем первую кнопку только если длина activation_id > 9
-    if len(str(activation.activation_id)) > 9:
+    if len(str(activation.activation_id)) > 8:
         buttons.append([types.InlineKeyboardButton(
             text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
             callback_data=f"request_code:{activation.id}"

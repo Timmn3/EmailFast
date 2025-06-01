@@ -12,11 +12,14 @@ from app.services import bot_texts as bt
 from app.services.bot_texts import SERVICES_TRANSLATION
 from app.services.mail.receive_messages import fetch_full_message
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
+from app.services.periodic_tasks import notice_of_arraignment
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 import html
 from bs4 import BeautifulSoup
 import re
+import asyncio
+
 
 router = Router()
 
@@ -93,33 +96,67 @@ async def request_code(call: types.CallbackQuery, **kwargs):
         if not activation:
             await call.answer()
             return
-
         try:
-            service = activation.service_2.code
-            if service is None:
-                service = activation.service.code
+            service = activation.service.code
+            service_name = "SMSActivate"
         except AttributeError:
+            # service = activation.service_2.code
+            service_name = "Onlinesim"
+        except Exception:
             logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: сервис не найден")
             return
 
-        if service in SERVICES_TRANSLATION:
+        if service_name == "Onlinesim":
             logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется сервис Onlinesim")
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             try:
-                revise_response = await client.revise_order(operation_id=activation_id)
+                # Попробуем перезапросить SMS
+                revise_response = await client.revise_order(operation_id=activation.activation_id)
                 if revise_response.get("response") == '1':
                     logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ожидание повторной отправки SMS")
-                    await call.answer(text='ожидание повторной отправки смс', show_alert=True)
+                    # Теперь ждём SMS
+                    try:
+                        order_info = await client.get_order_info(operation_id=activation.activation_id,
+                            get_full_message=True,
+                            form=1,
+                            clean=1
+                        )
+                    except Exception as e:
+                        await call.answer(text='Нового смс нет, попробуйте позже', show_alert=True)
+                        logger.opt(exception=e).error(f"Ошибка в request_code: {e}")
+                        return
+                    sms_text = order_info[0]['msg']
+                    if not sms_text:
+                        await call.answer(text='Ожидаем смс...', show_alert=True)
+                        return
+                    else:
+                        msg_text = (
+                            f"💬<b>Повторное SMS</b> на номер: +{activation.phone_number}\n\n"
+                            f"Ваш код активации:\n"
+                            f"<code>{sms_text}</code>"
+                        )
+                        # Отправляем сообщение пользователю в Telegram
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=msg_text
+                        )
+                        await notice_of_arraignment("Получение смс", activation, sms_text)
+                        logger.bind(
+                            user_id=activation.user.telegram_id,
+                            action="new_sms"
+                        ).log("USER_ACTION",
+                              f"Получено новое SMS для номера {activation.phone_number}, код: {sms_text}")
+
                     return
                 else:
                     logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: повторная отправка недоступна")
-                    await call.answer(text='Попробуйте позже')
+                    await call.answer(text='Повторная отправка недоступна')
                     return
             except Exception as e:
                 logger.opt(exception=e).warning(f'Повторный запрос смс onlinesim {e}')
                 return
         else:
-            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется другой сервис")
+            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется сервис SMSActivate")
             sms = SmsReceive()
             status = str(await sms.get_activation_status(activation.activation_id))
             logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Текущий статус активации: {status}")

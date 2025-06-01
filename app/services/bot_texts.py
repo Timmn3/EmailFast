@@ -447,7 +447,8 @@ SERVICE_ONLINESIM = ['LinkedIn', 'Uber', 'Twitter|X', 'GroupMe', 'WeChat', 'Coin
                      'eBay|Kleinanzeigen.', 'Seosprint', 'taxiMaxim', 'Steam', 'Gett', 'Gemini.com', 'Юла', 'OLX',
                      'ftx.com', 'Happn']
 
-SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM = ["ot", "ts"]
+# SMSActivate
+SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM = ["ot", "ts"] # "ot" - Любой другой  "ts" - PayPal
 
 
 # возвращает первый ключ, соответствующий значению
