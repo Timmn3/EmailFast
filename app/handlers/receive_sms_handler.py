@@ -96,6 +96,8 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
         try:
             service = activation.service_2.code
+            if service is None:
+                service = activation.service.code
         except AttributeError:
             logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: сервис не найден")
             return

@@ -876,14 +876,14 @@ async def notify_week_expiration():
 
     for mail in mails:
         try:
+            mail.notification_sent = True
+            await mail.save()
             await bot.send_message(
                 chat_id=mail.user.telegram_id,
                 text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!\n"
                      "Для продления аренды выберите тариф:",
                 reply_markup=get_extend_email_kb(mail.id, False)
             )
-            mail.notification_sent = True
-            await mail.save()
         except Exception as e:
             logger.opt(exception=e).error("Ошибка уведомления о завершении недели")
             continue
