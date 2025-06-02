@@ -5,11 +5,13 @@ from tortoise import timezone
 
 from app import dependencies
 from app.db import models
-from app.dependencies import bot
+from app.dependencies import bot, CHECK_CHANNEL
 from app.services import bot_texts as bt
 
 
 async def check_subscribe(user: models.User):
+    if not CHECK_CHANNEL:
+        return True
     if user.in_channel:
         return True
 

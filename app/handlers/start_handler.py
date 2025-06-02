@@ -12,6 +12,9 @@ from app.services import bot_texts as bt
 from app.services.keyboards import start_kb
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from loguru import logger
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from app.services.periodic_tasks import balance_replenishment_notification
 
 router = Router()
 
@@ -51,8 +54,18 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
                 refer_id = int(refer_id)
                 refer = await models.User.get_or_none(telegram_id=refer_id)
                 user = await models.User.add_user(message.from_user, refer)
-                await bot.send_message(chat_id=refer.telegram_id,
-                                       text=f"📈 У Вас новый реферал\n└ Аккаунт: {user.telegram_id}")
+
+                if refer and not refer.disable_ref_notifications:
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🔕 Отключить уведомление",
+                                              callback_data=f"disable_notify:{refer.telegram_id}")]
+                    ])
+                    await bot.send_message(
+                        chat_id=refer.telegram_id,
+                        text=f"📈 У Вас новый реферал\n└ Аккаунт: {user.telegram_id}",
+                        reply_markup=keyboard
+                    )
+
             else:
                 logger.bind(user_id=user_id, action='start').log(
                     "USER_ACTION",
@@ -83,6 +96,35 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
         await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
+
+
+@router.callback_query(F.data.startswith("disable_notify:"))
+async def disable_notify_callback(callback: types.CallbackQuery):
+    try:
+        _, user_id = callback.data.split(":")
+        user = await models.User.get_or_none(telegram_id=int(user_id))
+        if user:
+            user.disable_ref_notifications = True
+            await user.save()
+            await callback.message.edit_reply_markup()
+            await callback.answer("Уведомления о рефералах отключены.", show_alert=True)
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка при отключении уведомлений")
+
+
+@router.callback_query(F.data.startswith("enable_ref_notify:"))
+async def enable_ref_notify(callback: types.CallbackQuery):
+    print("Уведомления о рефералах включены.")
+    try:
+        _, user_id = callback.data.split(":")
+        user = await models.User.get_or_none(telegram_id=int(user_id))
+        if user:
+            user.disable_ref_notifications = False
+            await user.save()
+            await callback.answer("Уведомления о рефералах включены.", show_alert=True)
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка при включении уведомлений")
+
 
 
 @router.callback_query(F.data == 'check_subscribe')
@@ -282,3 +324,23 @@ async def process_rent_callback(message: types.Message, dialog_manager: DialogMa
         await on_rent_email_check_discount(message, dialog_manager)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере process_rent_callback: {e}")
+
+
+@router.message(Command("test_notify"))
+async def test_balance_notify(m: types.Message):
+    user = await models.User.get_or_none(telegram_id=m.from_user.id)
+    if not user:
+        await m.answer("Пользователь не найден в базе.")
+        return
+
+    # Пример: создаём тестовый платеж (не сохраняем в БД, можно мокнуть)
+    class DummyPayment:
+        def __init__(self, user):
+            self.user = user
+            self.amount = 123.45
+
+    payment = DummyPayment(user=user)
+
+    # Название сервиса может быть "LAVA", "YOOMONEY", и т.д.
+    await balance_replenishment_notification(payment, service="LAVA")
+    await m.answer("Тестовое уведомление отправлено.")

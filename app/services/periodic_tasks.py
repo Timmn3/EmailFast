@@ -1240,8 +1240,19 @@ async def balance_replenishment_notification(payment, service):
     # Уведомление рефереру
     if user.refer_id:
         referrer = await models.User.get_or_none(id=user.refer_id)
-        if referrer:
+        if referrer and not referrer.disable_ref_notifications:
             bonus = round(payment.amount * 0.1)
+
+            # === Кнопка для отключения уведомлений ===
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text="🔕 Отключить уведомления",
+                        callback_data=f"disable_notify:{referrer.telegram_id}"
+                    )
+                ]
+            ])
+
             await bot.send_message(
                 chat_id=referrer.telegram_id,
                 text=(
@@ -1249,7 +1260,8 @@ async def balance_replenishment_notification(payment, service):
                     f"├ Аккаунт: {user.telegram_id}\n"
                     f"├ Сумма зачисления: {payment.amount} ₽\n"
                     f"└ Ваш доход: {bonus}₽ (10%)"
-                )
+                ),
+                reply_markup=keyboard
             )
 
     logger.bind(

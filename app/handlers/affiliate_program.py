@@ -9,6 +9,8 @@ from app.services.payments.cryptomus import create_a_payout
 from app.services.qr_code import generate_qr_code
 from loguru import logger
 from tortoise.functions import Count
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 
 router = Router()
 
@@ -87,28 +89,37 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         me = await m.bot.me()
         link = f'https://t.me/{me.username}?start={user_id}'
         qr_code_bytes = await generate_qr_code(link)
-        # logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        # logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Результат из БД: пользователь {user_id} найден")
-        mk = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(text=bt.SHARE_LINK_BTN,
-                                               switch_inline_query_chosen_chat=types.SwitchInlineQueryChosenChat(
-                                                   query=bt.SHARE_BOT_TEXT.format(
-                                                       link=link,
-                                                       mention=user.mention
-                                                   ),
-                                                   allow_user_chats=True,
-                                                   allow_group_chats=True,
-                                                   allow_channel_chats=True
-                                               ))
-                ],
-                [
-                    types.InlineKeyboardButton(text=bt.WITHDRAW_BTN, callback_data='withdraw')
-                ]
-            ]
-        )
+
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(
+                text=bt.SHARE_LINK_BTN,
+                switch_inline_query_chosen_chat=types.SwitchInlineQueryChosenChat(
+                    query=bt.SHARE_BOT_TEXT.format(
+                        link=link,
+                        mention=user.mention
+                    ),
+                    allow_user_chats=True,
+                    allow_group_chats=True,
+                    allow_channel_chats=True
+                )
+            )
+        ])
+
+        keyboard.inline_keyboard.append([
+            types.InlineKeyboardButton(text=bt.WITHDRAW_BTN, callback_data='withdraw')
+        ])
+
+        if user.disable_ref_notifications:
+            keyboard.inline_keyboard.append([
+                types.InlineKeyboardButton(
+                    text="🔔 Включить уведомления о рефералах",
+                    callback_data=f"enable_ref_notify:{user_id}"
+                )
+            ])
+
         ref = await models.User.filter(refer_id=user.id).all()
         ref_count = len(ref)
         payment_count = 0
@@ -116,7 +127,6 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             payment_count += (await models.Payment.filter(user=r, is_success=True).all().count())
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Рефералы: {ref_count}, платежей: {payment_count}")
 
-        # Получаем статистику по каждому рефералу: сколько у него успешных платежей
         referral_stats = (
             await models.Payment.filter(
                 user__refer_id=user.id,
@@ -127,21 +137,24 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             .values("user_id", "payment_count")
         )
 
-        # Суммируем (count - 1), если count > 1
         repeat_payment_users = sum(
             max(0, stat["payment_count"] - 1) for stat in referral_stats if stat["payment_count"] > 1)
 
         await m.answer_photo(
             photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
-            caption=bt.AFFILIATE_PROGRAM_TEXT.format(link=link, ref_balance=round(user.ref_balance),
-                                                     ref_count=ref_count, ref_balance_total=round(user.total_ref_earnings),
-                                                     payment_count=payment_count, repeat_payment_count=repeat_payment_users),
-            reply_markup=mk
+            caption=bt.AFFILIATE_PROGRAM_TEXT.format(
+                link=link,
+                ref_balance=round(user.ref_balance),
+                ref_count=ref_count,
+                ref_balance_total=round(user.total_ref_earnings),
+                payment_count=payment_count,
+                repeat_payment_count=repeat_payment_users
+            ),
+            reply_markup=keyboard
         )
         await loading_msg.delete()
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /send_affiliate_message: {e}")
-
 
 # --- Хэндлеры ---
 @router.message(F.text == bt.AFFILIATE_PROGRAM_BTN)

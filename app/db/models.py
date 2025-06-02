@@ -61,7 +61,8 @@ class User(Model):
     last_check_in: datetime = fields.DatetimeField(null=True)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     discount_used: bool = fields.BooleanField(null=True)
-    last_request_time: datetime = fields.DatetimeField(null=False)  # Новое поле
+    last_request_time: datetime = fields.DatetimeField(null=False)
+    disable_ref_notifications: bool = fields.BooleanField(default=False)
 
     @classmethod
     async def add_user(cls, user: types.User, refer: types.User = None):
