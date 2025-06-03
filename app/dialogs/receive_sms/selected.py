@@ -292,13 +292,13 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 else:
                     service = await models.ServicesOnlinesim.get_service(code=service_code)
             except Exception as e:
+                await c.message.answer(text=bt.NOT_NUMBERS_ALERT)
                 error_message = str(e)
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION",
                     f"Ошибка при получении номера сервиса OnlineSim: {error_message}"
                 )
                 if "No available numbers for this service" in error_message:
-                    await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                     await manager.switch_to(CountryMenu.select_country)
                     return
                 if "Not enough funds" in error_message:
@@ -313,7 +313,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                             ),
                             parse_mode="Markdown"
                         )
-                await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                 await manager.switch_to(CountryMenu.select_country)
                 return
         else:
