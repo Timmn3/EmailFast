@@ -504,6 +504,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         else:
             if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
                 services = await PriceOnlinesim.get_service_data(service_code)
+
                 sorted_countries_with_prices = [
                     {
                         "country": country,
@@ -513,6 +514,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                     }
                     for country, price in services.items()
                 ]
+                if service_code == 'vkcom':
+                    sorted_countries_with_prices = move_russia_first(sorted_countries_with_prices)
             else:
                 sms = SmsReceive()
                 services = await sms.get_top_country(service=service_code)
@@ -553,6 +556,14 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
 
 async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     await manager.switch_to(CountryMenu.select_country)
+
+def move_russia_first(country_list):
+    for i, country_data in enumerate(country_list):
+        if country_data.get("country") == "Россия":
+            russia_entry = country_list.pop(i)
+            country_list.insert(0, russia_entry)
+            break
+    return country_list
 
 
 def sort_countries_by_dict(countries_with_prices):
