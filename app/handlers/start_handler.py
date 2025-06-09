@@ -4,7 +4,7 @@ from aiogram import types, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram_dialog import DialogManager, StartMode
 from app.db import models
-from app.dependencies import bot
+from app.dependencies import bot, REFERRAL_PREFIX
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info
@@ -13,6 +13,7 @@ from app.services.keyboards import start_kb
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from loguru import logger
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from app.db.models import ReferralLink
 
 from app.services.periodic_tasks import balance_replenishment_notification
 
@@ -46,7 +47,35 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
         user = await models.User.get_user(user_id)
         if not user:
             refer_id = command.args
-            if refer_id and refer_id.isdigit():
+
+            # --- Добавлено: обработка персональных ссылок Petr (1939379478) ---
+            if refer_id and refer_id.startswith(f"{REFERRAL_PREFIX}_"):
+                link_code = refer_id
+                petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
+                if petr_user:
+                    referral_link = await ReferralLink.get_or_create_link(user=petr_user, link_code=link_code)
+
+                    # добавляем нового пользователя в таблицу users
+                    user = await models.User.add_user(message.from_user, refer=petr_user)
+
+                    # увеличиваем total_starts (если пользователь первый раз)
+                    referral_link.total_starts += 1
+                    await referral_link.save()
+
+                    # отправляем уведомление Petr, если уведомления не отключены
+                    if petr_user and not petr_user.disable_ref_notifications:
+                        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🔕 Отключить уведомление",
+                                                  callback_data=f"disable_notify:{petr_user.telegram_id}")]
+                        ])
+                        await bot.send_message(
+                            chat_id=petr_user.telegram_id,
+                            text=f"📈 У Вас новый реферал (https://t.me/emailfastbot?start={link_code})\n└ Аккаунт: {user.telegram_id}",
+                            reply_markup=keyboard
+                        )
+
+            # --- Стандартная обработка обычных реферальных ID ---
+            elif refer_id and refer_id.isdigit():
                 logger.bind(user_id=user_id, action='start').log(
                     "USER_ACTION",
                     f"Обнаружен реферальный ID: {refer_id}"
@@ -96,6 +125,7 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
         await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
+
 
 
 @router.callback_query(F.data.startswith("disable_notify:"))

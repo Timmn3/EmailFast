@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app import dependencies
 from app.db import models
-from app.dependencies import USER_BLOCKING_TO_WITHDRAW_FUNDS
+from app.dependencies import REFERRAL_PREFIX
 from app.services import bot_texts as bt
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.payments.cryptomus import create_a_payout
@@ -188,7 +188,7 @@ async def affiliate_program(call: types.CallbackQuery):
 async def withdraw(call: types.CallbackQuery, state: FSMContext):
     try:
         user_id = call.from_user.id
-        if user_id == USER_BLOCKING_TO_WITHDRAW_FUNDS:
+        if user_id == REFERRAL_PREFIX:
             await call.message.answer("Возможность вывода средств заблокирована, обратитесь в поддержку")
             return
 

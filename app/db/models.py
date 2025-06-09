@@ -1614,3 +1614,23 @@ class Broadcast(Model):
 
     class Meta:
         table = "broadcasts"
+
+
+class ReferralLink(Model):
+    class Meta:
+        table = "referral_links"
+        table_description = "Таблица для учета партнерских ссылок"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+    user: User = fields.ForeignKeyField('models.User', related_name='referral_links')
+    link_code: str = fields.CharField(max_length=64)  # например '1939379478_1'
+    total_starts: int = fields.IntField(default=0)    # сколько раз стартанули бота
+    total_pays: int = fields.IntField(default=0)      # сколько оплат сделали
+
+    @classmethod
+    async def get_or_create_link(cls, user: User, link_code: str):
+        link = await cls.get_or_none(user=user, link_code=link_code)
+        if not link:
+            link = await cls.create(user=user, link_code=link_code)
+        return link
