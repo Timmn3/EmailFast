@@ -56,7 +56,11 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
                     referral_link = await ReferralLink.get_or_create_link(user=petr_user, link_code=link_code)
 
                     # добавляем нового пользователя в таблицу users
-                    user = await models.User.add_user(message.from_user, refer=petr_user)
+                    user = await models.User.add_user(
+                        message.from_user,
+                        refer=petr_user,
+                        referral_link_code=link_code  # ✅ передаём персональную ссылку
+                    )
 
                     # увеличиваем total_starts (если пользователь первый раз)
                     referral_link.total_starts += 1

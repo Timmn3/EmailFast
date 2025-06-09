@@ -87,33 +87,8 @@ async def check_payment_lava():
                     await payment.user.save()
 
                     # Если у пользователя есть реферал, начисляем реферальный бонус.
-                    if payment.user.refer_id:
-                        refer = await models.User.get_or_none(id=payment.user.refer_id)
-                        if refer:
-                            # Рассчитываем реферальный бонус как процент от суммы платежа.
-                            ref_bonus = int(dependencies.REF_BONUS) / 100
-                            ref_sum = round(payment.amount * ref_bonus, 1)
-                            refer.ref_balance += ref_sum
-                            refer.total_ref_earnings += ref_sum
-                            await refer.save()
-                            # Вызываем уведомление о реферальном бонусе
-                            await referral_bonus_notification(payment, refer, ref_sum)
+                    await process_referral_bonus(payment)
 
-                    # try:
-                    #     # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    #     builder = InlineKeyboardBuilder()
-                    #     if payment.continue_data:
-                    #         builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    #
-                    #     # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    #     await bot.send_message(
-                    #         chat_id=payment.user.telegram_id,
-                    #         text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                    #         reply_markup=builder.as_markup()
-                    #     )
-                    # except:
-                    #     # Игнорируем ошибки, возникающие при отправке сообщения пользователю.
-                    #     pass
         except Exception as e:
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             pass
@@ -163,29 +138,8 @@ async def check_payment_freekassa():
                     await payment.user.save()
 
                     # Если у пользователя есть реферал, начисляем реферальный бонус.
-                    if payment.user.refer_id:
-                        refer = await models.User.get_or_none(id=payment.user.refer_id)
-                        if refer:
-                            # Рассчитываем реферальный бонус как процент от суммы платежа.
-                            ref_bonus = int(dependencies.REF_BONUS) / 100
-                            ref_sum = round(payment.amount * ref_bonus, 1)
-                            refer.ref_balance += ref_sum
-                            refer.total_ref_earnings += ref_sum
-                            await refer.save()
-                            # Вызываем уведомление о реферальном бонусе
-                            await referral_bonus_notification(payment, refer, ref_sum)
+                    await process_referral_bonus(payment)
 
-                        # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                        # builder = InlineKeyboardBuilder()
-                        # if payment.continue_data:
-                        #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                        #
-                        # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                        # await bot.send_message(
-                        #     chat_id=payment.user.telegram_id,
-                        #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                        #     reply_markup=builder.as_markup()
-                        # )
             except TelegramBadRequest:
                 pass
             except Exception as e:
@@ -224,29 +178,8 @@ async def check_payment_yoomoney():
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
-                if payment.user.refer_id:
-                    refer = await models.User.get_or_none(id=payment.user.refer_id)
-                    if refer:
-                        # Рассчитываем реферальный бонус как процент от суммы платежа.
-                        ref_bonus = int(dependencies.REF_BONUS) / 100
-                        ref_sum = round(payment.amount * ref_bonus, 1)
-                        refer.ref_balance += ref_sum
-                        refer.total_ref_earnings += ref_sum
-                        await refer.save()
-                        # Вызываем уведомление о реферальном бонусе
-                        await referral_bonus_notification(payment, refer, ref_sum)
+                await process_referral_bonus(payment)
 
-                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    # builder = InlineKeyboardBuilder()
-                    # if payment.continue_data:
-                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    #
-                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    # await bot.send_message(
-                    #     chat_id=payment.user.telegram_id,
-                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                    #     reply_markup=builder.as_markup()
-                    # )
         except TelegramBadRequest:
             pass
         except Exception as e:
@@ -285,29 +218,8 @@ async def check_payment_anypay():
                 await payment.user.save()
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
-                if payment.user.refer_id:
-                    refer = await models.User.get_or_none(id=payment.user.refer_id)
-                    if refer:
-                        # Рассчитываем реферальный бонус как процент от суммы платежа.
-                        ref_bonus = int(dependencies.REF_BONUS) / 100
-                        ref_sum = round(payment.amount * ref_bonus, 1)
-                        refer.ref_balance += ref_sum
-                        refer.total_ref_earnings += ref_sum
-                        await refer.save()
-                        # Вызываем уведомление о реферальном бонусе
-                        await referral_bonus_notification(payment, refer, ref_sum)
+                await process_referral_bonus(payment)
 
-                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    # builder = InlineKeyboardBuilder()
-                    # if payment.continue_data:
-                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    #
-                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    # await bot.send_message(
-                    #     chat_id=payment.user.telegram_id,
-                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                    #     reply_markup=builder.as_markup()
-                    # )
 
         except TelegramBadRequest:
             pass
@@ -346,29 +258,8 @@ async def check_payment_streampay():
                 await payment.user.save()
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
-                if payment.user.refer_id:
-                    refer = await models.User.get_or_none(id=payment.user.refer_id)
-                    if refer:
-                        # Рассчитываем реферальный бонус как процент от суммы платежа.
-                        ref_bonus = int(dependencies.REF_BONUS) / 100
-                        ref_sum = round(payment.amount * ref_bonus, 1)
-                        refer.ref_balance += ref_sum
-                        refer.total_ref_earnings += ref_sum
-                        await refer.save()
-                        # Вызываем уведомление о реферальном бонусе
-                        await referral_bonus_notification(payment, refer, ref_sum)
+                await process_referral_bonus(payment)
 
-                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    # builder = InlineKeyboardBuilder()
-                    # if payment.continue_data:
-                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    #
-                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    # await bot.send_message(
-                    #     chat_id=payment.user.telegram_id,
-                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                    #     reply_markup=builder.as_markup()
-                    # )
         except TelegramBadRequest:
             pass
         except Exception as e:
@@ -414,27 +305,8 @@ async def check_payment_ckassa():
                                        text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
-                if payment.user.refer_id:
-                    refer = await models.User.get_or_none(id=payment.user.refer_id)
-                    if refer:
-                        # Рассчитываем реферальный бонус как процент от суммы платежа.
-                        ref_bonus = int(dependencies.REF_BONUS) / 100
-                        ref_sum = round(payment.amount * ref_bonus, 1)
-                        refer.ref_balance += ref_sum
-                        refer.total_ref_earnings += ref_sum
-                        await refer.save()
-                        # Вызываем уведомление о реферальном бонусе
-                        await referral_bonus_notification(payment, refer, ref_sum)
+                await process_referral_bonus(payment)
 
-                # # Если есть данные для продолжения операции после успешной оплаты, отправляем клавиатуру.
-                # builder = InlineKeyboardBuilder()
-                # if payment.continue_data:
-                #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                #     await bot.send_message(
-                #         chat_id=payment.user.telegram_id,
-                #         text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                #         reply_markup=builder.as_markup()
-                #     )
         except TelegramBadRequest:
             pass
         except Exception as e:
@@ -474,29 +346,8 @@ async def check_payment_cryptomus():
                 await payment.user.save()
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
-                if payment.user.refer_id:
-                    refer = await models.User.get_or_none(id=payment.user.refer_id)
-                    if refer:
-                        # Рассчитываем реферальный бонус как процент от суммы платежа.
-                        ref_bonus = int(dependencies.REF_BONUS) / 100
-                        ref_sum = round(payment.amount * ref_bonus, 1)
-                        refer.ref_balance += ref_sum
-                        refer.total_ref_earnings += ref_sum
-                        await refer.save()
-                        # Вызываем уведомление о реферальном бонусе
-                        await referral_bonus_notification(payment, refer, ref_sum)
+                await process_referral_bonus(payment)
 
-                    # Подготавливаем клавиатуру для возможного продолжения операции после успешной оплаты.
-                    # builder = InlineKeyboardBuilder()
-                    # if payment.continue_data:
-                    #     builder.button(text=bt.CONTINUE_BTN, callback_data=f'continue_payment:{payment.id}')
-                    #
-                    # # Отправляем сообщение пользователю об успешной оплате и возможном продолжении операции.
-                    # await bot.send_message(
-                    #     chat_id=payment.user.telegram_id,
-                    #     text=bt.PAYMENT_SUCCESS.format(amount=int(amount)),
-                    #     reply_markup=builder.as_markup()
-                    # )
         except TelegramBadRequest:
             pass
         except Exception as e:
@@ -1237,33 +1088,6 @@ async def balance_replenishment_notification(payment, service):
     )
     await send_coder(msg_text)
 
-    # Уведомление рефереру
-    if user.refer_id:
-        referrer = await models.User.get_or_none(id=user.refer_id)
-        if referrer and not referrer.disable_ref_notifications:
-            bonus = round(payment.amount * 0.1)
-
-            # === Кнопка для отключения уведомлений ===
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text="🔕 Отключить уведомления",
-                        callback_data=f"disable_notify:{referrer.telegram_id}"
-                    )
-                ]
-            ])
-
-            await bot.send_message(
-                chat_id=referrer.telegram_id,
-                text=(
-                    "✅Партнерское вознаграждение\n"
-                    f"├ Аккаунт: {user.telegram_id}\n"
-                    f"├ Сумма зачисления: {payment.amount} ₽\n"
-                    f"└ Ваш доход: {bonus}₽ (10%)"
-                ),
-                reply_markup=keyboard
-            )
-
     logger.bind(
         user_id=user.telegram_id,
         action=f"top_up_balance_{service.lower()}"
@@ -1335,3 +1159,53 @@ async def referral_bonus_notification(payment, referrer, ref_sum):
         f"Реферальный бонус {ref_sum}₽ за пользователя {user.telegram_id}, "
         f"платёж на сумму {payment.amount}₽"
     )
+
+async def process_referral_bonus(payment):
+    """
+    Обрабатывает начисление реферального бонуса с учетом обычных и персональных ссылок.
+    """
+    if not payment.user.refer_id:
+        return
+
+    refer = await models.User.get_or_none(id=payment.user.refer_id)
+    if not refer:
+        return
+
+    # Расчёт бонуса
+    ref_bonus = int(dependencies.REF_BONUS) / 100
+    ref_sum = round(payment.amount * ref_bonus, 1)
+
+    refer.ref_balance += ref_sum
+    refer.total_ref_earnings += ref_sum
+    await refer.save()
+
+    # Учет персональной ссылки
+    link_text = ""
+    if payment.user.referral_link_code:
+        ref_link = await models.ReferralLink.get_or_none(link_code=payment.user.referral_link_code)
+        if ref_link:
+            ref_link.total_pays += 1
+            ref_link.total_payment_amount += payment.amount  # 💰 Добавляем сумму оплаты
+            await ref_link.save()
+            link_text = f" ({f'https://t.me/emailfastbot?start={ref_link.link_code}'})"
+
+    # Уведомление рефереру
+    if not refer.disable_ref_notifications:
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(
+                text="🔕 Отключить уведомления",
+                callback_data=f"disable_notify:{refer.telegram_id}"
+            )]
+        ])
+
+        msg = (
+            f"✅Партнерское вознаграждение{link_text}\n"
+            f"├ Аккаунт: {payment.user.telegram_id}\n"
+            f"├ Сумма зачисления: {payment.amount}₽\n"
+            f"└ Ваш доход: {ref_sum}₽ (10%)"
+        )
+
+        await bot.send_message(chat_id=refer.telegram_id, text=msg, reply_markup=keyboard)
+
+    await referral_bonus_notification(payment, refer, ref_sum)
+

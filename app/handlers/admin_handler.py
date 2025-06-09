@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
 from app.db.models import Activation, AdminSettings
-from app.dependencies import ADMINS, bot
+from app.dependencies import ADMINS, bot, REFERRAL_PREFIX
 from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
@@ -1070,6 +1070,37 @@ async def users_with_overspent(message: types.Message):
         caption="Пользователи с расходами выше пополнений"
     )
 
+@router.message(Command('petr_links'))
+async def petr_links_admin(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
+    if message.from_user.id not in ADMINS:
+        return
+
+    petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
+    if not petr_user:
+        await message.answer("Пользователь Petr не найден.")
+        return
+
+    links = await models.ReferralLink.filter(user=petr_user).order_by("link_code").all()
+    if not links:
+        await message.answer("У Петра пока нет реферальных ссылок.")
+        return
+
+    bot_username = (await bot.me()).username
+    lines = []
+
+    for link in links:
+        url = f"https://t.me/{bot_username}?start={link.link_code}"
+        total_sum = f"{link.total_payment_amount:.2f}₽" if link.total_payment_amount else "0.00₽"
+        lines.append(
+            f"<b>Ссылка:</b> <code>{url}</code>\n"
+            f"├ Запусков бота: <b>{link.total_starts}</b>\n"
+            f"└ Оплат: <b>{link.total_pays}</b> (на сумму <b>{total_sum}</b>)\n"
+        )
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -1088,6 +1119,7 @@ async def help_admin(message: types.Message):
     /users_without_payments - Пользователи с балансом > 0 и без пополнений
     /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
     /users_with_overspent - Пользователи с расходами > пополнений (без учёта баланса)
+    /petr_links - Статистика по реферальным ссылкам Петра
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """

@@ -5,6 +5,8 @@ from aiogram import types
 from tortoise.models import Model
 from tortoise import fields, timezone
 from loguru import logger
+from typing import Optional
+
 
 class StatusResponse(IntEnum):
     STATUS_WAIT_CODE = 1
@@ -63,24 +65,37 @@ class User(Model):
     discount_used: bool = fields.BooleanField(null=True)
     last_request_time: datetime = fields.DatetimeField(null=False)
     disable_ref_notifications: bool = fields.BooleanField(default=False)
+    referral_link_code: str = fields.CharField(
+        max_length=64,
+        null=True,
+        index=True,
+        description="Код ссылки на реферал, если пользователь присоединился через личную реферальную ссылкуk"
+    )
 
     @classmethod
-    async def add_user(cls, user: types.User, refer: types.User = None):
+    async def add_user(
+        cls,
+        user: types.User,
+        refer: Optional["User"] = None,
+        referral_link_code: Optional[str] = None
+    ):
         """
         Добавляет нового пользователя в базу данных.
 
         :param user: Объект пользователя из aiogram.
-        :param refer: Объект пользователя, который пригласил нового пользователя (опционально).
+        :param refer: Пользователь-реферер, пригласивший нового (опционально).
+        :param referral_link_code: Код персональной реферальной ссылки, если пришёл по ней.
         :return: Созданный объект пользователя.
         """
-        current_time = datetime.now()  # Получаем текущее время в UTC
+        current_time = datetime.now()                      # Текущее время
         new_user = await cls.create(
             telegram_id=user.id,
             full_name=user.full_name,
             username=user.username,
             mention=f'@{user.username}' if user.username else user.full_name,
             refer_id=refer.id if refer else None,
-            last_request_time=current_time  # Устанавливаем текущее время в last_request_time
+            referral_link_code=referral_link_code,         # ✨ сохраняем код
+            last_request_time=current_time
         )
         return new_user
 
@@ -1627,6 +1642,7 @@ class ReferralLink(Model):
     link_code: str = fields.CharField(max_length=64)  # например '1939379478_1'
     total_starts: int = fields.IntField(default=0)    # сколько раз стартанули бота
     total_pays: int = fields.IntField(default=0)      # сколько оплат сделали
+    total_payment_amount: float = fields.FloatField(default=0)
 
     @classmethod
     async def get_or_create_link(cls, user: User, link_code: str):
