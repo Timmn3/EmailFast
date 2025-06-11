@@ -1184,9 +1184,17 @@ async def process_referral_bonus(payment):
     if payment.user.referral_link_code:
         ref_link = await models.ReferralLink.get_or_none(link_code=payment.user.referral_link_code)
         if ref_link:
-            ref_link.total_pays += 1
-            ref_link.total_payment_amount += payment.amount  # 💰 Добавляем сумму оплаты
-            await ref_link.save()
+            # Проверяем — первая ли оплата
+            is_first_payment = not await models.Payment.filter(
+                user=payment.user,
+                is_success=True
+            ).exclude(id=payment.id).exists()
+
+            if is_first_payment:
+                ref_link.total_pays += 1
+                ref_link.total_payment_amount += payment.amount  # 💰 Добавляем сумму только первой оплаты
+                await ref_link.save()
+
             link_text = f" ({f'https://t.me/emailfastbot?start={ref_link.link_code}'})"
 
     # Уведомление рефереру
