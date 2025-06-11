@@ -1072,9 +1072,11 @@ async def users_with_overspent(message: types.Message):
 
 @router.message(Command('petr_links'))
 async def petr_links_admin(message: types.Message):
-    logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
-    if message.from_user.id not in ADMINS:
+
+    if message.from_user.id not in ADMINS and message.from_user.id != REFERRAL_PREFIX:
         return
+
+    logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
 
     petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
     if not petr_user:
