@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
 from app.db.models import Activation, AdminSettings
-from app.dependencies import ADMINS, bot, REFERRAL_PREFIX
+from app.dependencies import ADMINS, bot, REFERRAL_PREFIX, USER_ACCESS_TO_THE_COMMAND
 from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
@@ -1073,7 +1073,7 @@ async def users_with_overspent(message: types.Message):
 @router.message(Command('petr_links'))
 async def petr_links_admin(message: types.Message):
 
-    if message.from_user.id not in ADMINS and message.from_user.id != REFERRAL_PREFIX:
+    if message.from_user.id not in ADMINS and message.from_user.id != USER_ACCESS_TO_THE_COMMAND:
         logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links не может быть вызвана")
 
         return

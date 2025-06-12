@@ -106,6 +106,8 @@ CHECK_CHANNEL = config.get('CHECK_CHANNEL')\
 
 REFERRAL_PREFIX = config.get('REFERRAL_PREFIX')
 
+USER_ACCESS_TO_THE_COMMAND = config.get('USER_ACCESS_TO_THE_COMMAND')
+
 bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode='HTML', link_preview_is_disabled=True)
