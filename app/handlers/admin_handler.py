@@ -1074,6 +1074,8 @@ async def users_with_overspent(message: types.Message):
 async def petr_links_admin(message: types.Message):
 
     if message.from_user.id not in ADMINS and message.from_user.id != REFERRAL_PREFIX:
+        logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links не может быть вызвана")
+
         return
 
     logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
