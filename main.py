@@ -37,15 +37,22 @@ import logging
 msg_text = "Версия 11.06.2025"
 
 
-# === Обработчики исключений Dialog Manager ===
-async def on_unknown_intent(message: Message):
-    logger.bind(user_id=message.from_user.id).log("USER_ACTION", "Неизвестный intent – возврат в главное меню")
-    await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+
+async def on_unknown_intent(event):
+    user_id = getattr(event.from_user, 'id', 'unknown') if isinstance(event, Message) else 'unknown'
+    logger.bind(user_id=user_id).log("USER_ACTION", "Неизвестный intent – возврат в главное меню")
+
+    if isinstance(event, Message):
+        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
 
 
-async def on_unknown_state(message: Message):
-    logger.bind(user_id=message.from_user.id).log("USER_ACTION", "Неизвестный state – возврат в главное меню")
-    await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+async def on_unknown_state(event):
+    user_id = getattr(event.from_user, 'id', 'unknown') if isinstance(event, Message) else 'unknown'
+    logger.bind(user_id=user_id).log("USER_ACTION", "Неизвестный state – возврат в главное меню")
+
+    if isinstance(event, Message):
+        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+
 
 
 # === Слушатель задач планировщика ===
