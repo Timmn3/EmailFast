@@ -40,9 +40,12 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
     try:
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
-        # logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
+
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}, баланс = {user.balance} ₽")
+        logger.bind(user_id=user_id, action="receive_sms").log(
+            "USER_ACTION",
+            f"Результат из БД: пользователь найден={'True' if user else 'False'}, баланс = {user.balance if user else 'N/A'} ₽"
+        )
 
         if not user:
             return
@@ -51,7 +54,6 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         activation = await models.Activation.get_active_activation(user.id)
 
         if activation is None:
-            # logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка подписки")
             sub = await check_subscribe(user)
             if not sub:
                 logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Подписка неактивна, отправляем сообщение")
@@ -62,15 +64,22 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         else:
             logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Получение информации о текущей активации")
             await activation.fetch_related('country')
-            country = activation.country.name
-            service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
-            if service is None:
+            country = activation.country.name if activation.country else 'Неизвестно'
+
+            service = None
+            if activation.service_id:
+                service = await models.ServicesSmsActivate.get_service_name_by_id(service_id=activation.service_id)
+            if not service and activation.service_2_id:
                 service = await models.ServicesOnlinesim.get_service_name_by_id(service_id=activation.service_2_id)
-            logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", f"Текущая активация: сервис={service}, страна={country}")
+            service = service or 'Неизвестно'
+
+            logger.bind(user_id=user_id, action="receive_sms").log(
+                "USER_ACTION",
+                f"Текущая активация: сервис={service}, страна={country}"
+            )
             await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms: {e}")
-
 
 @router.callback_query(F.data == 'receive_sms_for_another_service')
 async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_manager: DialogManager):
