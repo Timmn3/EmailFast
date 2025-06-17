@@ -197,7 +197,16 @@ signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 if __name__ == '__main__':
     try:
         from app.dependencies import dp
+        from aiogram_dialog.api.exceptions import OutdatedIntent  # импорт нужного исключения
+
         logger.success("=== Старт main.py ===")
+
+        @dp.errors()
+        async def error_handler(event, exception):
+            if isinstance(exception, OutdatedIntent):
+                logger.warning("Пойман OutdatedIntent — пользователь нажал устаревшую кнопку")
+                return  # пропускаем без ошибок
+            raise exception  # пробрасываем остальные исключения дальше
 
         # Подавление лишних логов apscheduler
         aps_logger = logging.getLogger('apscheduler')
@@ -212,3 +221,4 @@ if __name__ == '__main__':
 
     except Exception as e:
         logger.opt(exception=e).critical(f'Критическая ошибка в main: {e}')
+
