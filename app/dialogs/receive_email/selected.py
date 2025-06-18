@@ -265,7 +265,10 @@ async def on_rent_email_check_discount(message: types.Message, manager: DialogMa
             "Проверка наличия скидки у пользователя"
         )
 
-        user = await models.User.get(telegram_id=user_id)
+        user = await models.User.get_or_none(telegram_id=user_id)
+        if not user:
+            # можно отправить сообщение или return
+            return
         last_mail = await models.Mail.filter(user=user, notification_sent=True).order_by('-id').first()
 
         if user.discount_used is True:

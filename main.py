@@ -29,7 +29,7 @@ from app.services import stars_pay
 from logger_config import logger
 from app.scheduler_instance import scheduler
 from app.services import bot_texts as bt
-
+from app.dependencies import dp
 import signal
 import logging
 
@@ -38,7 +38,7 @@ msg_text = "Версия 11.06.2025"
 
 
 
-async def on_unknown_intent(event):
+async def on_unknown_intent(event, exception):
     user_id = getattr(event.from_user, 'id', 'unknown') if isinstance(event, Message) else 'unknown'
     logger.bind(user_id=user_id).log("USER_ACTION", "Неизвестный intent – возврат в главное меню")
 
@@ -112,6 +112,8 @@ async def main(dp: Dispatcher):
 
     # Регистрация обработчика оплаты
     dp.pre_checkout_query.register(stars_pay.pre_checkout_handler)
+
+    dp.errors.register(error_handler)
 
     # Планировщик задач
     set_scheduled_jobs(scheduler)
@@ -193,20 +195,23 @@ def shutdown_scheduler(scheduler):
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 
 
+@dp.errors()
+async def error_handler(event, exception):
+    if isinstance(exception, OutdatedIntent):
+        logger.warning("Пойман OutdatedIntent — пользователь нажал устаревшую кнопку")
+        return  # пропускаем без ошибок
+    raise exception  # пробрасываем остальные исключения дальше
+
+
 # === Точка входа ===
 if __name__ == '__main__':
     try:
-        from app.dependencies import dp
+
         from aiogram_dialog.api.exceptions import OutdatedIntent  # импорт нужного исключения
 
         logger.success("=== Старт main.py ===")
 
-        @dp.errors()
-        async def error_handler(event, exception):
-            if isinstance(exception, OutdatedIntent):
-                logger.warning("Пойман OutdatedIntent — пользователь нажал устаревшую кнопку")
-                return  # пропускаем без ошибок
-            raise exception  # пробрасываем остальные исключения дальше
+
 
         # Подавление лишних логов apscheduler
         aps_logger = logging.getLogger('apscheduler')
