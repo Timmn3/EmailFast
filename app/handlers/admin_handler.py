@@ -1069,13 +1069,18 @@ async def users_with_overspent(message: types.Message):
         FSInputFile(file_path),
         caption="Пользователи с расходами выше пополнений"
     )
+import re
+
+def extract_link_number(link_code: str) -> int:
+    """Извлекает число после подчеркивания в link_code"""
+    match = re.search(r'_(\d+)$', link_code)
+    return int(match.group(1)) if match else 0
 
 @router.message(Command('petr_links'))
 async def petr_links_admin(message: types.Message):
 
     if message.from_user.id not in ADMINS and message.from_user.id != USER_ACCESS_TO_THE_COMMAND:
         logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links не может быть вызвана")
-
         return
 
     logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
@@ -1085,7 +1090,9 @@ async def petr_links_admin(message: types.Message):
         await message.answer("Пользователь Petr не найден.")
         return
 
-    links = await models.ReferralLink.filter(user=petr_user).order_by("link_code").all()
+    links = await models.ReferralLink.filter(user=petr_user).all()
+    links = sorted(links, key=lambda link: extract_link_number(link.link_code))  # Правильная сортировка
+
     if not links:
         await message.answer("У Петра пока нет реферальных ссылок.")
         return
@@ -1103,6 +1110,7 @@ async def petr_links_admin(message: types.Message):
         )
 
     await message.answer("\n".join(lines), parse_mode="HTML")
+
 
 
 @router.message(Command('create_petr_links'))
