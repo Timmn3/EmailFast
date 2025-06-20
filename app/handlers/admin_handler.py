@@ -11,7 +11,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
-from app.db.models import Activation, AdminSettings
+from app.db.models import Activation, AdminSettings, ReferralLink
 from app.dependencies import ADMINS, bot, REFERRAL_PREFIX, USER_ACCESS_TO_THE_COMMAND
 from app.services import bot_texts as bt
 from tabulate import tabulate
@@ -1105,6 +1105,44 @@ async def petr_links_admin(message: types.Message):
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
+@router.message(Command('create_petr_links'))
+async def petr_links_admin(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    logger.bind(user_id=message.from_user.id, action="create_petr_links").log("USER_ACTION", "Команда /create_petr_links вызвана")
+
+    # Получаем юзера Петра по его telegram_id
+    petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
+
+    if not petr_user:
+        await message.answer("Пётр не найден в базе данных.")
+        return
+
+    # Все ссылки Петра
+    petr_links = await ReferralLink.filter(user=petr_user).all()
+
+    # Определяем максимальный порядковый номер
+    max_number = 0
+    for link in petr_links:
+        try:
+            # Получаем число после подчеркивания
+            suffix = int(link.link_code.split('_')[-1])
+            if suffix > max_number:
+                max_number = suffix
+        except (ValueError, IndexError):
+            continue  # если вдруг формат странный, пропускаем
+
+    # Генерируем новую ссылку
+    new_suffix = max_number + 1
+    link_code = f"{REFERRAL_PREFIX}_{new_suffix}"
+
+    # Создаем или получаем ссылку
+    referral_link = await ReferralLink.get_or_create_link(user=petr_user, link_code=link_code)
+
+    await message.answer(f"Создана новая реферальная ссылка: {link_code}")
+
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -1124,6 +1162,7 @@ async def help_admin(message: types.Message):
     /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
     /users_with_overspent - Пользователи с расходами > пополнений (без учёта баланса)
     /petr_links - Статистика по реферальным ссылкам Петра
+    /create_petr_links - Создать новую реферальную ссылку для Петра следующую по порядку 
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """

@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from aiogram import Dispatcher
 from app.db.database import init_db
-from app.dependencies import bot, ON_SCHEDULE
+from app.dependencies import bot, ON_SCHEDULE, DB_NAME
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (
@@ -120,8 +120,8 @@ async def main(dp: Dispatcher):
     scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_EXECUTED)
     if not scheduler.running:
         scheduler.start()
-        logger.info("Планировщик задач запущен")
 
+    logger.info(DB_NAME)
     # Прочие задачи перед polling
     await userbot_ping()
     await send_coder(msg_text)
