@@ -7,6 +7,7 @@ from aiogram_dialog.widgets.kbd import Button
 from tortoise import timezone
 from loguru import logger
 from app.db import models
+from app.db.models import Mail
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.services.bot_texts import RENT_DATA, RENT_DATA_DISCOUNT
 from app.services.low_balance import check_low_balance, send_low_balance_alert
@@ -110,7 +111,7 @@ async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogM
             return
 
         # Проверка флага бесплатной недели
-        if mail.is_free_week:
+        if await Mail.has_used_free_week(user):
             await manager.switch_to(ReceiveEmailMenu.rent_email_no_free_week)
             logger.bind(user_id=user_id, action='on_rent_email').log(
                 "USER_ACTION", "Открыто окно аренды без бесплатной недели"
@@ -159,7 +160,7 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
             return
 
         # Проверка: если пользователь пытается повторно арендовать бесплатную неделю
-        if widget_id == "rent_email_week" and mail.is_free_week:
+        if widget_id == "rent_email_week" and await Mail.has_used_free_week(user):
             logger.bind(user_id=user_id, action='on_rent_email_item').log(
                 "USER_ACTION",
                 "Попытка повторной аренды бесплатной недели"

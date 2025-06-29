@@ -195,7 +195,6 @@ def shutdown_scheduler(scheduler):
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 
 
-@dp.errors()
 async def error_handler(event, exception):
     if isinstance(exception, OutdatedIntent):
         logger.warning("Пойман OutdatedIntent — пользователь нажал устаревшую кнопку")

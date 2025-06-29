@@ -763,6 +763,10 @@ class Mail(Model):
         """
         return await cls.filter(expire_at__lte=timezone.now(), is_active=True).all()
 
+    @classmethod
+    async def has_used_free_week(cls, user: User) -> bool:
+        return await cls.filter(user=user, is_free_week=True).exists()
+
 
 class Letter(Model):
     class Meta:
