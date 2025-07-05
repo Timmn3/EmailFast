@@ -196,6 +196,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     if manager:
         ctx = manager.current_context()
         price = float(ctx.dialog_data['price'])
+        print(price)
         continue_data = ctx.start_data
     else:
         ctx = None
@@ -291,17 +292,17 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     retail_price = ''
 
     if state == 'CountryMenu':
-        country_id = ctx.dialog_data['country_id']
-        service_code = ctx.dialog_data['service_code']
-        service_price = ctx.dialog_data['service_price']
-        retail_price = ctx.dialog_data['retail_price']
+        country_id = ctx.dialog_data.get('country_id', '')
+        service_code = ctx.dialog_data.get('service_code', '')
+        service_price = ctx.dialog_data.get('service_price')
+        retail_price = ctx.dialog_data.get('retail_price', '')
         if price >= 300:
             await manager.start(CountryMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
             await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
     elif state == 'RentCountryMenu':
         if ctx and 'rent_country_code' in ctx.dialog_data:
-            rent_country_code = ctx.dialog_data['rent_country_code']
+            rent_country_code = ctx.dialog_data.get('rent_country_code', '')
             selected_country = ctx.dialog_data.get('selected_country', '')
             day_index = ctx.dialog_data.get('day_index', '')
         else:

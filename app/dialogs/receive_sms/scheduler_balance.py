@@ -36,6 +36,8 @@ async def check_balance_and_send_service(user_id, price, retail_price, free_pric
 
 # Асинхронная функция для запуска проверки баланса
 async def start_balance_check(user_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
+    if price is None:
+        return
     try:
         logger.bind(user_id=user_id, action='start_balance_check').log(
             "USER_ACTION",

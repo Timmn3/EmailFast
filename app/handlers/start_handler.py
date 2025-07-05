@@ -322,14 +322,19 @@ async def bonus_price(call: types.CallbackQuery, dialog_manager: DialogManager):
             await call.message.edit_reply_markup()
             await dialog_manager.start(PersonalMenu.enter_amount, mode=StartMode.RESET_STACK)
         else:
+            # сохраняем сумму в dialog_data до вызова send_payment_keyboard
+            dialog_manager.current_context().dialog_data['price'] = float(price)
+
             logger.bind(user_id=user_id, action='bonus_price').log(
                 "USER_ACTION",
                 f"Отправка клавиатуры оплаты на сумму {price}"
             )
             from app.dialogs.personal_cabinet.selected import send_payment_keyboard
-            await send_payment_keyboard(call, price=float(price))
+            await send_payment_keyboard(call, manager=dialog_manager, price=float(price))
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере bonus_price: {e}")
+
 
 
 @router.message(Command('rent'))
