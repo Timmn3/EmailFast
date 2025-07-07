@@ -361,6 +361,8 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             )
             service = activation.service_2.name
 
+        low_balance = await check_low_balance(user, price)
+
         user.balance -= price
         await user.save(update_fields=['balance'])
 
@@ -373,7 +375,6 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
         await send_service_info_with_keyboard(message=c.message, activation=activation, service=service, country=country)
 
-        low_balance = await check_low_balance(user, price)
         await asyncio.sleep(1)
         if low_balance:
             await send_low_balance_alert(user)

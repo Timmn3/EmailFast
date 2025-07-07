@@ -305,12 +305,14 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         # Отправляем пользователю сообщение о номере телефона
         await send_message_country_number(message=c.message, activation=activation, country=activation.country.name, days=days)
 
+        # Проверяем, низкий ли баланс у пользователя после списания средств
+        low_balance = await check_low_balance(user, price)
+
         # Списываем средства с баланса пользователя
         user.balance -= price
         await user.save(update_fields=['balance'])
 
-        # Проверяем, низкий ли баланс у пользователя после списания средств
-        low_balance = await check_low_balance(user, price)
+
         # Ждем 1 секунду перед отправкой уведомления о низком балансе, если это необходимо
         await asyncio.sleep(1)
         if low_balance:
