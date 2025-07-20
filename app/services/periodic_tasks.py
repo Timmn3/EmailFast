@@ -899,6 +899,7 @@ async def auto_renewal_of_rent():
         # Получает список аренд, для которых срок истекает ровно через 2 часа
         rents_ending = await models.Rent.get_rents_ending_soon()
         for ending in rents_ending:
+            ending.days = 30
             user_id = ending.user.telegram_id
             if ending.autorenew:
                 if ending.user.balance < ending.cost:
