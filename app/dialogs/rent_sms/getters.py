@@ -3,7 +3,7 @@ from loguru import logger
 from sqlalchemy import false
 
 from app.db.models import CountriesOnlinesim
-from app.services.bot_texts import DOLLAR_ONLINESIM
+from app.services.bot_texts import DOLLAR_ONLINESIM, EXCLUDED_COUNTRIES
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 
 
@@ -46,30 +46,34 @@ async def get_rent_countries(dialog_manager: DialogManager, **middleware_data):
         all_countries = await CountriesOnlinesim.all().values("country_id", "name")
         country_map = {str(country["country_id"]): country["name"] for country in all_countries}
 
-        countries = []
+        countries: list[dict] = []
         for country_code, days in tariffs.items():
             country_name = country_map.get(country_code, country_code)
+
+            # Пропустим исключённые страны (Россия и синонимы)
+            if str(country_name).strip() in EXCLUDED_COUNTRIES:
+                continue
+
             base_price = list(days.values())[0] if days else 0
-            increased_price = round(base_price * DOLLAR_ONLINESIM)
+            increased_price = round(float(base_price) * DOLLAR_ONLINESIM)
 
             countries.append({
                 "id": country_code,
                 "country": country_name,
                 "price": increased_price,
-                "tariffs": tariffs,
+                "tariffs": tariffs,  # как и раньше — весь объект тарифов
             })
 
+        # Можно дополнительно отсортировать по алфавиту/цене (опционально):
+        # countries.sort(key=lambda x: x["country"])
+
         dialog_manager.dialog_data["rent_countries"] = countries
-
-        # logger.bind(user_id=user_id, action='get_rent_countries').log(
-        #     "USER_ACTION",
-        #     f"Получено {len(countries)} стран для аренды"
-        # )
-
         return {"rent_countries": countries}
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в get_rent_countries: {e}")
         return {"rent_countries": []}
+
 
 
 async def get_country_details(dialog_manager: DialogManager, **kwargs):
