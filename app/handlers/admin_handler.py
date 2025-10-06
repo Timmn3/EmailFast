@@ -1090,8 +1090,10 @@ async def help_admin(message: types.Message):
     /users_with_overspent - Пользователи с расходами > пополнений (без учёта баланса)
     /petr_links - Статистика по реферальным ссылкам Петра
     /whodi_links - Статистика по реферальным ссылкам whodi
-    /create_petr_links - Создать новую реферальную ссылку для Петра следующую по порядку 
-    /create_whodi_links - Создать новую реферальную ссылку для whodi следующую по порядку 
+    /silobus_links - Статистика по реферальным ссылкам Silobus
+    /create_petr_links - Создать новую реферальную ссылку для Петра (следующую по порядку)
+    /create_whodi_links - Создать новую реферальную ссылку для Whodi (следующую по порядку)
+    /create_silobus_links - Создать новую реферальную ссылку для Silobus (следующую по порядку)
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """

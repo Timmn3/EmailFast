@@ -1,7 +1,8 @@
 from aiogram import Router, types
 from aiogram.filters import Command
 from loguru import logger
-from app.dependencies import bot, ADMINS, USER_ACCESS_TO_THE_COMMAND, REFERRAL_PREFIX, REFERRAL_PREFIX_WHODI
+from app.dependencies import bot, ADMINS, USER_ACCESS_TO_THE_COMMAND, REFERRAL_PREFIX, REFERRAL_PREFIX_WHODI, \
+    REFERRAL_PREFIX_SILOBUS
 from app.db import models
 from app.db.models import ReferralLink
 import re
@@ -146,3 +147,23 @@ async def whodi_links(message: types.Message):
 @router.message(Command('create_whodi_links'))
 async def create_whodi_links(message: types.Message):
     await _create_next_link(message, REFERRAL_PREFIX_WHODI, "Whodi")
+
+
+# ===========================
+# Команды для Silobus
+# ===========================
+
+@router.message(Command('silobus_links'))
+async def silobus_links(message: types.Message):
+    # Разрешено Silobus (5201985063) и админам
+    allowed_ids = set(ADMINS + [REFERRAL_PREFIX_SILOBUS])
+    if message.from_user.id not in allowed_ids:
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+
+    await _show_links(message, REFERRAL_PREFIX_SILOBUS, "Silobus")
+
+
+@router.message(Command('create_silobus_links'))
+async def create_silobus_links(message: types.Message):
+    await _create_next_link(message, REFERRAL_PREFIX_SILOBUS, "Silobus")

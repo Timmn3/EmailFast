@@ -110,6 +110,9 @@ REFERRAL_PREFIX_WHODI = config.get('REFERRAL_PREFIX_WHODI')
 
 USER_ACCESS_TO_THE_COMMAND = config.get('USER_ACCESS_TO_THE_COMMAND')
 
+REFERRAL_PREFIX_SILOBUS = config.get('REFERRAL_PREFIX_SILOBUS')
+
+
 bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode='HTML', link_preview_is_disabled=True)
