@@ -119,7 +119,11 @@ async def _create_next_link(
 # ===========================
 @router.message(Command('petr_links'))
 async def petr_links(message: types.Message):
-    await _show_links(message, REFERRAL_PREFIX, "Пётр")
+    allowed_ids = set(ADMINS + [REFERRAL_PREFIX])
+    if message.from_user.id not in allowed_ids:
+        return
+    else:
+        await _show_links(message, REFERRAL_PREFIX, "Пётр")
 
 
 @router.message(Command('create_petr_links'))
@@ -132,7 +136,11 @@ async def create_petr_links(message: types.Message):
 # ===========================
 @router.message(Command('whodi_links'))
 async def whodi_links(message: types.Message):
-    await _show_links(message, REFERRAL_PREFIX_WHODI, "Whodi")
+    allowed_ids = set(ADMINS + [REFERRAL_PREFIX_WHODI])
+    if message.from_user.id not in allowed_ids:
+        return
+    else:
+        await _show_links(message, REFERRAL_PREFIX_WHODI, "Whodi")
 
 
 @router.message(Command('create_whodi_links'))
