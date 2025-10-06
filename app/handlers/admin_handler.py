@@ -1069,87 +1069,6 @@ async def users_with_overspent(message: types.Message):
         FSInputFile(file_path),
         caption="Пользователи с расходами выше пополнений"
     )
-import re
-
-def extract_link_number(link_code: str) -> int:
-    """Извлекает число после подчеркивания в link_code"""
-    match = re.search(r'_(\d+)$', link_code)
-    return int(match.group(1)) if match else 0
-
-@router.message(Command('petr_links'))
-async def petr_links_admin(message: types.Message):
-
-    if message.from_user.id not in ADMINS and message.from_user.id != USER_ACCESS_TO_THE_COMMAND:
-        logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links не может быть вызвана")
-        return
-
-    logger.bind(user_id=message.from_user.id, action="petr_links").log("USER_ACTION", "Команда /petr_links вызвана")
-
-    petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
-    if not petr_user:
-        await message.answer("Пользователь Petr не найден.")
-        return
-
-    links = await models.ReferralLink.filter(user=petr_user).all()
-    links = sorted(links, key=lambda link: extract_link_number(link.link_code))  # Правильная сортировка
-
-    if not links:
-        await message.answer("У Петра пока нет реферальных ссылок.")
-        return
-
-    bot_username = (await bot.me()).username
-    lines = []
-
-    for link in links:
-        url = f"https://t.me/{bot_username}?start={link.link_code}"
-        total_sum = f"{link.total_payment_amount:.2f}₽" if link.total_payment_amount else "0.00₽"
-        lines.append(
-            f"<b>Ссылка:</b> <code>{url}</code>\n"
-            f"├ Запусков бота: <b>{link.total_starts}</b>\n"
-            f"└ Оплат: <b>{link.total_pays}</b> (на сумму <b>{total_sum}</b>)\n"
-        )
-
-    await message.answer("\n".join(lines), parse_mode="HTML")
-
-
-
-@router.message(Command('create_petr_links'))
-async def petr_links_admin(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-
-    logger.bind(user_id=message.from_user.id, action="create_petr_links").log("USER_ACTION", "Команда /create_petr_links вызвана")
-
-    # Получаем юзера Петра по его telegram_id
-    petr_user = await models.User.get_or_none(telegram_id=REFERRAL_PREFIX)
-
-    if not petr_user:
-        await message.answer("Пётр не найден в базе данных.")
-        return
-
-    # Все ссылки Петра
-    petr_links = await ReferralLink.filter(user=petr_user).all()
-
-    # Определяем максимальный порядковый номер
-    max_number = 0
-    for link in petr_links:
-        try:
-            # Получаем число после подчеркивания
-            suffix = int(link.link_code.split('_')[-1])
-            if suffix > max_number:
-                max_number = suffix
-        except (ValueError, IndexError):
-            continue  # если вдруг формат странный, пропускаем
-
-    # Генерируем новую ссылку
-    new_suffix = max_number + 1
-    link_code = f"{REFERRAL_PREFIX}_{new_suffix}"
-
-    # Создаем или получаем ссылку
-    referral_link = await ReferralLink.get_or_create_link(user=petr_user, link_code=link_code)
-
-    await message.answer(f"Создана новая реферальная ссылка: {link_code}")
-
 
 
 @router.message(Command('help_admin'))
@@ -1170,9 +1089,13 @@ async def help_admin(message: types.Message):
     /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
     /users_with_overspent - Пользователи с расходами > пополнений (без учёта баланса)
     /petr_links - Статистика по реферальным ссылкам Петра
+    /whodi_links - Статистика по реферальным ссылкам whodi
     /create_petr_links - Создать новую реферальную ссылку для Петра следующую по порядку 
+    /create_whodi_links - Создать новую реферальную ссылку для whodi следующую по порядку 
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
     """
 
     await message.answer(f"<b>Доступные команды для админов:</b>\n{commands}", parse_mode="HTML")
+
+

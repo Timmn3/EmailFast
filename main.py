@@ -11,7 +11,7 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXEC
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
-    get_email_handler, receive_sms_handler, rent_number_handler, report
+    get_email_handler, receive_sms_handler, rent_number_handler, report, create_links
 )
 from app.handlers.health_check_router import health_check_router
 from app.services.keyboards import start_kb
@@ -34,7 +34,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 09.09.2025"
+msg_text = "Версия 06.10.2025"
 
 
 
@@ -85,6 +85,7 @@ async def main(dp: Dispatcher):
         get_email_handler.router,
         receive_sms_handler.router,
         rent_number_handler.router,
+        create_links.router,
     ]
 
     # Регистрация глобальных обработчиков ошибок
