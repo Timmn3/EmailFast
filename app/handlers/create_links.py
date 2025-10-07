@@ -35,10 +35,10 @@ async def _show_links(
         return
 
     # Проверка прав
-    if message.from_user.id not in ADMINS and message.from_user.id != USER_ACCESS_TO_THE_COMMAND:
-        logger.bind(user_id=message.from_user.id, action=f"{human_name.lower()}_links_denied") \
-              .log("USER_ACTION", f"Команда /{human_name.lower()}_links не может быть вызвана")
-        return
+    # if message.from_user.id not in ADMINS and message.from_user.id != USER_ACCESS_TO_THE_COMMAND:
+    #     logger.bind(user_id=message.from_user.id, action=f"{human_name.lower()}_links_denied") \
+    #           .log("USER_ACTION", f"Команда /{human_name.lower()}_links не может быть вызвана")
+    #     return
 
     logger.bind(user_id=message.from_user.id, action=f"{human_name.lower()}_links") \
           .log("USER_ACTION", f"Команда /{human_name.lower()}_links вызвана")
