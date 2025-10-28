@@ -120,7 +120,7 @@ async def _create_next_link(
 # ===========================
 @router.message(Command('petr_links'))
 async def petr_links(message: types.Message):
-    allowed_ids = set(ADMINS + [REFERRAL_PREFIX])
+    allowed_ids = set(ADMINS + [REFERRAL_PREFIX] + [USER_ACCESS_TO_THE_COMMAND])
     if message.from_user.id not in allowed_ids:
         return
     else:

@@ -19,7 +19,6 @@ class SmsReceive:
         """
         # Создаем экземпляр SMSActivateAPIAsync с API ключом
         self.sa = SMSActivateAPIAsync(api_key=dependencies.SMS_ACTIVATE_KEY)
-        # self.sa = SMSActivateAPIAsync(api_key='REDACTED')
         self.sa.debug_mode = False
 
     async def get_balance(self):
