@@ -28,6 +28,67 @@ import pytz
 import datetime
 
 from app.services.payments.yoomoney import check_payment_status
+# === AUTO REFUND & CLEANUP EXPIRED SMS ACTIVATIONS ===
+from tortoise import timezone
+from tortoise.transactions import in_transaction
+from loguru import logger
+
+from app.db.models import Activation, StatusResponse
+from app.dependencies import bot
+
+async def refund_and_cleanup_expired_sms() -> None:
+    """
+    Находит истёкшие (20 мин) активации, по которым не пришло СМС (WAIT_CODE),
+    удаляет сервисное сообщение, возвращает деньги и уведомляет пользователя.
+    """
+    now = timezone.now()
+    # Берём только те, по которым всё ещё ждём код
+    expired = await Activation.filter(
+        activation_expire_at__lte=now,
+        status=StatusResponse.STATUS_WAIT_CODE,
+    ).prefetch_related("user").all()
+
+    if not expired:
+        return
+
+    for act in expired:
+        try:
+            # 1) Пытаемся удалить выданное ранее сообщение с номером
+            if act.service_msg_id and act.user and act.user.telegram_id:
+                try:
+                    await bot.delete_message(
+                        chat_id=act.user.telegram_id,
+                        message_id=act.service_msg_id
+                    )
+                    logger.info(f"🗑 Удалено сервисное сообщение: activation_id={act.activation_id}, msg_id={act.service_msg_id}")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить сообщение activation_id={act.activation_id}: {e}")
+
+            # 2) Рефанд и перевод статуса в CANCEL — в транзакции
+            async with in_transaction():
+                # вернуть средства пользователю
+                if act.user:
+                    act.user.balance = float(act.user.balance or 0) + float(act.cost or 0)
+                    await act.user.save(update_fields=["balance"])
+
+                # помечаем активацию как отменённую
+                act.status = StatusResponse.STATUS_CANCEL
+                await act.save(update_fields=["status"])
+
+            # 3) Уведомление пользователю
+            try:
+                await bot.send_message(
+                    chat_id=act.user.telegram_id,
+                    text=(
+                        "⛔️ <b>СМС не поступило</b>\n\n"
+                        "💰 Деньги вернулись на баланс.\n"
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Не удалось отправить уведомление пользователю {act.user.telegram_id}: {e}")
+
+        except Exception as e:
+            logger.opt(exception=e).error(f"Ошибка при обработке истёкшей активации id={act.id}")
 
 
 async def check_payment_lava():

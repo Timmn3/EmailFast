@@ -418,7 +418,7 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     flag_and_country = f"{flag} {country}"
 
     if service != "Telegram":
-        await message.answer(
+        sent = await message.answer(
             text=bt.SERVICE_INFO.format(
                 country=flag_and_country,
                 service=service,
@@ -427,7 +427,7 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
             reply_markup=mk
         )
     else:
-        await message.answer(
+        sent = await message.answer(
             text=bt.SERVICE_INFO_TELEGRAM.format(
                 country=flag_and_country,
                 service=service,
@@ -436,6 +436,14 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
             reply_markup=mk
         )
 
+    # ⬇️ Сохраняем message_id для последующего удаления
+    try:
+        activation.service_msg_id = sent.message_id
+        await activation.save(update_fields=["service_msg_id"])
+    except Exception as e:
+        logger.opt(exception=e).error("Не удалось сохранить service_msg_id у активации")
+
+    # Лог
     user_id = message.from_user.id
     logger.bind(user_id=user_id, action='send_service_info_with_keyboard').log(
         "USER_ACTION",

@@ -836,6 +836,7 @@ class Activation(Model):
     status: StatusResponse = fields.IntEnumField(StatusResponse, default=StatusResponse.STATUS_WAIT_CODE)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     activation_expire_at: datetime = fields.DatetimeField(null=True)
+    service_msg_id: int = fields.BigIntField(null=True)
 
     @classmethod
     async def add_activation_sms_activate(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,

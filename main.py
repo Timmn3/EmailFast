@@ -21,7 +21,7 @@ from app.services.periodic_tasks import (
     check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify,
     check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
-    checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration
+    checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration, refund_and_cleanup_expired_sms
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
@@ -167,6 +167,15 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(close_rent, "interval", minutes=1, max_instances=3)
             # Проверка незавершенных аренд
             scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
+
+            scheduler.add_job(
+                refund_and_cleanup_expired_sms,
+                "interval",
+                seconds=20,  # частота проверки
+                max_instances=1,  # не пускать параллельные копии
+                coalesce=True,  # если пропустили — выполнить один раз
+                misfire_grace_time=10  # окно на отставание
+            )
         else:
             logger.info(f'ON_SCHEDULE выключен ({ON_SCHEDULE})')
     except Exception as e:
