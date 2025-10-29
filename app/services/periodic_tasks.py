@@ -80,8 +80,8 @@ async def refund_and_cleanup_expired_sms() -> None:
                 await bot.send_message(
                     chat_id=act.user.telegram_id,
                     text=(
-                        "⛔️ <b>СМС не поступило</b>\n\n"
-                        "💰 Деньги вернулись на баланс.\n"
+                        "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс.</b>\n\n"
+                        "🔄Попробуйте новый номер или выберите другую страну.\n"
                     )
                 )
             except Exception as e:
