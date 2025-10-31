@@ -347,7 +347,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 service=service,
                 cost=price,
                 phone_number=phone_number,
-                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=10)
+                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
             )
             service = activation.service.name
         else:
@@ -358,7 +358,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 service_2=service,
                 cost=price,
                 phone_number=phone_number,
-                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=10)
+                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
             )
             service = activation.service_2.name
 
