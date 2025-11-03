@@ -251,11 +251,31 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         # если onlinesim
         if not await service_is_smsactivate():
             tariffs = await fetch_tariffs(country_id, service_code)
+            print(f'доступный тариф {tariffs}')
             if tariffs is None:
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION",
                     "Нет доступных номеров OnlineSim"
                 )
+                await c.message.answer(text=NOT_NUMBERS_ALERT)
+                return
+        else:
+            # ===== 1a) если это ветка SMSActivate — сначала смотрим, есть ли номера у провайдера по конкретно этой стране =====
+            sms = SmsReceive()
+            has_numbers = False
+            try:
+                services_in_country = await sms.get_services_by_country_id(country_id=country_id)
+                for svc in services_in_country:
+                    if svc["code"] == service_code and svc["count"] > 0:
+                        has_numbers = True
+                        break
+            except Exception as e:
+                # если вдруг не смогли спросить у провайдера — ведём себя как раньше
+                logger.bind(user_id=user_id, action='send_service_on_country').warning(
+                    f"Не удалось проверить наличие номеров у SMSActivate: {e}"
+                )
+
+            if not has_numbers:
                 await c.message.answer(text=NOT_NUMBERS_ALERT)
                 return
 
