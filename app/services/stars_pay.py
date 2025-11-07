@@ -17,16 +17,10 @@ from aiogram.exceptions import TelegramBadRequest
 from app.services.periodic_tasks import send_coder, balance_replenishment_notification
 
 
-# def payment_keyboard(amount):
-#     builder = InlineKeyboardBuilder()
-#     builder.button(text=f"Оплатить {amount} ⭐️", pay=True)
-#
-#     return builder.as_markup()
-
 def payment_keyboard(amount):
-    # кнопку оплаты звёздами скрываем
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
+    builder.button(text=f"Оплатить {amount} ⭐️", pay=True)
+
     return builder.as_markup()
 
 

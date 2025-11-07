@@ -135,7 +135,7 @@ def payment_method_window_country():
         Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_LAVA), id='SBP', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_ANYPAY), id='anypay', on_click=send_payment_keyboard_anypay),
-        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
+        # Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit),
@@ -149,7 +149,7 @@ def payment_method_window_country_minimum_pay():
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment),
-        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
+        # Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit),
