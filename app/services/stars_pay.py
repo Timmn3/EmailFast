@@ -57,28 +57,29 @@ async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, man
     await c.answer()
 
 
-# async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
-#     """
-#     Обрабатывает PreCheckoutQuery (предварительный запрос на оплату) от пользователя.
-#
-#     Этот обработчик вызывается при получении предварительного запроса на оплату.
-#     Он выполняет следующие действия:
-#     1. Получает пользователя по его идентификатору.
-#     2. Извлекает сумму последнего платежа пользователя.
-#     3. Сохраняет информацию о платеже в базу данных.
-#     4. Отвечает на предварительный запрос с положительным результатом.
-#
-#     :param pre_checkout_query: Объект PreCheckoutQuery, содержащий информацию о запросе на оплату.
-#     :param dialog_manager: DialogManager
-#     """
-#     # Получаем объект пользователя по его Telegram ID
-#     user = await models.User.get_user(pre_checkout_query.from_user.id)
-#     # Извлекаем сумму последнего платежа пользователя
-#     amount = await models.Payment.get_last_payment_amount(user.id)
-#     # Сохраняем информацию о платеже в базу данных
-#     await save_payment_to_database(user, amount)
-#     # Отправляем подтверждение успешного предварительного запроса на оплату
-#     await pre_checkout_query.answer(ok=True)
+async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
+    """
+    Обрабатывает PreCheckoutQuery (предварительный запрос на оплату) от пользователя.
+
+    Этот обработчик вызывается при получении предварительного запроса на оплату.
+    Он выполняет следующие действия:
+    1. Получает пользователя по его идентификатору.
+    2. Извлекает сумму последнего платежа пользователя.
+    3. Сохраняет информацию о платеже в базу данных.
+    4. Отвечает на предварительный запрос с положительным результатом.
+
+    :param pre_checkout_query: Объект PreCheckoutQuery, содержащий информацию о запросе на оплату.
+    :param dialog_manager: DialogManager
+    """
+    pass
+    # # Получаем объект пользователя по его Telegram ID
+    # user = await models.User.get_user(pre_checkout_query.from_user.id)
+    # # Извлекаем сумму последнего платежа пользователя
+    # amount = await models.Payment.get_last_payment_amount(user.id)
+    # # Сохраняем информацию о платеже в базу данных
+    # await save_payment_to_database(user, amount)
+    # # Отправляем подтверждение успешного предварительного запроса на оплату
+    # await pre_checkout_query.answer(ok=True)
 
 
 async def save_payment_to_database(user, amount):
