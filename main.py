@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
-from aiogram import Dispatcher
+from aiogram import Dispatcher, F
 from app.db.database import init_db
 from app.dependencies import bot, ON_SCHEDULE, DB_NAME
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
@@ -113,6 +113,8 @@ async def main(dp: Dispatcher):
 
     # Регистрация обработчика оплаты
     dp.pre_checkout_query.register(stars_pay.pre_checkout_handler)
+    dp.message.register(stars_pay.successful_payment_handler, F.successful_payment)
+
 
     dp.errors.register(error_handler)
 

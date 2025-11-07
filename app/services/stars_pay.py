@@ -59,27 +59,51 @@ async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, man
 
 async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
     """
-    Обрабатывает PreCheckoutQuery (предварительный запрос на оплату) от пользователя.
+    Обрабатывает PreCheckoutQuery (предварительный запрос на оплату) от Telegram.
 
-    Этот обработчик вызывается при получении предварительного запроса на оплату.
-    Он выполняет следующие действия:
-    1. Получает пользователя по его идентификатору.
-    2. Извлекает сумму последнего платежа пользователя.
-    3. Сохраняет информацию о платеже в базу данных.
-    4. Отвечает на предварительный запрос с положительным результатом.
-
-    :param pre_checkout_query: Объект PreCheckoutQuery, содержащий информацию о запросе на оплату.
-    :param dialog_manager: DialogManager
+    ВАЖНО:
+    - Здесь НИЧЕГО не начисляем пользователю и не создаём запись платежа.
+    - Только проверяем базовые параметры и говорим Telegram «ok=True»,
+      чтобы он завершил списание звёзд.
+    - Реальное пополнение баланса делаем уже в обработчике successful_payment.
     """
-    pass
-    # # Получаем объект пользователя по его Telegram ID
-    # user = await models.User.get_user(pre_checkout_query.from_user.id)
-    # # Извлекаем сумму последнего платежа пользователя
-    # amount = await models.Payment.get_last_payment_amount(user.id)
-    # # Сохраняем информацию о платеже в базу данных
-    # await save_payment_to_database(user, amount)
-    # # Отправляем подтверждение успешного предварительного запроса на оплату
-    # await pre_checkout_query.answer(ok=True)
+    try:
+        # Базовая валидация, чтобы не принять левый инвойс
+        if pre_checkout_query.currency != "XTR":
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="Неверная валюта платежа."
+            )
+            return
+
+        # Проверяем, что payload наш (старый формат тоже поддерживаем)
+        payload = pre_checkout_query.invoice_payload or ""
+        if payload and not payload.startswith("payment_in_stars"):
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="Некорректные данные заказа."
+            )
+            return
+
+        logger.bind(
+            user_id=pre_checkout_query.from_user.id,
+            action="pre_checkout_stars"
+        ).log(
+            "USER_ACTION",
+            f"PreCheckout Stars: amount={pre_checkout_query.total_amount}, payload={payload}"
+        )
+
+        # Здесь только подтверждаем предзапрос — без начислений
+        await pre_checkout_query.answer(ok=True)
+
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка в pre_checkout_handler (Stars)")
+        # В случае ошибки лучше не подтверждать платёж
+        await pre_checkout_query.answer(
+            ok=False,
+            error_message="Ошибка при обработке платежа. Попробуйте ещё раз."
+        )
+
 
 
 async def save_payment_to_database(user, amount):
@@ -108,3 +132,55 @@ async def save_payment_to_database(user, amount):
     await send_coder(msg_text)
     await user.save()
 
+async def successful_payment_handler(message: types.Message):
+    """
+    Обрабатывает сообщение об успешной оплате (в т.ч. Telegram Stars).
+
+    ВАЖНО:
+    - Сюда Telegram присылает событие ТОЛЬКО после того, как платёж реально прошёл.
+    - Здесь фиксируем платёж в базе и начисляем баланс.
+    - Обрабатываем только наши инвойсы в валюте XTR (Telegram Stars).
+    """
+    successful_payment = message.successful_payment
+
+    # Подстраховка: если по какой-то причине нет объекта платежа — выходим
+    if not successful_payment:
+        logger.warning("successful_payment_handler вызван без successful_payment")
+        return
+
+    # Обрабатываем только платежи в Stars
+    if successful_payment.currency != "XTR":
+        return
+
+    payload = successful_payment.invoice_payload or ""
+    # Обрабатываем только наши счета c payload "payment_in_stars"
+    if payload and not payload.startswith("payment_in_stars"):
+        return
+
+    # Получаем пользователя
+    user = await models.User.get_user(message.from_user.id)
+
+    # Telegram передаёт количество Stars в total_amount
+    stars_paid = successful_payment.total_amount
+
+    # В send_invoice_handler_stars было:
+    #   stars = int(round(amount) / 2)
+    # => amount (рубли) ≈ stars * 2
+    amount_rub = stars_paid * 2
+
+    logger.bind(
+        user_id=message.from_user.id,
+        action="successful_payment_stars"
+    ).log(
+        "USER_ACTION",
+        f"Успешная оплата Stars: {stars_paid}⭐ (~{amount_rub} ₽), payload={payload}"
+    )
+
+    # Фактическая запись платежа и начисление баланса (с учётом бонуса)
+    await save_payment_to_database(user, amount_rub)
+
+    # Сообщение пользователю
+    await message.answer(
+        f"✅ Оплата прошла успешно!\n"
+        f"💳 Зачислено: {amount_rub} ₽"
+    )
