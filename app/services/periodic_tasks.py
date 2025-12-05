@@ -522,6 +522,17 @@ async def check_sms():
             # Сохраняем изменения баланса пользователя в базе данных
             await activation.user.save()
 
+            try:
+                await bot.send_message(
+                    chat_id=activation.user.telegram_id,
+                    text=(
+                        "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс.</b>\n\n"
+                        "🔄Попробуйте новый номер или выберите другую страну.\n"
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Не удалось отправить уведомление пользователю {activation.user.telegram_id}: {e}")
+
             # Логируем возврат средств за истёкшую активацию
             logger.bind(
                 user_id=activation.user.telegram_id,
