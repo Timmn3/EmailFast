@@ -1,4 +1,5 @@
-from pyonlinesim import OnlineSMS
+from app.services.onlinesim.sms_client import OnlineSMS
+
 import asyncio
 
 API_KEY_ONLINESIM = "REDACTED"

@@ -1,6 +1,6 @@
-import aiohttp
 import asyncio
-
+from app.services.onlinesim.rate_limiter import ONLINESIM_RATE_LIMITER
+import aiohttp
 
 async def fetch_tariffs(country, filter_service):
     """
@@ -15,6 +15,7 @@ async def fetch_tariffs(country, filter_service):
     }
 
     async with aiohttp.ClientSession() as session:
+        await ONLINESIM_RATE_LIMITER.acquire()
         async with session.get(url, params=params) as response:
             if response.status == 200:
                 data = await response.json()
@@ -37,15 +38,6 @@ async def fetch_tariffs_all(country):
     """
     Асинхронная функция для получения списка цен и идентификаторов услуг (slug) по указанной стране
     и фильтру услуги через API OnlineSim.
-
-    Args:
-        country (int): Код страны, для которой нужно получить тарифы (например, 7 для России).
-
-    Returns:
-        list: Список словарей с ключами "price", "slug" и "service", если запрос успешен.
-              Например, [{"price": "58.50", "slug": "telegram", "service": "Telegram"},
-                         {"price": "60.00", "slug": "whatsapp", "service": "WhatsApp"}]
-        dict: Словарь с ключами "error" и "message", если запрос завершился с ошибкой.
     """
     url = "https://onlinesim.io/api/getTariffs.php"
     params = {
@@ -54,17 +46,17 @@ async def fetch_tariffs_all(country):
     }
 
     async with aiohttp.ClientSession() as session:
+        await ONLINESIM_RATE_LIMITER.acquire()
         async with session.get(url, params=params) as response:
             if response.status == 200:
                 data = await response.json()
 
                 services = data.get("services", {})
-                print(services)  # Вывод для отладки
                 results = []
                 for service_info in services.values():
                     price = service_info.get("price")
                     slug = service_info.get("slug")
-                    service = service_info.get("service")  # Добавляем поле "service"
+                    service = service_info.get("service")
 
                     if price and slug and service:
                         results.append({"price": price, "slug": slug, "service": service})
@@ -73,7 +65,37 @@ async def fetch_tariffs_all(country):
                 return {"error": response.status, "message": await response.text()}
 
 
-import aiohttp
+async def fetch_tariffs_all_countries():
+    """
+    Асинхронная функция для получения списка цен по всем странам и сервисам через API OnlineSim,
+    добавляя названия сервисов из LIST_OF_SERVICES.
+    """
+    url = "https://onlinesim.io/api/price-list-data"
+    params = {"type": "receive", "locale_price": "RUB"}
+
+    async with aiohttp.ClientSession() as session:
+        await ONLINESIM_RATE_LIMITER.acquire()
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                country_services = data.get("list", {})
+
+                formatted_data = {}
+                for country, services in country_services.items():
+                    formatted_data[country] = [
+                        {
+                            "price": price,
+                            "slug": slug,
+                            "service": LIST_OF_SERVICES.get(slug, slug.capitalize())
+                        }
+                        for slug, price in services.items()
+                    ]
+
+                return formatted_data
+            else:
+                return {"error": response.status, "message": await response.text()}
+
+
 
 LIST_OF_SERVICES = {
     'groupme': 'GroupMe', 'openai': 'ChatGPT | OpenAI', 'iost': 'IOST', 'redbook': 'RedBook',
@@ -104,34 +126,6 @@ LIST_OF_SERVICES = {
 }
 
 
-async def fetch_tariffs_all_countries():
-    """
-    Асинхронная функция для получения списка цен по всем странам и сервисам через API OnlineSim,
-    добавляя названия сервисов из LIST_OF_SERVICES.
-    """
-    url = "https://onlinesim.io/api/price-list-data"
-    params = {"type": "receive", "locale_price": "RUB"}  # Добавляем параметр RUB
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, params=params) as response:
-            if response.status == 200:
-                data = await response.json()
-                country_services = data.get("list", {})
-
-                formatted_data = {}
-                for country, services in country_services.items():
-                    formatted_data[country] = [
-                        {
-                            "price": price,
-                            "slug": slug,
-                            "service": LIST_OF_SERVICES.get(slug, slug.capitalize())
-                        }
-                        for slug, price in services.items()
-                    ]
-
-                return formatted_data
-            else:
-                return {"error": response.status, "message": await response.text()}
 
 
 # Пример вызова функции

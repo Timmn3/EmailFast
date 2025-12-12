@@ -3,7 +3,8 @@ from math import floor
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import types
 from aiohttp import ClientSession
-from pyonlinesim import OnlineSMS
+from app.services.onlinesim.sms_client import OnlineSMS
+
 from tortoise import timezone
 from loguru import logger
 from app import dependencies

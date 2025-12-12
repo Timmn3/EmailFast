@@ -1,7 +1,8 @@
 from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
-from pyonlinesim import OnlineSMS
+from app.services.onlinesim.sms_client import OnlineSMS
+
 from aiogram.exceptions import TelegramBadRequest
 from app.db import models
 from app.dependencies import API_KEY_ONLINESIM, bot

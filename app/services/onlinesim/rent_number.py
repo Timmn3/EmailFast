@@ -1,6 +1,7 @@
 import aiohttp
 
 from app.dependencies import API_KEY_ONLINESIM
+from app.services.onlinesim.rate_limiter import ONLINESIM_RATE_LIMITER
 
 
 class OnlineSimRentAPI:
@@ -31,6 +32,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
+                await ONLINESIM_RATE_LIMITER.acquire()
                 async with session.get(f"{self.BASE_URL}/tariffsRent.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
@@ -78,6 +80,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
+                await ONLINESIM_RATE_LIMITER.acquire()
                 async with session.get(f"{self.BASE_URL}/getRentNum.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
@@ -110,6 +113,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
+                await ONLINESIM_RATE_LIMITER.acquire()
                 async with session.get(f"{self.BASE_URL}/extendRentState.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
@@ -143,6 +147,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
+                await ONLINESIM_RATE_LIMITER.acquire()
                 async with session.get(f"{self.BASE_URL}/getRentState.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
@@ -173,6 +178,7 @@ class OnlineSimRentAPI:
 
         async with aiohttp.ClientSession() as session:
             try:
+                await ONLINESIM_RATE_LIMITER.acquire()
                 async with session.get(f"{self.BASE_URL}/closeRentNum.php", params=params) as response:
                     if response.status != 200:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")

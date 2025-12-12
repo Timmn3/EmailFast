@@ -7,7 +7,8 @@ from aiogram import types
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
-from pyonlinesim import OnlineSMS
+from app.services.onlinesim.sms_client import OnlineSMS
+
 from app.db import models
 from app.db.models import PriceOnlinesim
 from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
