@@ -1655,3 +1655,56 @@ class ReferralLink(Model):
         if not link:
             link = await cls.create(user=user, link_code=link_code)
         return link
+
+
+# =========================================================
+# Техподдержка через "темы" (Forum Topics) в супергруппе
+# Храним связь: telegram_id пользователя ↔ thread_id топика
+# =========================================================
+
+class SupportForumTopic(Model):
+    class Meta:
+        table = "support_forum_topics"
+        table_description = "Support: связь пользователя Telegram ↔ topic (message_thread_id)"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+
+    # telegram_id пользователя, который пишет в поддержку
+    telegram_id: int = fields.BigIntField(unique=True, index=True)
+
+    # message_thread_id топика в супергруппе-форуме
+    thread_id: int = fields.IntField(unique=True, index=True)
+
+    # Название топика (чтобы можно было переименовывать/восстанавливать)
+    title: str = fields.CharField(max_length=128, null=True)
+
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+class SupportForumSetting(Model):
+    class Meta:
+        table = "support_forum_settings"
+        table_description = "Support: настройки форум-группы (chat_id)"
+        ordering = ["key"]
+
+    key: str = fields.CharField(pk=True, max_length=64)
+    value: str = fields.TextField(null=False)
+
+    updated_at: datetime = fields.DatetimeField(auto_now=True)
+
+
+class SupportForumMessageMap(Model):
+    class Meta:
+        table = "support_forum_message_map"
+        table_description = "Support: связь сообщения в группе ↔ telegram_id пользователя"
+        unique_together = (("group_chat_id", "message_id"),)
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+
+    group_chat_id: int = fields.BigIntField(index=True)
+    message_id: int = fields.IntField(index=True)
+    telegram_id: int = fields.BigIntField(index=True)
+
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
