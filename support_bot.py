@@ -41,8 +41,7 @@ def build_start_router() -> Router:
     @start_router.message(CommandStart())
     async def start_cmd(message):
         await message.answer(
-            "👋 Это бот поддержки.\n\n"
-            "Напишите сюда сообщение (можно фото/файлы) — оно попадёт в отдельный топик у операторов."
+            "Здравствуйте! Операторы онлайн, расскажите что у вас случилось?"
         )
 
     return start_router
