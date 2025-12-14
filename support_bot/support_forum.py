@@ -179,9 +179,7 @@ async def user_to_forum(message: Message):
                 chat_id=forum_chat_id,
                 message_thread_id=thread_id,
                 text=(
-                    f"📩 <b>Сообщение от</b> <a href='tg://user?id={message.from_user.id}'>{message.from_user.full_name}</a>"
-                    + (f" (@{message.from_user.username})" if message.from_user.username else "")
-                    + f"\n🆔 <code>{message.from_user.id}</code>\n\n"
+                    f"\n🆔 <code>{message.from_user.id}</code>\n\n"
                     f"{message.text}"
                 ),
                 disable_web_page_preview=True,
