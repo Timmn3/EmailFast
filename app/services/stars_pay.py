@@ -26,8 +26,24 @@ def payment_keyboard(amount):
 
 async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, manager: DialogManager):
     ctx = manager.current_context()
-    amount = ctx.dialog_data.get('stars', 0)
-    stars = int(round(amount) / 2)
+    raw_amount = ctx.dialog_data.get("stars", 0)
+
+    # Stars (XTR) — только целое число, поэтому:
+    # 1⭐ = 2₽, а сумму в рублях округляем ВВЕРХ до ближайших 2₽.
+    try:
+        amount = int(raw_amount)
+    except (TypeError, ValueError):
+        amount = 0
+
+    if amount <= 0:
+        await c.message.answer("Сумма должна быть больше 0 ₽.")
+        await c.answer()
+        return
+
+    # Округление вверх: 117₽ -> 59⭐ (118₽)
+    stars = (amount + 1) // 2
+    credited_rub = stars * 2
+
     prices = [LabeledPrice(label="XTR", amount=stars)]
 
     try:
