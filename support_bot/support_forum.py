@@ -161,13 +161,17 @@ async def user_to_forum(message: Message):
     Пользователь пишет боту → уходит в топик (1 пользователь = 1 топик).
     """
     # команды (например /start) не считаем обращением в поддержку
-    if message.text and message.text.startswith("/"):
+    cmd_text = (message.text or message.caption or "")
+    if cmd_text.startswith("/"):
         return
 
     forum_chat_id = await _get_forum_chat_id()
     if not forum_chat_id:
         await message.answer("⚠️ Поддержка ещё не настроена. Напишите позже.")
         return
+
+    user_id = message.from_user.id
+    prefix = f"🆔 <code>{user_id}</code>\n\n"
 
     # 1) получаем thread_id (может быть устаревшим в БД)
     thread_id = await _ensure_topic(message, forum_chat_id)
@@ -178,24 +182,18 @@ async def user_to_forum(message: Message):
             sent = await message.bot.send_message(
                 chat_id=forum_chat_id,
                 message_thread_id=thread_id,
-                text=(
-                    f"\n🆔 <code>{message.from_user.id}</code>\n\n"
-                    f"{message.text}"
-                ),
+                text=f"{prefix}{message.text}",
                 disable_web_page_preview=True,
             )
         except TelegramBadRequest as e:
             # Если топик не найден — удаляем связь и создаём новый топик, затем повторяем отправку 1 раз.
             if _is_thread_not_found(e):
-                await _drop_user_topic(message.from_user.id)
+                await _drop_user_topic(user_id)
                 thread_id = await _ensure_topic(message, forum_chat_id)
                 sent = await message.bot.send_message(
                     chat_id=forum_chat_id,
                     message_thread_id=thread_id,
-                    text=(
-                        f"\n🆔 <code>{message.from_user.id}</code>\n\n"
-                        f"{message.text}"
-                    ),
+                    text=f"{prefix}{message.text}",
                     disable_web_page_preview=True,
                 )
             else:
@@ -204,16 +202,59 @@ async def user_to_forum(message: Message):
         await models.SupportForumMessageMap.create(
             group_chat_id=forum_chat_id,
             message_id=sent.message_id,
-            telegram_id=message.from_user.id,
+            telegram_id=user_id,
         )
         return
 
-    # 3) отправка медиа/файлов
+    # 3) отправка медиа/файлов (ВАЖНО: если есть подпись — дописываем туда ID)
+    if message.caption:
+        caption = f"{prefix}{message.caption}"
+
+        # Telegram ограничивает caption 1024 символами
+        if len(caption) > 1024:
+            avail = 1024 - len(prefix) - 1
+            if avail > 0:
+                caption = f"{prefix}{message.caption[:avail]}…"
+            else:
+                caption = prefix[:1024]
+
+        try:
+            sent = await message.copy_to(
+                chat_id=forum_chat_id,
+                message_thread_id=thread_id,
+                caption=caption,
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest as e:
+            if _is_thread_not_found(e):
+                await _drop_user_topic(user_id)
+                thread_id = await _ensure_topic(message, forum_chat_id)
+                sent = await message.copy_to(
+                    chat_id=forum_chat_id,
+                    message_thread_id=thread_id,
+                    caption=caption,
+                    parse_mode="HTML",
+                )
+            else:
+                raise
+        except Exception as e:
+            logger.opt(exception=e).error("Не удалось переслать сообщение в поддержку")
+            await message.answer("❌ Не получилось отправить сообщение в поддержку. Попробуйте ещё раз.")
+            return
+
+        await models.SupportForumMessageMap.create(
+            group_chat_id=forum_chat_id,
+            message_id=sent.message_id,
+            telegram_id=user_id,
+        )
+        return
+
+    # 4) медиа без подписи
     try:
         sent = await message.copy_to(chat_id=forum_chat_id, message_thread_id=thread_id)
     except TelegramBadRequest as e:
         if _is_thread_not_found(e):
-            await _drop_user_topic(message.from_user.id)
+            await _drop_user_topic(user_id)
             thread_id = await _ensure_topic(message, forum_chat_id)
             sent = await message.copy_to(chat_id=forum_chat_id, message_thread_id=thread_id)
         else:
@@ -226,7 +267,7 @@ async def user_to_forum(message: Message):
     await models.SupportForumMessageMap.create(
         group_chat_id=forum_chat_id,
         message_id=sent.message_id,
-        telegram_id=message.from_user.id,
+        telegram_id=user_id,
     )
 
 
