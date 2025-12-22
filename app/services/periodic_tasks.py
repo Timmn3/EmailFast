@@ -461,13 +461,17 @@ async def check_sms():
                 current_sms = activation.sms_text if activation.sms_text is not None else '1'
 
                 # Извлекаем текст SMS из статуса
+                # Извлекаем полный текст SMS из статуса
                 sms_from_status_raw = status.split(":", 1)[1].strip()
 
-                # ВАЖНО: выдёргиваем именно код (цифры), чтобы не ловить "<#>" и прочий мусор
-                sms_digits = re.findall(r"\d+", sms_from_status_raw)
-                sms_from_status = sms_digits[0] if sms_digits else sms_from_status_raw
+                # Ты хочешь хранить/передавать весь текст — ок, просто фиксируем переменную
+                sms_from_status = sms_from_status_raw
 
-                activation.sms_text = sms_from_status
+                # ВАЖНО: выдёргиваем именно код (цифры), чтобы не ловить "<#>" и прочий мусор
+                # sms_digits = re.findall(r"\d+", sms_from_status_raw)
+                # sms_from_status = sms_digits[0] if sms_digits else sms_from_status_raw
+
+                activation.sms_text = sms_from_status_raw
                 await activation.save()
 
                 # Загружаем связанные данные пользователя и сервиса
