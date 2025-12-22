@@ -88,7 +88,7 @@ logger.add(
     level="USER_ACTION",
     rotation="10 MB",
     format=user_action_formatter,
-    enqueue=True
+    enqueue=False
 )
 
 # === Логирование ошибок с трассировкой ===
@@ -100,7 +100,7 @@ logger.add(
     backtrace=True,
     diagnose=True,
     compression="zip",
-    enqueue=True
+    enqueue=False
 )
 
 # === Общие логи приложения (без user_id/action) ===
@@ -113,7 +113,7 @@ logger.add(
         f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']} | "
         f"{r['message']}\n"
     ),
-    enqueue=True  # полезно при многопоточности
+    enqueue=False  # полезно при многопоточности
 )
 
 

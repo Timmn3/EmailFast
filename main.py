@@ -178,12 +178,12 @@ async def main(dp: Dispatcher):
 # === Планировщик задач ===
 def set_scheduled_jobs(scheduler):
     try:
-        scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
+
         if ON_SCHEDULE:
             # Проверка SMS
             scheduler.add_job(check_sms, "interval", seconds=10, max_instances=10)
             # Проверка Email
-
+            scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=10)
             # Проверка платежей через Streampay

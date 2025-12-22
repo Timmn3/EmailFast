@@ -84,7 +84,6 @@ async def get_unread_messages(mail_token: str) -> list:
 async def main():
     # Ваш токен
     token = "REDACTED"
-
     unread_messages = await get_unread_messages(token)
     if unread_messages:
         for msg in unread_messages:

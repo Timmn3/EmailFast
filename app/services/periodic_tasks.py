@@ -566,7 +566,6 @@ async def check_sms():
 import asyncio
 from aiogram.exceptions import TelegramBadRequest
 
-
 async def check_email():
     """
     Функция проверяет электронные почты на наличие новых сообщений и уведомляет пользователей через Telegram.
@@ -579,87 +578,139 @@ async def check_email():
         TelegramBadRequest: В случае ошибки при отправке сообщения через Telegram API.
     """
     try:
-        # Получаем список просроченных почтовых ящиков
+        # 1) Деактивация просроченных ящиков
         expired_emails = await models.Mail.get_expired_mails()
+        for expired_mail in expired_emails:
+            expired_mail.is_active = False
+            await expired_mail.save()
 
-        for mail in expired_emails:
-            # Деактивируем просроченные почтовые ящики
-            mail.is_active = False
-            await mail.save()
             logger.bind(
-                user_id=mail.user.telegram_id,
-                action="deactivate_mail"
-            ).log("USER_ACTION", f"Почтовый ящик {mail.email} деактивирован (истёк срок аренды)")
-            await asyncio.sleep(0)  # Позволяет другим задачам выполняться
+                user_id=expired_mail.user.telegram_id,
+                action="deactivate_mail",
+            ).log("USER_ACTION", f"Почтовый ящик {expired_mail.email} деактивирован (истёк срок аренды)")
 
-        # Получаем список активных почтовых ящиков и связанных с ними пользователей
-        mails = await models.Mail.filter(is_active=True).all().prefetch_related('user')
+            await asyncio.sleep(0)
+
+        # 2) Проверка активных ящиков (исключаем token=NULL, чтобы не спамить 401)
+        mails = await models.Mail.filter(is_active=True, token__isnull=False).prefetch_related("user")
+
         for mail in mails:
-            unread_messages = await get_unread_messages(mail.token)
+            # Получаем непрочитанные письма
+            try:
+                unread_messages = await get_unread_messages(mail.token)
+            except Exception as e:
+                status = getattr(e, "status", None)
+
+                # 401 = токен недействителен/истёк
+                if status == 401:
+                    mail.token = None
+
+                    if not mail.is_paid_mail:
+                        mail.is_active = False
+                        await mail.save(update_fields=["token", "is_active"])
+                    else:
+                        await mail.save(update_fields=["token"])
+
+                    logger.bind(
+                        user_id=getattr(mail.user, "telegram_id", None),
+                        action="mail_token_expired",
+                    ).log(
+                        "USER_ACTION",
+                        f"mail.tm вернул 401 Unauthorized — токен сброшен. "
+                        f"mail_id={mail.id} email={mail.email} is_paid_mail={mail.is_paid_mail}"
+                    )
+                else:
+                    logger.error(
+                        f"Ошибка при получении писем: mail_id={mail.id} email={mail.email} "
+                        f"user_id={getattr(mail.user, 'telegram_id', None)} err={type(e).__name__}: {e}"
+                    )
+
+                await asyncio.sleep(3)
+                continue
+
+            # 3) Обрабатываем каждое непрочитанное письмо для ТЕКУЩЕГО mail
             for unread_message in unread_messages:
-                # Если ящик бесплатный и сообщений больше 10, выходим из функции
+                # Лимит для бесплатных — прекращаем обработку этого ящика
                 if not mail.is_paid_mail and len(mail.old_messages_id) > 10:
                     logger.warning(f"Бесплатный ящик {mail.email} превысил лимит сообщений")
-                    return
+                    break
 
-                # Проверяем, было ли сообщение уже обработано
-                if unread_message['id'] not in mail.old_messages_id:
+                msg_id = unread_message.get("id")
+                if not msg_id:
+                    continue
 
-                    # Обновляем список старых сообщений и сохраняем изменения
-                    mail.old_messages_id.append(unread_message['id'])
+                if msg_id in mail.old_messages_id:
+                    continue
+
+                # Обновляем список старых сообщений
+                try:
+                    mail.old_messages_id.append(msg_id)
                     await mail.save()
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при сохранении old_messages_id: mail_id={mail.id} email={mail.email} "
+                        f"msg_id={msg_id} err={type(e).__name__}: {e}"
+                    )
+                    continue
 
-                    # Сохраняем новое сообщение в базе данных
+                # Сохраняем письмо в БД
+                try:
                     await models.Letter.add_letter(
                         mail=mail,
                         user=mail.user,
-                        text=unread_message['content']
+                        text=unread_message.get("content", ""),
                     )
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при сохранении письма в БД: mail_id={mail.id} email={mail.email} "
+                        f"msg_id={msg_id} err={type(e).__name__}: {e}"
+                    )
+                    continue
 
-                    mk = types.InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [types.InlineKeyboardButton(
+                mk = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            types.InlineKeyboardButton(
                                 text=bt.GET_FULL_MESSAGE,
-                                callback_data=f"full_unread_message|{unread_message['id']}|{mail.id}"
-                            )]
+                                callback_data=f"full_unread_message|{msg_id}|{mail.id}",
+                            )
                         ]
+                    ]
+                )
+
+                msg_text = (
+                    f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
+                    f'<b>От кого:</b> {unread_message.get("from")}\n'
+                    f'<b>Тема:</b> {unread_message.get("subject")}\n\n'
+                    f'{unread_message.get("content", "")}'
+                )
+
+                # Отправка в Telegram
+                try:
+                    await bot.send_message(
+                        chat_id=mail.user.telegram_id,
+                        text=msg_text,
+                        reply_markup=mk,
                     )
 
-                    # Формируем текст уведомления для пользователя
-                    msg_text = (
-                        f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
-                        f'<b>От кого:</b> {unread_message["from"]}\n<b>Тема:</b> {unread_message["subject"]}\n\n'
-                        f'{unread_message["content"]}'
+                    logger.bind(
+                        user_id=mail.user.telegram_id,
+                        action="new_email",
+                    ).log("USER_ACTION", f"Новое сообщение на ящике {mail.email}: {unread_message.get('subject')}")
+                except TelegramBadRequest as e:
+                    logger.warning(f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}")
+                except Exception as e:
+                    logger.error(
+                        f"Неожиданная ошибка при отправке сообщения: user_id={mail.user.telegram_id} "
+                        f"mail_id={mail.id} email={mail.email} err={type(e).__name__}: {e}"
                     )
 
-                    try:
-                        # Пытаемся отправить уведомление пользователю через Telegram
-                        await bot.send_message(
-                            chat_id=mail.user.telegram_id,
-                            text=msg_text,
-                            reply_markup=mk
-                        )
-                        # Логгируем успешное получение нового письма
-                        logger.bind(
-                            user_id=mail.user.telegram_id,
-                            action="new_email"
-                        ).log("USER_ACTION", f"Новое сообщение на ящике {mail.email}: {unread_message['subject']}")
-
-                    except TelegramBadRequest as e:
-                        # Логируем ошибку отправки Telegram-сообщения
-                        logger.opt(exception=e).warning(
-                            f"Ошибка при отправке сообщения пользователю {mail.user.telegram_id}: {e}"
-                        )
-
-                await asyncio.sleep(0)  # Уступаем управление другим задачам
+            await asyncio.sleep(0)
 
     except asyncio.CancelledError:
-        pass
-
+        raise
     except Exception as e:
-        # Логируем любую необработанную ошибку
-        # logger.opt(exception=e).error("Необработанная ошибка в check_email()")
-        logger.error(e)
+        logger.error(f"Необработанная ошибка в check_email(): {type(e).__name__}: {e}")
 
 
 async def get_services_names():
