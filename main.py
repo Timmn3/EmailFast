@@ -34,21 +34,63 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 14.12.2025"
+msg_text = "Версия 23.12.2025"
 
 
 
-async def on_unknown_intent(event, exception):
-    user_id = getattr(event.from_user, 'id', 'unknown') if isinstance(event, Message) else 'unknown'
+from contextlib import suppress
+from aiogram.types import Message, CallbackQuery
+
+async def on_unknown_intent(
+    event: Message | CallbackQuery,
+    exception: Exception | None = None,
+    error: Exception | None = None,
+) -> None:
+    # В разных версиях aiogram/aiogram_dialog ошибка может приходить как `error` или как `exception`
+    exc = error or exception
+
+    user = getattr(event, "from_user", None)
+    user_id = getattr(user, "id", "unknown")
+
     logger.bind(user_id=user_id).log("USER_ACTION", "Неизвестный intent – возврат в главное меню")
+    if exc:
+        logger.opt(exception=exc).warning("UnknownIntent пойман обработчиком")
 
+    # Если это callback — обязательно ответим, чтобы убрать “часики”
+    if isinstance(event, CallbackQuery):
+        with suppress(Exception):
+            await event.answer("Кнопка устарела. Откройте меню заново.", show_alert=False)
+
+        if event.message:
+            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        return
+
+    # Если это обычное сообщение
     if isinstance(event, Message):
         await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
 
 
-async def on_unknown_state(event):
-    user_id = getattr(event.from_user, 'id', 'unknown') if isinstance(event, Message) else 'unknown'
+async def on_unknown_state(
+    event: Message | CallbackQuery,
+    exception: Exception | None = None,
+    error: Exception | None = None,
+) -> None:
+    exc = error or exception
+
+    user = getattr(event, "from_user", None)
+    user_id = getattr(user, "id", "unknown")
+
     logger.bind(user_id=user_id).log("USER_ACTION", "Неизвестный state – возврат в главное меню")
+    if exc:
+        logger.opt(exception=exc).warning("UnknownState пойман обработчиком")
+
+    if isinstance(event, CallbackQuery):
+        with suppress(Exception):
+            await event.answer("Сессия устарела. Откройте меню заново.", show_alert=False)
+
+        if event.message:
+            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        return
 
     if isinstance(event, Message):
         await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
@@ -136,11 +178,12 @@ async def main(dp: Dispatcher):
 # === Планировщик задач ===
 def set_scheduled_jobs(scheduler):
     try:
+        scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
         if ON_SCHEDULE:
             # Проверка SMS
             scheduler.add_job(check_sms, "interval", seconds=10, max_instances=10)
             # Проверка Email
-            scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
+
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=10)
             # Проверка платежей через Streampay
