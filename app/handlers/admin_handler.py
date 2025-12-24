@@ -19,7 +19,9 @@ from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum
 import calendar
+from celery_worker import tasks as broadcast_tasks
 from celery_worker.tasks import send_message_batch
+
 from aiogram.types import FSInputFile
 
 
@@ -383,7 +385,13 @@ async def on_send_message(message: types.Message, state: FSMContext):
         message_id=message.message_id
     )
 
-    users_count = await models.User.all().count()
+    if broadcast_tasks.test:
+        users_count = len(set(broadcast_tasks.LIMITED_USERS))
+        mode_note = " (тестовый режим)"
+    else:
+        users_count = await models.User.filter(telegram_id__isnull=False).count()
+        mode_note = ""
+
     mk = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -394,10 +402,9 @@ async def on_send_message(message: types.Message, state: FSMContext):
     )
 
     await message.answer(
-        text=f'Сообщение выше будет отправлено {users_count} пользователям. Продолжить?',
+        text=f'Сообщение выше будет отправлено {users_count} пользователям{mode_note}. Продолжить?',
         reply_markup=mk
     )
-
 
 
 @router.callback_query(F.data == 'send_message_celery')
