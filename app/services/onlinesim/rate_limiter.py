@@ -30,5 +30,5 @@ class RateLimiter:
             self._next_allowed_ts = now + self._min_interval
 
 
-# OnlineSim: 2 запроса в секунду => 0.5 сек между запросами
-ONLINESIM_RATE_LIMITER = RateLimiter(requests_per_second=2)
+# OnlineSim: 1 запрос в секунду
+ONLINESIM_RATE_LIMITER = RateLimiter(requests_per_second=1)
