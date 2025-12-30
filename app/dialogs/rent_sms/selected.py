@@ -202,21 +202,55 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         user = await models.User.get_user(c.from_user.id)
         country_code = selected_country["rent_country_code"]  # Код страны из context
 
+        # Создаем экземпляр API клиента заранее — он нужен и для precheck, и для аренды
+        api_client = OnlineSimRentAPI()
+
         # Проверяем, достаточно ли у пользователя средств на балансе
         if user.balance < price:
+            # ✅ Сначала проверяем, есть ли вообще номера по этой стране (чтобы не просить пополнение зря)
+            try:
+                logger.bind(user_id=user_id, action='rent_number_in_days').log(
+                    "USER_ACTION",
+                    f"Precheck наличия номеров перед пополнением: страна={country_code}, дни={days}"
+                )
+                precheck_result = await api_client.rent_number(country=int(country_code), days=days)
+            except Exception as e:
+                err_text = str(e)
+                # API иногда возвращает NO_NUMBER исключением — ловим это
+                if "NO_NUMBER" in err_text or "NO_NUMBERS" in err_text:
+                    await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                    return
+                # Любая другая ошибка (чаще всего NO_MONEY) — продолжаем к пополнению
+                precheck_result = "error"
+
+            # API иногда возвращает NO_NUMBER как None — ловим и это
+            if precheck_result is None:
+                await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                return
+
+            # Если вдруг вернулся успешный rent (не должно при нехватке средств) — пробуем закрыть, чтобы не «утек» номер
+            if isinstance(precheck_result, dict) and precheck_result.get("tzid"):
+                try:
+                    await api_client.close_rent_num(tzid=int(precheck_result["tzid"]))
+                except Exception as close_e:
+                    logger.opt(exception=close_e).warning("Не удалось закрыть аренду после precheck")
+
             logger.bind(user_id=user_id, action='rent_number_in_days').log(
                 "USER_ACTION",
                 f"Недостаточно средств для аренды. Требуется: {price}, доступно: {user.balance}"
             )
 
-            missing_amount = max(price - user.balance, 50.0) if user.balance < price else 0.0
-            manager.current_context().dialog_data.update({'day_index': day_index, 'selected_country': selected_country,
-                                                          'rent_country_code': country_code, 'price': missing_amount})
+            missing_amount = max(price - user.balance, 50.0)
+            manager.current_context().dialog_data.update({
+                'day_index': day_index,
+                'selected_country': selected_country,
+                'rent_country_code': country_code,
+                'price': missing_amount
+            })
             from app.dialogs.personal_cabinet.selected import send_payment_keyboard
             await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
-
-            # await manager.switch_to(RentCountryMenu.deposit)
             return
+
 
 
         sent_message = await c.message.answer(text=NUMBER_REQUEST_SENT)
@@ -237,8 +271,6 @@ async def rent_number_in_days(c: types.CallbackQuery, widget: Select, manager: D
         # Обновляем время последнего запроса
         user.last_request_time = current_time.astimezone(pytz.utc)
         await user.save(update_fields=['last_request_time'])
-        # Создаем экземпляр API клиента и делаем запрос аренды
-        api_client = OnlineSimRentAPI()
 
         try:
             if tzid is None:

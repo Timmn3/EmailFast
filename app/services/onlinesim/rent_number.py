@@ -57,7 +57,7 @@ class OnlineSimRentAPI:
             extension: bool = True,
             pagination: bool = False,
             lang: str = "ru"
-    ) -> dict:
+    ) -> dict | None:
         """
         Аренда номера для приема SMS.
 
@@ -66,8 +66,8 @@ class OnlineSimRentAPI:
         :param extension: bool - Автопродление аренды (по умолчанию: True).
         :param pagination: bool - Пагинация сообщений (по умолчанию: False).
         :param lang: str - Язык ответа (по умолчанию: "ru").
-        :return: dict - Данные об арендованном номере.
-        :raises: Exception - В случае ошибки запроса.
+        :return: dict | None - Данные об арендованном номере или None, если нет доступных номеров.
+        :raises: Exception - В случае ошибки запроса/неожиданного ответа API.
         """
         params = {
             "apikey": self.api_key,
@@ -86,23 +86,28 @@ class OnlineSimRentAPI:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
                     data = await response.json()
 
-                    if data.get("response") != 1:
+                    resp = data.get("response")
+                    # Важный кейс: нет доступных номеров по стране прямо сейчас
+                    if isinstance(resp, str) and resp.upper() in {"NO_NUMBER", "NO_NUMBERS"}:
+                        return None
+
+                    if resp != 1:
                         raise Exception(f"Ошибка API: {data}")
 
-                    return data.get("item", {})
+                    return data.get("item", {}) or {}
 
             except aiohttp.ClientError as e:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")
 
-    async def extend_rent_state(self, tzid: int, days: int, lang: str = "ru") -> dict:
+    async def extend_rent_state(self, tzid: int, days: int, lang: str = "ru") -> dict | None:
         """
         Продление аренды номера на указанный период.
 
         :param tzid: int - ID операции аренды.
         :param days: int - Период продления аренды в днях.
         :param lang: str - Язык ответа (по умолчанию: "ru").
-        :return: dict - Данные о продлении аренды.
-        :raises: Exception - В случае ошибки запроса.
+        :return: dict | None - Данные о продлении аренды или None, если нет доступных номеров.
+        :raises: Exception - В случае ошибки запроса/неожиданного ответа API.
         """
         params = {
             "apikey": self.api_key,
@@ -119,10 +124,15 @@ class OnlineSimRentAPI:
                         raise Exception(f"Ошибка: {response.status}, {await response.text()}")
                     data = await response.json()
 
-                    if data.get("response") != 1:
+                    resp = data.get("response")
+                    # Важный кейс: нет доступных номеров для продления прямо сейчас
+                    if isinstance(resp, str) and resp.upper() in {"NO_NUMBER", "NO_NUMBERS"}:
+                        return None
+
+                    if resp != 1:
                         raise Exception(f"Ошибка API: {data}")
 
-                    return data.get("item", {})
+                    return data.get("item", {}) or {}
 
             except aiohttp.ClientError as e:
                 raise Exception(f"Ошибка при выполнении запроса: {e}")
