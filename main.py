@@ -34,7 +34,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 23.12.2025"
+msg_text = "Версия 02.01.2026"
 
 
 
@@ -250,11 +250,30 @@ def shutdown_scheduler(scheduler):
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 
 
-async def error_handler(event, exception):
-    if isinstance(exception, OutdatedIntent):
+from aiogram.types import ErrorEvent
+from aiogram_dialog.api.exceptions import OutdatedIntent
+
+
+async def error_handler(
+    event: ErrorEvent,
+    exception: Exception | None = None,
+    error: Exception | None = None,
+) -> None:
+    """
+    Глобальный обработчик ошибок.
+    В разных версиях aiogram ошибка может приходить:
+    - как ErrorEvent (event.exception)
+    - или как второй аргумент exception/error
+    """
+    exc = getattr(event, "exception", None) or error or exception
+
+    if exc and isinstance(exc, OutdatedIntent):
         logger.warning("Пойман OutdatedIntent — пользователь нажал устаревшую кнопку")
         return  # пропускаем без ошибок
-    raise exception  # пробрасываем остальные исключения дальше
+
+    if exc:
+        raise exc
+
 
 
 # === Точка входа ===

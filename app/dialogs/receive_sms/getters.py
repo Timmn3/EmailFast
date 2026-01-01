@@ -131,7 +131,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
             services_db = await models.PriceOnlinesim.get_all_services()
             services_db["services"].extend([
                 {"code": "ts", "name": "PayPal"},
-                {"code": "ot", "name": "Любой другой"}
+                # {"code": "ot", "name": "Любой другой"}
             ])
 
             priority_codes = {"telegram", "google", "vkcom", "whatsapp"}
