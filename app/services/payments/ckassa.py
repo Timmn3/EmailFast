@@ -1,6 +1,7 @@
 import json
 import httpx
 from datetime import datetime, timedelta
+from uuid import uuid4
 from app.dependencies import API_LOGIN_CKASSA, API_KEY_CKASSA, SERV_CODE_CKASSA, CODER
 import pytz
 
@@ -28,9 +29,9 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
     moscow_time = datetime.now(tz_moscow) + timedelta(hours=2)
     best_before = moscow_time.strftime("%d-%m-%Y %H:%M:%S +0300")
 
+    # ✅ Уникальный invoice_id (исключаем коллизии при повторах/двойных кликах)
+    invoice_id = f"{payer_id}_{uuid4().hex}"
 
-    # Генерируем уникальный invoice_id на основе payer_id и текущего времени
-    invoice_id = f"{payer_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     from app.services.periodic_tasks import send_coder
     if payer_id == str(CODER):
         await send_coder(invoice_id)
