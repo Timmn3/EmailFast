@@ -2,10 +2,10 @@ import json
 import httpx
 from datetime import datetime, timedelta
 from uuid import uuid4
+
+from loguru import logger
 from app.dependencies import API_LOGIN_CKASSA, API_KEY_CKASSA, SERV_CODE_CKASSA, CODER
 import pytz
-
-
 
 
 async def create_invoice_ckassa(amount_rub: float, payer_id: str):
@@ -17,20 +17,25 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
     payer_id (str): Идентификатор плательщика (например, Telegram ID).
 
     Возвращает:
-    tuple: Возвращает кортеж из двух элементов:
-        - invoice_url (str): Ссылка на оплату.
-        - invoice_id (str): Уникальный идентификатор инвойса.
+    tuple:
+        - invoice_id (str): Уникальный идентификатор инвойса (<= 40 символов, т.к. это реквизит "Логин" в properties).
+        - invoice_url (str|None): Ссылка на оплату или None, если провайдер вернул ошибку.
     """
     # Конвертируем сумму из рублей в копейки
     amount_kopecks = int(amount_rub * 100)
 
-    # Получаем текущую дату и прибавляем +0300
+    # Получаем текущую дату и прибавляем +0300 (оставляю как у тебя, чтобы не менять поведение)
     tz_moscow = pytz.timezone('Europe/Moscow')
     moscow_time = datetime.now(tz_moscow) + timedelta(hours=2)
     best_before = moscow_time.strftime("%d-%m-%Y %H:%M:%S +0300")
 
-    # ✅ Уникальный invoice_id (исключаем коллизии при повторах/двойных кликах)
-    invoice_id = f"{payer_id}_{uuid4().hex}"
+    payer_id = str(payer_id)
+
+    # ✅ invoice_id идёт в "properties" => у CKassa реквизит "Логин" максимум 40 символов
+    # Делаем короткий, но уникальный суффикс (16 hex = 64 бита, коллизии крайне маловероятны)
+    invoice_id = f"{payer_id}_{uuid4().hex[:16]}"
+    if len(invoice_id) > 40:
+        invoice_id = invoice_id[:40]
 
     from app.services.periodic_tasks import send_coder
     if payer_id == str(CODER):
@@ -56,14 +61,20 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
         "properties": [invoice_id]  # Реквизиты платежа (уникальный идентификатор)
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, data=json.dumps(data))
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, headers=headers, data=json.dumps(data))
+    except Exception as e:
+        logger.opt(exception=e).error(f"CKassa create2: ошибка запроса (invoice_id={invoice_id})")
+        return invoice_id, None
 
-        if response.status_code == 200:
-            invoice_url = response.text  # Ответ содержит URL для оплаты
-            return invoice_id, invoice_url
-        else:
-            return f"Error: {response.status_code}, {response.text}", None
+    if response.status_code == 200:
+        invoice_url = response.text
+        return invoice_id, invoice_url
+
+    # ❗️Важно: НЕ возвращаем длинную строку ошибки как invoice_id (иначе снова упадём при сохранении в БД)
+    logger.error(f"CKassa create2: status={response.status_code}, body={response.text[:500]}")
+    return invoice_id, None
 
 
 async def get_ckassa_payments(invoice: str):
@@ -76,24 +87,18 @@ async def get_ckassa_payments(invoice: str):
     Возвращает:
     dict: Данные о платеже или сообщение об ошибке.
     """
-    # URL вашего API для получения данных о платеже
     url = f'https://emailfast.info/ckassa/payment/{invoice}/'
 
     try:
-        # Выполнение GET-запроса
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(url)
 
-            # Проверка статуса ответа
             if response.status_code == 200:
-                # Успешный ответ
-                payment_data = response.json()
-                return payment_data
-            elif response.status_code == 404:
+                return response.json()
+            if response.status_code == 404:
                 return {'error': 'Invoice not found'}
-            else:
-                return {'error': 'Failed to retrieve data', 'status_code': response.status_code}
+
+            return {'error': 'Failed to retrieve data', 'status_code': response.status_code}
 
     except httpx.RequestError as e:
-        # Ошибка при выполнении запроса
         return {'error': str(e)}
