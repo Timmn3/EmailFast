@@ -8,6 +8,7 @@ from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from app.services.onlinesim.sms_client import OnlineSMS
+from aiogram.exceptions import TelegramBadRequest
 
 from app.db import models
 from app.db.models import PriceOnlinesim
@@ -24,6 +25,22 @@ from app.services.onlinesim.get_tariffs import fetch_tariffs
 from app.services.sms_receive import SmsReceive
 from app.services import bot_texts as bt
 
+async def _safe_cb_answer(c: types.CallbackQuery, text: str | None = None, show_alert: bool = False) -> None:
+    """
+    Безопасный ответ на callback.
+    Если callback уже протух (часто после оплаты, когда продолжение идет из scheduler),
+    не падаем, а при наличии текста пытаемся отправить обычное сообщение.
+    """
+    try:
+        await c.answer(text=text, show_alert=show_alert)
+    except TelegramBadRequest:
+        # callback "too old" / invalid query id
+        if text:
+            try:
+                if getattr(c, "message", None):
+                    await c.message.answer(text)
+            except Exception:
+                pass
 
 @logger.catch()
 async def on_select_service(c: types.CallbackQuery, widget: Select, manager: DialogManager, code: str):
@@ -229,7 +246,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
     :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
     try:
-        await c.answer()
+        await _safe_cb_answer(c)
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='send_service_on_country').log(
             "USER_ACTION",
@@ -242,7 +259,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         # Проверяем, прошло ли 10 секунд с последнего запроса
         if user.last_request_time is not None and (
                 datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
-            await c.answer(text=PLEASE_WAIT_SECONDS, show_alert=True)
+            await _safe_cb_answer(c, text=PLEASE_WAIT_SECONDS, show_alert=True)
             return
 
         current_time = datetime.now(pytz.timezone('Europe/Moscow'))
@@ -351,7 +368,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 phone_number_data = await sms.get_phone_number(country_id=country_id, service_code=service_code,
                                                              max_price=max_price)
                 if 'activationId' not in phone_number_data:
-                    await c.answer(text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+                    await _safe_cb_answer(c, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
                     await manager.switch_to(CountryMenu.select_country)
                     return
 
