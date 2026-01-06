@@ -102,6 +102,12 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
         else:
             services = await models.ServicesOnlinesim.search_service(service_name.lower())
 
+        # Убираем из поиска псевдо-сервис "Любой другой"
+        services = [
+            s for s in services
+            if (getattr(s, "name", None) or "").strip() != "Любой другой"
+        ]
+
         if not services:
             logger.bind(user_id=user_id, action='on_result_service').log(
                 "USER_ACTION",
