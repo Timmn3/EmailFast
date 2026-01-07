@@ -13,6 +13,7 @@ from loguru import logger
 
 router = Router()
 
+import time  # <-- добавь этот импорт рядом с остальными
 
 @router.message(Command("rent_number"))
 @router.message(F.text == bt.RENT_NUMBER)
@@ -22,31 +23,71 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
     """
     user_id = message.from_user.id
     logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION", "Пользователь начал процесс аренды номера")
+
+    t0 = time.perf_counter()
     try:
         user = await models.User.get_user(user_id)
-        logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                              f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽")
+        t1 = time.perf_counter()
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"PERF: get_user={(t1 - t0):.3f}s"
+        )
+
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽"
+        )
+
         # Проверяем подписку
         sub = await check_subscribe(user)
+        t2 = time.perf_counter()
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"PERF: check_subscribe={(t2 - t1):.3f}s"
+        )
+
         if not sub:
-            logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                                  f"Подписка неактивна для пользователя {user_id}, баланс = {user.balance} ₽")
+            logger.bind(user_id=user_id, action='rent_number').log(
+                "USER_ACTION",
+                f"Подписка неактивна для пользователя {user_id}, баланс = {user.balance} ₽"
+            )
             await send_subscribe_msg(user)
             return
+
         # Проверяем аренды пользователя
         activation_list = await models.Rent.get_active_rent(user.id)
-        logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                              f"Запрос к БД: получение активных аренд для пользователя {user_id}, баланс = {user.balance} ₽")
-        logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                              f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}")
+        t3 = time.perf_counter()
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"PERF: get_active_rent={(t3 - t2):.3f}s total_before_ui={(t3 - t0):.3f}s"
+        )
+
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"Запрос к БД: получение активных аренд для пользователя {user_id}, баланс = {user.balance} ₽"
+        )
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}"
+        )
+
         # Если нет активных арендных номеров, то предлагаем
         if activation_list is None or not activation_list:
-            logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION",
-                                                                  f"Нет активных аренд, перенаправляем в выбор страны для пользователя {user_id}, баланс = {user.balance} ₽")
+            logger.bind(user_id=user_id, action='rent_number').log(
+                "USER_ACTION",
+                f"Нет активных аренд, перенаправляем в выбор страны для пользователя {user_id}, баланс = {user.balance} ₽"
+            )
             await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
             return
+
         # Отправляем меню аренды
         await send_rent_menu(user, message=message)
+
+        t4 = time.perf_counter()
+        logger.bind(user_id=user_id, action='rent_number').log(
+            "USER_ACTION",
+            f"PERF: total_full={(t4 - t0):.3f}s"
+        )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /rent_number: {e}")
 
@@ -56,45 +97,86 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
     Вспомогательная функция для отправки меню аренды номеров.
     """
     user_id = user.telegram_id
-    logger.bind(user_id=user_id, action='send_rent_menu').log("USER_ACTION", f"Формирование меню аренды для пользователя {user_id}, баланс = {user.balance} ₽")
+    logger.bind(user_id=user_id, action='send_rent_menu').log(
+        "USER_ACTION",
+        f"Формирование меню аренды для пользователя {user_id}, баланс = {user.balance} ₽"
+    )
+
+    t0 = time.perf_counter()
     try:
         # Проверяем аренды пользователя
         activation_list = await models.Rent.get_active_rent(user.id)
-        logger.bind(user_id=user_id, action='send_rent_menu').log("USER_ACTION",
-                                                                 f"Запрос к БД: получение активных аренд для формирования меню")
-        logger.bind(user_id=user_id, action='send_rent_menu').log("USER_ACTION",
-                                                                 f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}")
+        t1 = time.perf_counter()
+
+        logger.bind(user_id=user_id, action='send_rent_menu').log(
+            "USER_ACTION",
+            f"PERF: get_active_rent={(t1 - t0):.3f}s"
+        )
+
+        logger.bind(user_id=user_id, action='send_rent_menu').log(
+            "USER_ACTION",
+            f"Запрос к БД: получение активных аренд для формирования меню"
+        )
+        logger.bind(user_id=user_id, action='send_rent_menu').log(
+            "USER_ACTION",
+            f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}"
+        )
 
         # Создаем список для вывода информации
         rent_details = ["<i>Ваши арендованные номера⤵️</i>\n"]
         # Создаем inline клавиатуру
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+
+        fetch_related_total = 0.0
+        count = 0
+
         # Проходим по всем арендам
         for activation in activation_list:
             # Если аренда отменена, пропускаем ее
             if activation.is_canceled:
                 continue
-            # Загружаем связанные данные о стране
+
+            count += 1
+            t_rel0 = time.perf_counter()
             await activation.fetch_related('country')
+            fetch_related_total += (time.perf_counter() - t_rel0)
+
             country = activation.country.name
-            # Формируем строку с флагом и номером
-            flag = country_flags.get(country, "")  # Получаем флаг по имени страны
+            flag = country_flags.get(country, "")
             phone_number = activation.phone_number
-            # Формируем текст кнопки (флаг + номер)
+
             button_text = f"{flag} +{phone_number}"
-            # Создаем кнопку с уникальным callback_data для каждого номера
             callback_data = f"number_{activation.id}"
-            # Добавляем кнопку в клавиатуру
-            keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=button_text, callback_data=callback_data)])
+            keyboard.inline_keyboard.append(
+                [types.InlineKeyboardButton(text=button_text, callback_data=callback_data)]
+            )
+
+        t2 = time.perf_counter()
+        logger.bind(user_id=user_id, action='send_rent_menu').log(
+            "USER_ACTION",
+            f"PERF: fetch_related_total={fetch_related_total:.3f}s rents_count={count} build_ui={(t2 - t1):.3f}s"
+        )
+
         # Добавляем кнопку для аренды нового номера
-        keyboard.inline_keyboard.append([types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")])
+        keyboard.inline_keyboard.append(
+            [types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")]
+        )
+
         # Отправляем сообщение с inline клавиатурой
+        t_send0 = time.perf_counter()
         if message:
             await message.answer("\n".join(rent_details), reply_markup=keyboard)
         else:
             await callback_query.message.edit_text("\n".join(rent_details), reply_markup=keyboard)
+        t_send1 = time.perf_counter()
+
+        logger.bind(user_id=user_id, action='send_rent_menu').log(
+            "USER_ACTION",
+            f"PERF: telegram_send={(t_send1 - t_send0):.3f}s total={(t_send1 - t0):.3f}s"
+        )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_rent_menu: {e}")
+
 
 
 @router.callback_query(F.data == "back_to_rent_menu")
