@@ -13,7 +13,7 @@ from loguru import logger
 
 router = Router()
 
-import time  # <-- добавь этот импорт рядом с остальными
+import time
 
 @router.message(Command("rent_number"))
 @router.message(F.text == bt.RENT_NUMBER)
