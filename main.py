@@ -34,7 +34,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 05.01.2026"
+msg_text = "Версия 08.01.2026"
 
 
 
