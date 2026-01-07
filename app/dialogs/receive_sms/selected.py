@@ -294,8 +294,15 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
         is_smsactivate = await service_is_smsactivate()
 
-        # если onlinesim — проверяем тарифы (наличие номеров)
-        if not is_smsactivate:
+        # ✅ ФАКТИЧЕСКИЙ провайдер для выдачи номера определяется так же,
+        # как формировался список стран/цен:
+        # free_price_map is None -> OnlineSim
+        # free_price_map is not None -> SMSActivate
+        provider_is_smsactivate = free_price_map is not None
+
+        # ✅ Precheck наличия номеров перед пополнением / запросом номера
+        if not provider_is_smsactivate:
+            # OnlineSim — проверяем тарифы (наличие номеров)
             tariffs = await fetch_tariffs(country_id, service_code)
             print(f'доступный тариф {tariffs}')
             if tariffs is None:
@@ -306,7 +313,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 await _reply(text=NOT_NUMBERS_ALERT)
                 return
         else:
-            # если это ветка SMSActivate — сначала смотрим, есть ли номера у провайдера по конкретно этой стране
+            # SMSActivate — проверяем наличие номеров у провайдера по стране + сервису
             sms = SmsReceive()
             has_numbers = False
             try:
@@ -316,10 +323,10 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                         has_numbers = True
                         break
             except Exception as e:
-                # если вдруг не смогли спросить у провайдера — ведём себя как раньше
                 logger.bind(user_id=user_id, action='send_service_on_country').warning(
                     f"Не удалось проверить наличие номеров у SMSActivate: {e}"
                 )
+                has_numbers = True
 
             if not has_numbers:
                 await _reply(text=NOT_NUMBERS_ALERT)
@@ -344,7 +351,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
         sent_message_id = sent_message.message_id if sent_message else None
 
         # ===== получение номера =====
-        if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
+        if not provider_is_smsactivate:
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             try:
                 logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "OnlineSim")
@@ -427,10 +434,7 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             country = await models.CountriesSmsActivate.get_country_by_id(country_id=country_id)
             service = await models.ServicesSmsActivate.get_service(code=service_code)
 
-        # ===== сохраняем активацию =====
-        is_smsactivate_flow = is_smsactivate or (service_code in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM)
-
-        if is_smsactivate_flow:
+        if provider_is_smsactivate:
             activation = await models.Activation.add_activation_sms_activate(
                 user=user,
                 activation_id=activation_id,
@@ -614,7 +618,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                         "country": service.get("country"),
                         "price": math.ceil(float(service.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
                         "retail_price": service.get("retail_price"),
-                        "freePriceMap": service.get("freePriceMap"),
+                        "freePriceMap": service.get("freePriceMap") or {},
+
                     }
                     for service in services.values()
                 ]
@@ -664,7 +669,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                         "country": service.get("country"),
                         "price": math.ceil(float(service.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
                         "retail_price": service.get("retail_price"),
-                        "freePriceMap": service.get("freePriceMap"),
+                        "freePriceMap": service.get("freePriceMap") or {},
+
                     }
                     for service in services.values()
                 ]
