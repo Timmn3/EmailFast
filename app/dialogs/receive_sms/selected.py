@@ -302,15 +302,16 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
 
         # ✅ Precheck наличия номеров перед пополнением / запросом номера
         if not provider_is_smsactivate:
-            # OnlineSim — проверяем тарифы (наличие номеров)
-            tariffs = await fetch_tariffs(country_id, service_code)
-            print(f'доступный тариф {tariffs}')
-            if tariffs is None:
+            client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+            # OnlineSim — проверяем наличие номеров
+            try:
+                await client.order_number(service=service_code, country=country_id)
+            except Exception as e:
+                await _reply(text=bt.NOT_NUMBERS_ALERT)
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION",
-                    "Нет доступных номеров OnlineSim"
+                    f"Нет доступных номеров OnlineSim: {e}"
                 )
-                await _reply(text=NOT_NUMBERS_ALERT)
                 return
         else:
             # SMSActivate — проверяем наличие номеров у провайдера по стране + сервису
