@@ -141,18 +141,33 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
         repeat_payment_users = sum(
             max(0, stat["payment_count"] - 1) for stat in referral_stats if stat["payment_count"] > 1)
 
-        await m.answer_photo(
-            photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
-            caption=bt.AFFILIATE_PROGRAM_TEXT.format(
-                link=link,
-                ref_balance=round(user.ref_balance),
-                ref_count=ref_count,
-                ref_balance_total=round(user.total_ref_earnings),
-                payment_count=payment_count,
-                repeat_payment_count=repeat_payment_users
-            ),
-            reply_markup=keyboard
-        )
+        if user_id == REFERRAL_PREFIX:
+
+            await m.answer_photo(
+                photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
+                caption=bt.AFFILIATE_PROGRAM_TEXT_SHORT.format(
+                    link=link,
+                    ref_count=ref_count,
+                    payment_count=payment_count,
+                ),
+                reply_markup=keyboard
+            )
+
+        else:
+
+            await m.answer_photo(
+                photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
+                caption=bt.AFFILIATE_PROGRAM_TEXT.format(
+                    link=link,
+                    ref_balance=round(user.ref_balance),
+                    ref_count=ref_count,
+                    ref_balance_total=round(user.total_ref_earnings),
+                    payment_count=payment_count,
+                    repeat_payment_count=repeat_payment_users
+                ),
+                reply_markup=keyboard
+            )
+
         await loading_msg.delete()
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /send_affiliate_message: {e}")
