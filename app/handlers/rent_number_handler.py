@@ -500,13 +500,19 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
         country = rented.country.name
         # Извлекаем тарифы для выбранной страны
         data = await api_client.get_tariffs()
-        tariffs = data.get(str(rent_country_code), {})
+        try:
+            tariffs = data.get(str(rent_country_code), {})
+        except Exception as e:
+            tariffs = None
+            logger.error(e)
         # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
         if tariffs:  # Проверяем, есть ли данные
             updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
         else:
-            await callback_query.answer(text=bt.FAILED_TO_GET_AVAILABLE_DAYS, show_alert=True)
-            return
+            days = rented.days
+            cost = rented.cost
+            updated_tariffs= {days: cost}
+
         context_data = {
             "selected_country": {
                 "rent_country_code": rent_country_code,

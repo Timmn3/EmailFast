@@ -143,7 +143,6 @@ async def rent_on_select_country_new(c: types.CallbackQuery, widget: Select, man
 
         tariffs = selected_country["tariffs"].get(country_index, {})
         updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
-
         manager.dialog_data["selected_country"] = {
             "rent_country_code": country_index,
             "country": selected_country["country"],
