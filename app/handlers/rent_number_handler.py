@@ -487,8 +487,8 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
         # Получаем состояние аренды через OnlineSimRentAPI
         api_client = OnlineSimRentAPI()
         rent_state = await api_client.get_rent_state(tzid=rented.rent_id)
-        logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION",
-                                                               f"Результат API: состояние аренды {rent_state}")
+        # logger.bind(user_id=user_id, action='extend_rent').log("USER_ACTION",
+        #                                                        f"Результат API: состояние аренды {rent_state}")
         # Проверяем, если список пуст или extend отсутствует
         if not rent_state or not rent_state.get("list") or not rent_state["list"]:
             await callback_query.answer(text=bt.RENTAL_CANCELED_OR_NOT_FOUND, show_alert=True)
@@ -511,7 +511,7 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
         else:
             days = rented.days
             cost = rented.cost
-            updated_tariffs= {days: cost}
+            updated_tariffs = {str(days): cost}
 
         context_data = {
             "selected_country": {
