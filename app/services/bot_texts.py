@@ -250,6 +250,7 @@ ADMIN_STAT = """
 <b>Получено:</b> {received_email_count}
 <b>За сегодня:</b> {received_email_count_today}
 <b>Арендованных Email:</b> {rent_email_count}
+<b>Сейчас арендовано Email:</b> {rent_email_active_count}
 <b>За сегодня:</b> {rent_email_count_today}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━

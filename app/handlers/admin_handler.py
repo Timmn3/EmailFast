@@ -99,6 +99,13 @@ async def stat(message: types.Message):
         created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
     ).count()
 
+    rent_email_active_count = await models.Mail.filter(
+        is_paid_mail=True,
+        is_active=True,
+        expire_at__gt=utc_now
+    ).count()
+
+
     # Общая сумма всех покупок
     rented_number_total = await models.Rent.all().annotate(total=Sum("purchase_count")).values("total")
     rented_number_total = rented_number_total[0]["total"] or 0
@@ -219,6 +226,7 @@ async def stat(message: types.Message):
         payments_amount_last_month=payments_amount_last_month,
         rent_email_count=rent_email_count,
         rent_email_count_today=rent_email_count_today,
+        rent_email_active_count=rent_email_active_count,
         rented_sms_total=rented_sms_total,
         rented_sms_month=rented_sms_month,
         rented_sms_today=rented_sms_today,
