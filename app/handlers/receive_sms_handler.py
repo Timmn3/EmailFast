@@ -93,103 +93,133 @@ async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_mana
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms_for_another_service: {e}")
 
 
-@router.callback_query(F.data.startswith('request_code:'))
-@log_exceptions
-async def request_code(call: types.CallbackQuery, **kwargs):
-    try:
-        user_id = call.from_user.id
-        activation_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Запрос к БД: получение активации ID={activation_id}")
-        activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
-        logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Результат из БД: активация найдена={activation is not None}")
+# --- Антидубль: не запускаем несколько запросов "новое SMS" на одну и ту же активацию ---
+_request_code_tasks: dict[int, asyncio.Task] = {}
 
+
+async def _request_code_worker(user_id: int, activation_pk: int) -> None:
+    try:
+        logger.bind(user_id=user_id, action="request_code_worker").log(
+            "USER_ACTION",
+            f"Фоновая обработка request_code: activation_pk={activation_pk}"
+        )
+
+        activation = await models.Activation.get_or_none(id=activation_pk).prefetch_related('service')
         if not activation:
-            await call.answer()
             return
+
+        # Чтобы ниже не падало на relation (если у тебя user relation ленивый)
         try:
-            service = activation.service.code
+            await activation.fetch_related("user")
+        except Exception:
+            pass
+
+        try:
+            _ = activation.service.code
             service_name = "SMSActivate"
         except AttributeError:
-            # service = activation.service_2.code
             service_name = "Onlinesim"
         except Exception:
-            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: сервис не найден")
+            logger.bind(user_id=user_id, action="request_code_worker").log(
+                "USER_ACTION",
+                "Ошибка: сервис не найден"
+            )
             return
 
         if service_name == "Onlinesim":
-            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется сервис Onlinesim")
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+
             try:
-                # Попробуем перезапросить SMS
                 revise_response = await client.revise_order(operation_id=activation.activation_id)
-                if revise_response.get("response") == '1':
-                    logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ожидание повторной отправки SMS")
-                    # Теперь ждём SMS
-                    try:
-                        order_info = await client.get_order_info(operation_id=activation.activation_id,
-                            get_full_message=True,
-                            form=1,
-                            clean=0
-                        )
-                    except Exception as e:
-                        await call.answer(text='Нового смс нет, попробуйте позже', show_alert=True)
-                        logger.opt(exception=e).error(f"Ошибка в request_code: {e}")
-                        return
-                    sms_text = order_info[0]['msg']
-                    if not sms_text:
-                        await call.answer(text='Ожидаем смс...', show_alert=True)
-                        return
-                    else:
-                        msg_text = (
-                            f"💬<b>Повторное SMS</b> на номер: +{activation.phone_number}\n\n"
-                            f"Ваш код активации:\n"
-                            f"<code>{sms_text}</code>"
-                        )
-                        # Отправляем сообщение пользователю в Telegram
-                        await bot.send_message(
-                            chat_id=user_id,
-                            text=msg_text
-                        )
-                        await notice_of_arraignment("Получение смс", activation, sms_text)
-                        logger.bind(
-                            user_id=activation.user.telegram_id,
-                            action="new_sms"
-                        ).log("USER_ACTION",
-                              f"Получено новое SMS для номера {activation.phone_number}, код: {sms_text}")
-
-                    return
-                else:
-                    logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Ошибка: повторная отправка недоступна")
-                    await call.answer(text='Повторная отправка недоступна')
-                    return
             except Exception as e:
-                logger.opt(exception=e).warning(f'Повторный запрос смс onlinesim {e}')
+                logger.opt(exception=e).warning(f"Повторный запрос SMS (onlinesim) упал: {e}")
+                await bot.send_message(chat_id=user_id, text="⚠️ Не удалось запросить повторное SMS. Попробуйте позже.")
                 return
-        else:
-            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", "Используется сервис SMSActivate")
-            sms = SmsReceive()
-            status = str(await sms.get_activation_status(activation.activation_id))
-            logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Текущий статус активации: {status}")
 
-            if status:
-                request_status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                                     status=models.ActivationCode.RETRY_GET))
-                logger.bind(user_id=user_id, action="request_code").log("USER_ACTION", f"Новый статус: {request_status}")
+            if revise_response.get("response") != "1":
+                await bot.send_message(chat_id=user_id, text="⚠️ Повторная отправка недоступна для этого номера.")
+                return
 
-                if request_status == "STATUS_WAIT_RETRY":
-                    await call.answer(text='ожидание повторной отправки смс', show_alert=True)
-                    return
-                elif request_status != "STATUS_WAIT_CODE":
-                    await call.answer(text='ожидание смс')
-                    return
-                elif request_status != "STATUS_CANCEL":
-                    await call.answer(text='активация отменена')
-                    return
-                elif request_status != "STATUS_OK":
-                    await call.answer(text='код получен')
-                    return
+            # Быстрый чек: вдруг SMS уже прилетело. Если нет — молча выходим, дальше отработает твой общий механизм получения SMS.
+            try:
+                order_info = await client.get_order_info(
+                    operation_id=activation.activation_id,
+                    get_full_message=True,
+                    form=1,
+                    clean=0
+                )
+            except Exception:
+                return
+
+            sms_text = None
+            if order_info and isinstance(order_info, list):
+                sms_text = (order_info[0] or {}).get("msg")
+
+            if sms_text:
+                msg_text = (
+                    f"💬<b>Повторное SMS</b> на номер: +{activation.phone_number}\n\n"
+                    f"Ваш код активации:\n"
+                    f"<code>{sms_text}</code>"
+                )
+                await bot.send_message(chat_id=user_id, text=msg_text)
+                await notice_of_arraignment("Получение смс", activation, sms_text)
+
+                try:
+                    logger.bind(
+                        user_id=getattr(activation.user, "telegram_id", user_id),
+                        action="new_sms"
+                    ).log(
+                        "USER_ACTION",
+                        f"Получено новое SMS для номера {activation.phone_number}, код: {sms_text}"
+                    )
+                except Exception:
+                    pass
+
+            return
+
+        # SMSActivate: просто ставим статус, без долгих ожиданий в callback
+        sms = SmsReceive()
+        try:
+            _ = await sms.get_activation_status(activation.activation_id)
+            await sms.set_activation_status(
+                activation_id=activation.activation_id,
+                status=models.ActivationCode.RETRY_GET
+            )
+        except Exception as e:
+            logger.opt(exception=e).warning(f"Повторный запрос SMS (smsactivate) упал: {e}")
+            await bot.send_message(chat_id=user_id, text="⚠️ Не удалось запросить повторное SMS. Попробуйте позже.")
+            return
+
     except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере /request_code: {e}")
+        logger.opt(exception=e).error(f"Ошибка в _request_code_worker: {e}")
+        try:
+            await bot.send_message(chat_id=user_id, text="⚠️ Ошибка при обработке запроса. Попробуйте позже.")
+        except Exception:
+            pass
+    finally:
+        current = asyncio.current_task()
+        if current is not None and _request_code_tasks.get(activation_pk) is current:
+            _request_code_tasks.pop(activation_pk, None)
+
+
+@router.callback_query(F.data.startswith('request_code:'))
+@log_exceptions
+async def request_code(call: types.CallbackQuery, **kwargs):
+    user_id = call.from_user.id
+    activation_pk = int(call.data.split(':')[1])
+
+    # ✅ СРАЗУ отпускаем Telegram-клиент (убираем "часики" и разблокируем кнопки)
+    try:
+        await call.answer("⏳ Запросил новое SMS…")
+    except Exception:
+        pass
+
+    # Антидубль на время выполнения
+    existing = _request_code_tasks.get(activation_pk)
+    if existing and not existing.done():
+        return
+
+    _request_code_tasks[activation_pk] = asyncio.create_task(_request_code_worker(user_id, activation_pk))
 
 
 @router.callback_query(F.data.startswith('cancel_service:'))
