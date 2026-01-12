@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from tortoise.functions import Sum
 import tempfile
 from datetime import datetime
+import html
 from app.db import models
 from app.dependencies import ADMINS, bot
 import pytz
@@ -46,8 +47,15 @@ async def user_report(message: types.Message):
     try:
         html_path = await generate_user_report_html(user)
         logger.bind(user_id=user_id, action="user_report").success(
-            f"Отчёт успешно сгенерирован для пользователя {telegram_id}")
-        await message.answer_document(types.FSInputFile(html_path), caption=f"Отчёт по пользователю {user.mention}")
+            f"Отчёт успешно сгенерирован для пользователя {telegram_id}"
+        )
+
+        # ✅ Безопасный caption при parse_mode='HTML' (экранируем имя, ссылку формируем сами)
+        safe_mention = html.escape(user.mention or str(user.telegram_id))
+        caption = f'Отчёт по пользователю <a href="tg://user?id={user.telegram_id}">{safe_mention}</a>'
+
+        await message.answer_document(types.FSInputFile(html_path), caption=caption)
+
     except Exception as e:
         logger.bind(user_id=user_id, action="user_report").opt(exception=e).error("Ошибка при генерации отчёта")
         await message.answer("Произошла ошибка при генерации отчёта.")
@@ -103,7 +111,7 @@ async def generate_user_report_html(user):
         </style>
     </head>
     <body>
-        <h2>Отчёт по пользователю {user.mention} ({user.telegram_id})</h2>
+        <h2>Отчёт по пользователю {html.escape(user.mention or '-')} ({user.telegram_id})</h2>
 
         <h3>Общие данные:</h3>
         <p>Баланс: {user.balance:.2f} ₽<br>

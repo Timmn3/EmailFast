@@ -878,9 +878,33 @@ async def notify_week_expiration():
         mail.is_free_week = False
         await mail.save()
 
-async def send_coder(msg_text):
-    if CODER:
-        await bot.send_message(chat_id=CODER, text=msg_text)
+from aiogram.exceptions import TelegramBadRequest
+from loguru import logger
+
+async def send_coder(msg_text: str) -> None:
+    """
+    Отправка служебных сообщений в чат CODER.
+
+    Важно: отправляем БЕЗ parse_mode, чтобы любые символы пользователя
+    (например '<', '>', '&') не ломали Telegram entities и не роняли
+    платежи/аренды/уведомления.
+    """
+    if not CODER:
+        return
+
+    try:
+        await bot.send_message(
+            chat_id=CODER,
+            text=str(msg_text),
+            parse_mode=None,
+            disable_web_page_preview=True,
+        )
+    except TelegramBadRequest as e:
+        # Не даём уведомлениям ронять бизнес-логику
+        logger.warning(f"send_coder: TelegramBadRequest: {e}")
+    except Exception as e:
+        logger.opt(exception=e).error("send_coder: ошибка отправки сообщения в CODER")
+
 
 
 async def check_rent_sms():
