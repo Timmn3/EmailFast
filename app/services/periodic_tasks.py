@@ -878,9 +878,6 @@ async def notify_week_expiration():
         mail.is_free_week = False
         await mail.save()
 
-
-
-
 async def send_coder(msg_text):
     if CODER:
         await bot.send_message(chat_id=CODER, text=msg_text)
@@ -890,61 +887,59 @@ async def check_rent_sms():
     try:
         # Получаем все активные аренды
         activations = await models.Rent.get_all_active_rents()
-
         # Обрабатываем каждую активную аренду
         for activation in activations:
             # Получаем состояние аренды через OnlineSimRentAPI
             api_client = OnlineSimRentAPI()
             rent_state = await api_client.get_rent_state(tzid=activation.rent_id)
+            if rent_state:
+                # Проверяем, есть ли данные в 'list'
+                if rent_state.get("response") == 1 and "list" in rent_state:
+                    if rent_state["list"]:  # Проверяем, что список не пуст
+                        rent_info = rent_state["list"][0]  # Обрабатываем первую запись в списке
+                        # Извлекаем сообщения
+                        messages = rent_info.get("messages", [])
+                        minutes = rent_info.get("time", 0)
+                        # Формируем строку для сравнения
+                        new_sms_text = "\n".join([f"{msg.get('service', 'Unknown')}: {msg.get('code', '')}" for msg in messages])
 
-            # Проверяем, есть ли данные в 'list'
-            if rent_state.get("response") == 1 and "list" in rent_state:
-                if rent_state["list"]:  # Проверяем, что список не пуст
-                    rent_info = rent_state["list"][0]  # Обрабатываем первую запись в списке
+                        # Проверяем, отличается ли новое сообщение от текущего
+                        if activation.sms_text == new_sms_text:
+                            continue
 
-                    # Извлекаем сообщения
-                    messages = rent_info.get("messages", [])
-                    minutes = rent_info.get("time", 0)
-                    # Формируем строку для сравнения
-                    new_sms_text = "\n".join([f"{msg.get('service', 'Unknown')}: {msg.get('code', '')}" for msg in messages])
+                        # Сохраняем новый текст в sms_text
+                        activation.sms_text = new_sms_text
 
-                    # Проверяем, отличается ли новое сообщение от текущего
-                    if activation.sms_text == new_sms_text:
-                        continue
-
-                    # Сохраняем новый текст в sms_text
-                    activation.sms_text = new_sms_text
-
-                    # Обновляем время аренды
-                    activation.rent_expire_at = (
-                            datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
-                            + datetime.timedelta(minutes=minutes)
-                    )
-                    await activation.save()
-
-                    if messages:
-                        activation.status = models.StatusResponse.STATUS_OK
-                        await activation.save()
-                        # Получаем последнее сообщение
-                        last_message = messages[0]
-                        service = last_message.get("service", "Unknown")
-                        text = last_message.get("code", "")
-
-                        # Формируем текст для отправки пользователю
-                        msg_text = f"""
-                        💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>: <code>{text}</code>
-                        """
-
-                        # Отправляем сообщение пользователю в Telegram
-                        await bot.send_message(
-                            chat_id=activation.user.telegram_id,
-                            text=msg_text,
-                            parse_mode="HTML"
+                        # Обновляем время аренды
+                        activation.rent_expire_at = (
+                                datetime.datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0)
+                                + datetime.timedelta(minutes=minutes)
                         )
+                        await activation.save()
 
-                        # Логгируем событие аренды (или получения SMS)
-                        name = service
-                        await notice_of_arraignment("Аренда номера",activation, name)
+                        if messages:
+                            activation.status = models.StatusResponse.STATUS_OK
+                            await activation.save()
+                            # Получаем последнее сообщение
+                            last_message = messages[0]
+                            service = last_message.get("service", "Unknown")
+                            text = last_message.get("code", "")
+
+                            # Формируем текст для отправки пользователю
+                            msg_text = f"""
+                            💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>: <code>{text}</code>
+                            """
+
+                            # Отправляем сообщение пользователю в Telegram
+                            await bot.send_message(
+                                chat_id=activation.user.telegram_id,
+                                text=msg_text,
+                                parse_mode="HTML"
+                            )
+
+                            # Логгируем событие аренды (или получения SMS)
+                            name = service
+                            await notice_of_arraignment("Аренда номера",activation, name)
 
         # Если в течение 20 минут не воспользовался номером
         expired_activations = await models.Rent.get_expired_activations()

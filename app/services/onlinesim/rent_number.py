@@ -169,7 +169,8 @@ class OnlineSimRentAPI:
                     return data.get("list", {}) if tzid is None else data
 
             except aiohttp.ClientError as e:
-                raise Exception(f"Ошибка при выполнении запроса: {e}")
+                pass
+                # raise Exception(f"Ошибка при выполнении запроса: {e}")
 
     async def close_rent_num(self, tzid: int, lang: str = "ru") -> dict:
         """

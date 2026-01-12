@@ -139,9 +139,10 @@ class LoggingMiddleware(BaseMiddleware):
 
         try:
             return await handler(event, data)
-        except Exception as e:
-            # Логируем ошибку с полным traceback
-            logger.opt(exception=e).error(f"Ошибка при обработке события у пользователя {user_id}: {e}")
+        except Exception:
+            logger.exception(
+                f"Ошибка при обработке события у пользователя {user_id}"
+            )
             raise
 
 

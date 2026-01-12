@@ -129,7 +129,7 @@ async def request_code(call: types.CallbackQuery, **kwargs):
                         order_info = await client.get_order_info(operation_id=activation.activation_id,
                             get_full_message=True,
                             form=1,
-                            clean=1
+                            clean=0
                         )
                     except Exception as e:
                         await call.answer(text='Нового смс нет, попробуйте позже', show_alert=True)
