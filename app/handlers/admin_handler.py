@@ -17,7 +17,7 @@ from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
-from tortoise.functions import Sum
+from tortoise.functions import Sum, Count
 import calendar
 from celery_worker import tasks as broadcast_tasks
 from celery_worker.tasks import send_message_batch
@@ -247,8 +247,71 @@ async def stat(message: types.Message):
         stars_last_month_amount=stars_last_month_amount,
     )
 
-    await message.answer(msg_text)
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Рефералы", callback_data="admin_referrals_top")]
+    ])
+    await message.answer(msg_text, reply_markup=kb)
 
+@router.callback_query(F.data == "admin_referrals_top")
+async def admin_referrals_top(call: types.CallbackQuery):
+    if call.from_user.id not in ADMINS:
+        await call.answer()
+        return
+
+    await call.answer()
+
+    # 1) ТОП по количеству приглашённых (users.refer_id = id инвайтера)
+    ref_rows = (
+        await models.User
+        .filter(refer_id__isnull=False)
+        .group_by("refer_id")
+        .annotate(invited=Count("id"))
+        .values("refer_id", "invited")
+    )
+
+    if not ref_rows:
+        await call.message.answer("Рефералы не найдены.")
+        return
+
+    ref_rows.sort(key=lambda x: x["invited"], reverse=True)
+    top_rows = ref_rows[:20]
+
+    referrer_ids = [r["refer_id"] for r in top_rows]              # это internal users.id
+    invited_map = {r["refer_id"]: r["invited"] for r in top_rows}
+
+    # 2) Количество успешных оплат у приглашённых, сгруппированное по инвайтеру
+    pay_rows = (
+        await models.Payment
+        .filter(is_success=True, user__refer_id__in=referrer_ids)
+        .group_by("user__refer_id")
+        .annotate(payments_count=Count("id"))
+        .values("user__refer_id", "payments_count")
+    )
+    payments_map = {r["user__refer_id"]: r["payments_count"] for r in pay_rows}
+
+    # 3) Баланс реферала (инвайтера)
+    referrers = await models.User.filter(id__in=referrer_ids).values("id", "telegram_id", "ref_balance")
+    ref_map = {u["id"]: u for u in referrers}
+
+    lines = ["🏆 <b>ТОП-20 рефоводов</b>\n"]
+    for i, rid in enumerate(referrer_ids, start=1):
+        u = ref_map.get(rid)
+        if not u:
+            continue
+
+        telegram_id = u["telegram_id"]
+        ref_balance = float(u["ref_balance"] or 0)
+        invited = int(invited_map.get(rid, 0))
+        pays = int(payments_map.get(rid, 0))
+
+        lines.append(
+            f"{i}) <code>{telegram_id}</code>\n"
+            f"Приведено пользователей: <b>{invited}</b>\n"
+            f"Количество оплат: <b>{pays}</b>\n"
+            f"Партнерский баланс: <b>{ref_balance:.2f} ₽</b>\n"
+        )
+
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.message(Command('test_balance'))
@@ -622,7 +685,7 @@ async def info_id(message: types.Message):
     rent_date = rent_with_sms.created_at.strftime("%Y-%m-%d %H:%M") if rent_with_sms else "Нет"
 
     # Получаем сумму всех успешных пополнений
-    from tortoise.functions import Sum
+    from tortoise.functions import Sum, Count
     total_payments_result = await models.Payment.filter(user=user, is_success=True).annotate(total=Sum("amount")).values("total")
     total_payments = total_payments_result[0]["total"] or 0
 
