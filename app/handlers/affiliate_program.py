@@ -11,7 +11,7 @@ from app.services.qr_code import generate_qr_code
 from loguru import logger
 from tortoise.functions import Count
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
+from time import perf_counter
 
 router = Router()
 
@@ -121,16 +121,21 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
                 )
             ])
 
-        # ✅ Быстрые агрегаты (без N+1 запросов)
-        ref_count = await models.User.filter(refer_id=user.id).count()
+        t0 = perf_counter()
 
-        # Все успешные оплаты среди приглашённых
+        # ✅ Быстрые агрегаты (без N+1 запросов)
+        t = perf_counter()
+        ref_count = await models.User.filter(refer_id=user.id).count()
+        t_ref = perf_counter() - t
+
+        t = perf_counter()
         payment_count = await models.Payment.filter(
             is_success=True,
             user__refer_id=user.id
         ).count()
+        t_pay = perf_counter() - t
 
-        # Повторные оплаты = сумма (count-1) по каждому приглашённому, кто платил
+        t = perf_counter()
         referral_stats = (
             await models.Payment.filter(
                 user__refer_id=user.id,
@@ -140,13 +145,15 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             .annotate(payment_count=Count("id"))
             .values("payment_count")
         )
-        repeat_payment_users = sum(
-            max(0, stat["payment_count"] - 1) for stat in referral_stats
-        )
+        repeat_payment_users = sum(max(0, stat["payment_count"] - 1) for stat in referral_stats)
+        t_repeat = perf_counter() - t
+
+        t_total = perf_counter() - t0
 
         logger.bind(user_id=user_id, action="send_affiliate_message").log(
             "USER_ACTION",
-            f"Рефералы: {ref_count}, платежей: {payment_count}"
+            f"PERF affiliate: ref={t_ref:.3f}s pay={t_pay:.3f}s repeat={t_repeat:.3f}s total={t_total:.3f}s | "
+            f"ref_count={ref_count} payment_count={payment_count} repeat={repeat_payment_users}"
         )
 
         if user_id == REFERRAL_PREFIX:
