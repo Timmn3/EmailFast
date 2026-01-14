@@ -38,95 +38,128 @@ MONTHS_RU = {
     "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
 }
 
+# --- Кэш для /stat (чтобы админ не ждал тяжёлые COUNT'ы при частых запросах) ---
+_STAT_CACHE_TTL_SECONDS = 30
+_stat_cache_expires_at: datetime | None = None
+_stat_cache_text: str | None = None
+_stat_cache_kb: types.InlineKeyboardMarkup | None = None
+
+
 @router.message(Command('stat'))
 async def stat(message: types.Message):
     logger.bind(user_id=message.from_user.id, action='stat').log("USER_ACTION", "Команда /stat вызвана")
-    utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+
     if message.from_user.id not in ADMINS:
         return
 
+    utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+
+    # 1) Быстрый ответ из кэша
+    global _stat_cache_expires_at, _stat_cache_text, _stat_cache_kb
+    if (
+        _stat_cache_expires_at
+        and _stat_cache_text
+        and _stat_cache_kb
+        and utc_now < _stat_cache_expires_at
+    ):
+        await message.answer(_stat_cache_text, reply_markup=_stat_cache_kb)
+        return
+
+    today_start = utc_now.replace(hour=0, minute=0, second=0)
+
+    # --- helpers ---
+    async def _sum_amount(qs) -> float:
+        rows = await qs.annotate(total=Sum("amount")).values("total")
+        if not rows:
+            return 0.0
+        return float(rows[0].get("total") or 0.0)
+
+    # --- Users ---
     users_count = await models.User.all().count()
-    users_count_today = await models.User.filter(
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)).count()
+    users_count_today = await models.User.filter(created_at__gte=today_start).count()
 
+    # --- Email ---
     letters_count = await models.Letter.all().count()
-    letters_count_today = await models.Letter.filter(
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)).count()
+    letters_count_today = await models.Letter.filter(created_at__gte=today_start).count()
 
+    # --- SMS delivered ---
     sms_count = await models.Activation.filter(sms_text__isnull=False, sms_text__not="").count()
     sms_count_today = await models.Activation.filter(
-        sms_text__isnull=False, sms_text__not="",
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
+        sms_text__isnull=False,
+        sms_text__not="",
+        created_at__gte=today_start
     ).count()
 
     sms_count_month = await models.Activation.filter(
-        sms_text__isnull=False, sms_text__not="",
+        sms_text__isnull=False,
+        sms_text__not="",
         created_at__gte=utc_now - timedelta(days=30)
     ).count()
 
+    # --- SMS rented ---
     rented_sms_total = await models.Activation.all().count()
-    rented_sms_month = await models.Activation.filter(
-        created_at__gte=utc_now - timedelta(days=30)
-    ).count()
-    rented_sms_today = await models.Activation.filter(
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
-    ).count()
+    rented_sms_month = await models.Activation.filter(created_at__gte=utc_now - timedelta(days=30)).count()
+    rented_sms_today = await models.Activation.filter(created_at__gte=today_start).count()
 
-    payments = await models.Payment.filter(is_success=True).all().prefetch_related('user')
-    payments_count = len(payments)
+    # --- Payments (КЛЮЧЕВОЕ УСКОРЕНИЕ) ---
+    # Вместо: вытянуть все Payment в память и бегать циклом
+    payments_count = 0
     payments_repeat_count = 0
-    user_ids = []
-    for payment in payments:
-        if payment.user.id in user_ids:
-            payments_repeat_count += 1
-        else:
-            user_ids.append(payment.user.id)
-        await asyncio.sleep(0)
+    try:
+        from tortoise import connections
 
-    payments_count_today = await models.Payment.filter(
-        is_success=True,
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
-    ).count()
+        pay_table = models.Payment._meta.db_table
+        conn = connections.get("default")
+        rows = await conn.execute_query_dict(
+            f'SELECT COUNT(*)::bigint AS total, '
+            f'COUNT(DISTINCT user_id)::bigint AS uniq '
+            f'FROM "{pay_table}" '
+            f'WHERE is_success = TRUE'
+        )
+        total = int(rows[0].get("total") or 0) if rows else 0
+        uniq = int(rows[0].get("uniq") or 0) if rows else 0
+        payments_count = total
+        payments_repeat_count = max(total - uniq, 0)
+    except Exception:
+        # Fallback (всё равно без .all()): считаем уникальных плательщиков
+        payments_count = await models.Payment.filter(is_success=True).count()
+        payer_ids = await models.Payment.filter(is_success=True).distinct().values_list("user_id", flat=True)
+        payments_repeat_count = max(payments_count - len(payer_ids), 0)
 
-    payments_amount_today = sum(await models.Payment.filter(
-        is_success=True,
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
-    ).values_list('amount', flat=True))
+    payments_count_today = await models.Payment.filter(is_success=True, created_at__gte=today_start).count()
+    payments_amount_today = await _sum_amount(
+        models.Payment.filter(is_success=True, created_at__gte=today_start)
+    )
 
+    # --- Rent email ---
     rent_email_count = await models.Mail.filter(is_paid_mail=True).all().count()
-    rent_email_count_today = await models.Mail.filter(
-        is_paid_mail=True,
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
-    ).count()
-
+    rent_email_count_today = await models.Mail.filter(is_paid_mail=True, created_at__gte=today_start).count()
     rent_email_active_count = await models.Mail.filter(
         is_paid_mail=True,
         is_active=True,
         expire_at__gt=utc_now
     ).count()
 
-
-    # Общая сумма всех покупок
+    # --- Rented numbers ---
     rented_number_total = await models.Rent.all().annotate(total=Sum("purchase_count")).values("total")
     rented_number_total = rented_number_total[0]["total"] or 0
 
-    # Сумма покупок за последние 30 дней
     rented_number_month = await models.Rent.filter(
         created_at__gte=utc_now - timedelta(days=30)
     ).annotate(total=Sum("purchase_count")).values("total")
     rented_number_month = rented_number_month[0]["total"] or 0
 
-    # Сумма покупок за сегодняшний день
     rented_number_today = await models.Rent.filter(
-        created_at__gte=utc_now.replace(hour=0, minute=0, second=0)
+        created_at__gte=today_start
     ).annotate(total=Sum("purchase_count")).values("total")
     rented_number_today = rented_number_today[0]["total"] or 0
 
-    # Группируем по user_id и считаем количество записей для каждого пользователя
     user_purchases = await models.Rent.all().group_by("user_id").annotate(
         total_purchases=Sum("purchase_count")
     ).values("user_id", "total_purchases")
+    repeat_purchases_total = sum(user["total_purchases"] - 1 for user in user_purchases)
 
+    # --- Month boundaries ---
     first_day_of_month = utc_now.replace(day=1, hour=0, minute=0, second=0)
     last_month = utc_now.month - 1 if utc_now.month > 1 else 12
     last_year = utc_now.year if utc_now.month > 1 else utc_now.year - 1
@@ -134,78 +167,65 @@ async def stat(message: types.Message):
     last_month_name = MONTHS_RU[calendar.month_name[last_month]]
     current_month_name = MONTHS_RU[calendar.month_name[utc_now.month]]
 
-    payments_count_month = await models.Payment.filter(
-        is_success=True,
-        created_at__gte=first_day_of_month
-    ).count()
-
+    payments_count_month = await models.Payment.filter(is_success=True, created_at__gte=first_day_of_month).count()
     payments_count_last_month = await models.Payment.filter(
         is_success=True,
         created_at__gte=first_day_of_last_month,
         created_at__lt=first_day_of_month
     ).count()
 
-    payments_amount_month = sum(await models.Payment.filter(
-        is_success=True,
-        created_at__gte=first_day_of_month
-    ).values_list('amount', flat=True))
+    payments_amount_month = await _sum_amount(
+        models.Payment.filter(is_success=True, created_at__gte=first_day_of_month)
+    )
+    payments_amount_last_month = await _sum_amount(
+        models.Payment.filter(
+            is_success=True,
+            created_at__gte=first_day_of_last_month,
+            created_at__lt=first_day_of_month
+        )
+    )
 
-    payments_amount_last_month = sum(await models.Payment.filter(
-        is_success=True,
-        created_at__gte=first_day_of_last_month,
-        created_at__lt=first_day_of_month
-    ).values_list('amount', flat=True))
-
-    # Суммируем (count - 1) для каждого пользователя
-    repeat_purchases_total = sum(user["total_purchases"] - 1 for user in user_purchases)
-
-    # Для STARS
-    today_start = utc_now.replace(hour=0, minute=0, second=0)
-
-    # За сегодня
+    # --- STARS ---
     stars_today_count = await models.Payment.filter(
         method=models.PaymentMethod.STARS,
         is_success=True,
         created_at__gte=today_start
     ).count()
+    stars_today_amount = await _sum_amount(
+        models.Payment.filter(
+            method=models.PaymentMethod.STARS,
+            is_success=True,
+            created_at__gte=today_start
+        )
+    )
 
-    # Используем values_list для суммы
-    amounts_today = await models.Payment.filter(
-        method=models.PaymentMethod.STARS,
-        is_success=True,
-        created_at__gte=today_start
-    ).values_list("amount", flat=True)
-    stars_today_amount = sum(amounts_today) if amounts_today else 0.0
-
-    # За текущий месяц
     stars_month_count = await models.Payment.filter(
         method=models.PaymentMethod.STARS,
         is_success=True,
         created_at__gte=first_day_of_month
     ).count()
+    stars_month_amount = await _sum_amount(
+        models.Payment.filter(
+            method=models.PaymentMethod.STARS,
+            is_success=True,
+            created_at__gte=first_day_of_month
+        )
+    )
 
-    amounts_month = await models.Payment.filter(
-        method=models.PaymentMethod.STARS,
-        is_success=True,
-        created_at__gte=first_day_of_month
-    ).values_list("amount", flat=True)
-    stars_month_amount = sum(amounts_month) if amounts_month else 0.0
-
-    # За предыдущий месяц
     stars_last_month_count = await models.Payment.filter(
         method=models.PaymentMethod.STARS,
         is_success=True,
         created_at__gte=first_day_of_last_month,
         created_at__lt=first_day_of_month
     ).count()
-
-    amounts_last_month = await models.Payment.filter(
-        method=models.PaymentMethod.STARS,
-        is_success=True,
-        created_at__gte=first_day_of_last_month,
-        created_at__lt=first_day_of_month
-    ).values_list("amount", flat=True)
-    stars_last_month_amount = sum(amounts_last_month) if amounts_last_month else 0.0
+    stars_last_month_amount = await _sum_amount(
+        models.Payment.filter(
+            method=models.PaymentMethod.STARS,
+            is_success=True,
+            created_at__gte=first_day_of_last_month,
+            created_at__lt=first_day_of_month
+        )
+    )
 
     msg_text = bt.ADMIN_STAT.format(
         users_count=users_count,
@@ -250,6 +270,12 @@ async def stat(message: types.Message):
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Рефералы", callback_data="admin_referrals_top")]
     ])
+
+    # 2) Сохраняем в кэш
+    _stat_cache_text = msg_text
+    _stat_cache_kb = kb
+    _stat_cache_expires_at = utc_now + timedelta(seconds=_STAT_CACHE_TTL_SECONDS)
+
     await message.answer(msg_text, reply_markup=kb)
 
 @router.callback_query(F.data == "admin_referrals_top")
