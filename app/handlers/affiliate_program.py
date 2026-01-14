@@ -121,13 +121,16 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
                 )
             ])
 
-        ref = await models.User.filter(refer_id=user.id).all()
-        ref_count = len(ref)
-        payment_count = 0
-        for r in ref:
-            payment_count += (await models.Payment.filter(user=r, is_success=True).all().count())
-        logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", f"Рефералы: {ref_count}, платежей: {payment_count}")
+        # ✅ Быстрые агрегаты (без N+1 запросов)
+        ref_count = await models.User.filter(refer_id=user.id).count()
 
+        # Все успешные оплаты среди приглашённых
+        payment_count = await models.Payment.filter(
+            is_success=True,
+            user__refer_id=user.id
+        ).count()
+
+        # Повторные оплаты = сумма (count-1) по каждому приглашённому, кто платил
         referral_stats = (
             await models.Payment.filter(
                 user__refer_id=user.id,
@@ -135,11 +138,16 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             )
             .group_by("user_id")
             .annotate(payment_count=Count("id"))
-            .values("user_id", "payment_count")
+            .values("payment_count")
+        )
+        repeat_payment_users = sum(
+            max(0, stat["payment_count"] - 1) for stat in referral_stats
         )
 
-        repeat_payment_users = sum(
-            max(0, stat["payment_count"] - 1) for stat in referral_stats if stat["payment_count"] > 1)
+        logger.bind(user_id=user_id, action="send_affiliate_message").log(
+            "USER_ACTION",
+            f"Рефералы: {ref_count}, платежей: {payment_count}"
+        )
 
         if user_id == REFERRAL_PREFIX:
 
