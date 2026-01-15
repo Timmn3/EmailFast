@@ -25,6 +25,9 @@ DB_PORT = config.get("DB_PORT")
 DB_NAME = config.get("DB_NAME")
 
 SMS_ACTIVATE_KEY = config.get("SMS_ACTIVATE_KEY")
+SMSFAST_API_KEY = config.get("SMSFAST_API_KEY")
+SMSFAST_API_URL = config.get("SMSFAST_API_URL", "https://api.smsfast.com/stubs/handler_api.php")
+
 REF_BONUS = config.get("REF_BONUS")
 WITHDRAW_CHAT_ID = config.get("WITHDRAW_CHAT_ID")
 SUPPORT_URL = config.get("SUPPORT_URL")
@@ -55,13 +58,22 @@ DB_CONFIG = {
     },
 }
 
-with open("aerich.ini", "r") as aerich_file:
-    aerich_config = aerich_file.read()
+# --- Aerich: безопасно подставляем DATABASE_URL, не завися от Working Directory ---
+AERICH_INI_PATH = (BAS_DIR.parent / "aerich.ini").resolve()
 
-aerich_config = aerich_config.replace("%(db_url)s", DATABASE_URL)
+try:
+    if AERICH_INI_PATH.exists():
+        aerich_config = AERICH_INI_PATH.read_text(encoding="utf-8")
 
-with open("aerich.ini", "w") as aerich_file:
-    aerich_file.write(aerich_config)
+        # Заменяем только если реально есть плейсхолдер.
+        # Если плейсхолдера нет — файл не трогаем.
+        if "%(db_url)s" in aerich_config:
+            aerich_config = aerich_config.replace("%(db_url)s", DATABASE_URL)
+            AERICH_INI_PATH.write_text(aerich_config, encoding="utf-8")
+except Exception:
+    # В некоторых окружениях (скрипты/CI/read-only FS) не должны падать из-за Aerich ini
+    pass
+
 
 API_TOKEN = config.get('API_TOKEN')
 ADMINS = config.get('ADMINS', [])
