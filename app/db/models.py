@@ -826,10 +826,6 @@ class Activation(Model):
 
     id: int = fields.BigIntField(pk=True)
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
-
-    # ✅ Новый провайдер активации: smsfast / smsactivate / onlinesim
-    provider: str = fields.CharField(max_length=16, default="smsactivate", index=True)
-
     activation_id: int = fields.BigIntField(unique=True, index=True)
     country: CountriesSmsActivate = fields.ForeignKeyField('models.CountriesSmsActivate', related_name='activations')
     service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations', null=True)
@@ -843,17 +839,8 @@ class Activation(Model):
     service_msg_id: int = fields.BigIntField(null=True)
 
     @classmethod
-    async def add_activation_sms_activate(
-        cls,
-        user: User,
-        activation_id: int,
-        country: CountriesSmsActivate,
-        cost: float,
-        service: ServicesSmsActivate,
-        phone_number: str,
-        activation_expire_at: datetime,
-        provider: str = "smsactivate",
-    ):
+    async def add_activation_sms_activate(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,
+                                          service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
         """
         Добавляет новую активацию в базу данных.
 
@@ -864,12 +851,10 @@ class Activation(Model):
         :param service: Объект сервиса, связанного с активацией.
         :param phone_number: Номер телефона, используемый для активации.
         :param activation_expire_at: Время истечения активации.
-        :param provider: Провайдер активации (smsactivate/smsfast).
         :return: Созданный объект активации.
         """
         activation = await cls.create(
             user=user,
-            provider=provider,
             activation_id=activation_id,
             country=country,
             service=service,
@@ -880,20 +865,12 @@ class Activation(Model):
         return activation
 
     @classmethod
-    async def add_activation_onlinesim(
-        cls,
-        user: User,
-        activation_id: int,
-        country: CountriesSmsActivate,
-        cost: float,
-        service_2: ServicesOnlinesim,
-        phone_number: str,
-        activation_expire_at: datetime,
-        provider: str = "onlinesim",
-    ):
+    async def add_activation_onlinesim(cls, user: User, activation_id: int, country: CountriesSmsActivate,
+                                          cost: float,
+                                          service_2: ServicesOnlinesim, phone_number: str,
+                                          activation_expire_at: datetime):
         activation = await cls.create(
             user=user,
-            provider=provider,
             activation_id=activation_id,
             country=country,
             service_2=service_2,
@@ -903,6 +880,48 @@ class Activation(Model):
         )
         return activation
 
+
+    @classmethod
+    async def get_activation(cls, activation_id: int):
+        """
+        Получает активацию по её уникальному идентификатору.
+
+        :param activation_id: Уникальный идентификатор активации.
+        :return: Объект активации или None, если активация не найдена.
+        """
+        return await cls.get_or_none(activation_id=activation_id)
+
+    @classmethod
+    async def get_user_activations(cls, user: User):
+        """
+        Получает все активации пользователя.
+
+        :param user: Объект пользователя.
+        :return: Список объектов активаций, принадлежащих пользователю.
+        """
+        return await cls.filter(user=user).all()
+
+    @classmethod
+    async def get_expired_activations(cls):
+        """
+        Получает все истекшие активации (аренды, чей срок истек).
+
+        :return: Список объектов истекших аренд.
+        """
+        utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
+        return await cls.filter(activation_expire_at__lte=utc_now, status=StatusResponse.STATUS_WAIT_CODE).all().prefetch_related('user')
+
+    @classmethod
+    async def get_active_activations(cls):
+        """
+        Получает все активные активации.
+
+        :return: Список объектов активных активаций.
+        """
+        # return await cls.filter(activation_expire_at__gt=timezone.now()).all()
+
+        return await cls.filter(activation_expire_at__gt=timezone.now()).select_related("service_2").all()
+
     @classmethod
     async def get_active_activation(cls, user_id: int):
         """
@@ -911,20 +930,73 @@ class Activation(Model):
         :param user_id: Идентификатор пользователя.
         :return: Объект активации пользователя, если она активна, или None, если активация не найдена или истекла.
         """
-        # Текущее время (как и в остальной логике проекта)
+        # Получаем текущее время в UTC
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
 
-        # Все активные активации пользователя
-        active_activations = await cls.filter(
-            user_id=user_id,
-            activation_expire_at__gt=utc_now
-        ).all()
+        # Получаем все активные активации пользователя
+        active_activations = await cls.filter(user_id=user_id, activation_expire_at__gt=utc_now).all()
 
+        # Если есть активные активации, возвращаем их
         if active_activations:
             return active_activations[-1]
 
+        # Если активных активаций нет, возвращаем None
         return None
 
+    @classmethod
+    async def delete_user_activations(cls, user_id: int):
+        """
+        Удаляет все активации пользователя по его user_id.
+
+        :param user_id: Идентификатор пользователя.
+        :return: Количество удалённых записей.
+        """
+        deleted_count = await cls.filter(user_id=user_id).delete()
+        return deleted_count
+
+    async def get_service_2_name(self) -> str | None:
+        """
+        Получает имя сервиса из ServicesOnlinesim.
+
+        :return: Название сервиса или None, если сервис отсутствует.
+        """
+        await self.refresh_from_db()  # Перегружаем объект из БД
+        await self.fetch_related("service_2")  # Загружаем связь
+
+        return self.service_2.name if isinstance(self.service_2, ServicesOnlinesim) else None
+
+    @classmethod
+    async def get_last_rented_info(cls, user_id: int):
+        """
+        Получает последнюю аренду пользователя, включая номер, дату аренды, имя сервиса и страну.
+
+        :param user_id: Идентификатор пользователя.
+        :return: Кортеж с последней арендой: (номер телефона, дата аренды, имя сервиса, название страны) или None, если аренда не найдена.
+        """
+
+        # Получаем все активные активации пользователя, отсортированные по дате окончания активации (по убыванию)
+        active_activations = await cls.filter(user_id=user_id, status=StatusResponse.STATUS_OK).all()
+
+        # Если есть активные активации, берем первую (самую последнюю)
+        if active_activations:
+            last_activation = active_activations[-1]
+
+            await last_activation.fetch_related('country', 'service', 'service_2')
+
+            country_name = last_activation.country.name
+
+            try:
+                service_name = last_activation.service.name
+            except Exception:
+                service_name = last_activation.service_2.name
+
+            # Форматируем дату аренды в нужный формат
+            formatted_date = last_activation.activation_expire_at.strftime("%Y-%m-%d %H:%M")
+
+            return last_activation.phone_number, formatted_date, service_name, country_name
+
+        # Если нет активных арендуемых данных
+        return None
 
 class Payment(Model):
     class Meta:
