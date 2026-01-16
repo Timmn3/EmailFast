@@ -645,6 +645,133 @@ async def add_balance(message: types.Message):
     msg_text = f"Администратор пополнил баланс пользователю {user.mention} на {amount}."
     await send_coder(msg_text)
 
+@router.message(Command('reset_ref_balance'))
+async def reset_ref_balance(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action='reset_ref_balance').log(
+        "USER_ACTION", "Команда /reset_ref_balance вызвана"
+    )
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /reset_ref_balance [telegram_id]")
+        return
+
+    try:
+        telegram_id = int(args[1])
+    except ValueError:
+        await message.answer("Некорректный Telegram ID. Пожалуйста, введите числовое значение.")
+        return
+
+    exists = await models.User.filter(telegram_id=telegram_id).exists()
+    if not exists:
+        await message.answer("Пользователь с таким Telegram ID не найден.")
+        return
+
+    try:
+        from tortoise import connections
+
+        user_table = models.User._meta.db_table
+        conn = connections.get("default")
+        dialect = getattr(conn.capabilities, "dialect", "")
+        p1 = "$1" if dialect == "postgres" else "?"
+
+        await conn.execute_query(
+            f'UPDATE "{user_table}" '
+            f'SET ref_balance = 0, total_ref_earnings = 0 '
+            f'WHERE telegram_id = {p1}',
+            [telegram_id],
+        )
+    except Exception:
+        logger.bind(user_id=message.from_user.id, action='reset_ref_balance').exception(
+            "Ошибка при обнулении ref_balance/total_ref_earnings"
+        )
+        await message.answer("Ошибка при обновлении данных. См. логи.")
+        return
+
+    await message.answer(f"✅ Реферальный баланс обнулён для telegram_id={telegram_id}.")
+    await send_coder(f"Админ обнулил ref_balance/total_ref_earnings для telegram_id={telegram_id}.")
+
+
+@router.message(Command('reset_ref_stats'))
+async def reset_ref_stats(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action='reset_ref_stats').log(
+        "USER_ACTION", "Команда /reset_ref_stats вызвана"
+    )
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Использование: /reset_ref_stats [telegram_id]")
+        return
+
+    try:
+        telegram_id = int(args[1])
+    except ValueError:
+        await message.answer("Некорректный Telegram ID. Пожалуйста, введите числовое значение.")
+        return
+
+    # Находим внутренний id (users.id), он нужен для refer_id
+    ref_user = await models.User.get_or_none(telegram_id=telegram_id).only("id")
+    if not ref_user:
+        await message.answer("Пользователь с таким Telegram ID не найден.")
+        return
+
+    referrer_internal_id = ref_user.id
+
+    # Это НЕ поля users, а агрегаты.
+    # Чтобы "обнулить" их, нужно отвязать всех приглашённых от этого реферера (refer_id -> NULL).
+    try:
+        invited_before = await models.User.filter(refer_id=referrer_internal_id).count()
+        pays_before = await models.Payment.filter(is_success=True, user__refer_id=referrer_internal_id).count()
+
+        from tortoise.transactions import in_transaction
+
+        user_table = models.User._meta.db_table
+
+        async with in_transaction() as conn:
+            dialect = getattr(conn.capabilities, "dialect", "")
+            p1 = "$1" if dialect == "postgres" else "?"
+
+            # 1) Обнуляем балансы реферера
+            await conn.execute_query(
+                f'UPDATE "{user_table}" '
+                f'SET ref_balance = 0, total_ref_earnings = 0 '
+                f'WHERE telegram_id = {p1}',
+                [telegram_id],
+            )
+
+            # 2) Отвязываем всех приглашённых пользователей (иначе статистика снова посчитается)
+            await conn.execute_query(
+                f'UPDATE "{user_table}" '
+                f'SET refer_id = NULL '
+                f'WHERE refer_id = {p1}',
+                [referrer_internal_id],
+            )
+
+    except Exception:
+        logger.bind(user_id=message.from_user.id, action='reset_ref_stats').exception(
+            "Ошибка при полном обнулении реф статистики"
+        )
+        await message.answer("Ошибка при обновлении данных. См. логи.")
+        return
+
+    await message.answer(
+        "✅ Реферальная статистика полностью обнулена.\n\n"
+        f"Было:\n"
+        f"Приведено пользователей: {invited_before}\n"
+        f"Количество успешных оплат: {pays_before}\n\n"
+        f"Сейчас:\n"
+        f"Приведено пользователей: 0\n"
+        f"Количество успешных оплат: 0"
+    )
+    await send_coder(
+        f"Админ полностью обнулил реф статистику для telegram_id={telegram_id}: "
+        f"ref_balance/total_ref_earnings=0, отвязано рефералов={invited_before}, оплат было={pays_before}."
+    )
+
 
 @router.message(Command('services_update'))
 async def services(message: types.Message, state: FSMContext):
@@ -1186,6 +1313,8 @@ async def help_admin(message: types.Message):
     /send - Рассылка сообщений
     /sending_status [номер рассылки] - Проверка рассылки сообщений
     /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
+    /reset_ref_balance [telegram_id] - Обнулить ref_balance 
+    /reset_ref_stats [telegram_id] - Обнулить всю реф статистику
     /info_id [telegram_id] - Информация о пользователе
     /user_report [telegram_id] - HTML-отчёт по пользователю
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
