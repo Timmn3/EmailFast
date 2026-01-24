@@ -12,13 +12,16 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
 from app.db.models import Activation, AdminSettings, ReferralLink
-from app.dependencies import ADMINS, bot, REFERRAL_PREFIX, USER_ACCESS_TO_THE_COMMAND
+from app.dependencies import ADMINS, bot, REFERRAL_PREFIX, USER_ACCESS_TO_THE_COMMAND, \
+    USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
 from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum, Count
 import calendar
+
+from app.services.smsfast_price_loader import update_smsfast_prices
 from celery_worker import tasks as broadcast_tasks
 from celery_worker.tasks import send_message_batch
 
@@ -43,6 +46,27 @@ _STAT_CACHE_TTL_SECONDS = 30
 _stat_cache_expires_at: datetime | None = None
 _stat_cache_text: str | None = None
 _stat_cache_kb: types.InlineKeyboardMarkup | None = None
+
+@router.message(Command("update_price_smsfast"))
+async def update_price_smsfast_cmd(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="update_price_smsfast").log(
+        "USER_ACTION",
+        "Команда /update_price_smsfast вызвана"
+    )
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    await message.answer("⏳ Запускаю обновление цен SMSFast…")
+
+    try:
+        await update_smsfast_prices()
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка при update_smsfast_prices (ручной запуск)")
+        await message.answer("❌ Ошибка при обновлении цен SMSFast. См. логи.")
+        return
+
+    await message.answer("✅ Цены SMSFast обновлены.")
 
 
 @router.message(Command('stat'))
@@ -613,7 +637,10 @@ async def handle_refund_command(message: types.Message):
 async def add_balance(message: types.Message):
     logger.bind(user_id=message.from_user.id, action='add_balance').log("USER_ACTION", "Команда /add_balance вызвана")
     logger.bind(user_id=message.from_user.id, action="add_balance").log("USER_ACTION", "Команда /add_balance вызвана")
-    if message.from_user.id not in ADMINS:
+
+    allowed_users = set(ADMINS) | {USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE}
+
+    if message.from_user.id not in allowed_users:
         return
 
     args = message.text.split()
@@ -713,7 +740,7 @@ async def reset_ref_stats(message: types.Message):
         await message.answer("Некорректный Telegram ID. Пожалуйста, введите числовое значение.")
         return
 
-    # Находим внутренний id (users.id), он нужен для refer_id
+    # Находим внутренний id (users.id), он нужен для refer_id и referral_links.user_id
     ref_user = await models.User.get_or_none(telegram_id=telegram_id).only("id")
     if not ref_user:
         await message.answer("Пользователь с таким Telegram ID не найден.")
@@ -721,15 +748,24 @@ async def reset_ref_stats(message: types.Message):
 
     referrer_internal_id = ref_user.id
 
-    # Это НЕ поля users, а агрегаты.
-    # Чтобы "обнулить" их, нужно отвязать всех приглашённых от этого реферера (refer_id -> NULL).
+    # invited_users / invited_success_payments — это агрегаты (считаются по refer_id и payments),
+    # поэтому для "обнуления" нужно отвязать приглашённых пользователей (refer_id -> NULL).
+    # /petr_links показывает статистику из referral_links.total_starts/total_pays/total_payment_amount,
+    # поэтому их тоже сбрасываем.
     try:
         invited_before = await models.User.filter(refer_id=referrer_internal_id).count()
         pays_before = await models.Payment.filter(is_success=True, user__refer_id=referrer_internal_id).count()
 
+        links = await models.ReferralLink.filter(user_id=referrer_internal_id).all()
+        links_count = len(links)
+        starts_before = sum((l.total_starts or 0) for l in links)
+        pays_links_before = sum((l.total_pays or 0) for l in links)
+        amount_before = sum((l.total_payment_amount or 0) for l in links)
+
         from tortoise.transactions import in_transaction
 
         user_table = models.User._meta.db_table
+        referral_links_table = models.ReferralLink._meta.db_table
 
         async with in_transaction() as conn:
             dialect = getattr(conn.capabilities, "dialect", "")
@@ -743,11 +779,19 @@ async def reset_ref_stats(message: types.Message):
                 [telegram_id],
             )
 
-            # 2) Отвязываем всех приглашённых пользователей (иначе статистика снова посчитается)
+            # 2) Отвязываем всех приглашённых пользователей (иначе агрегатная статистика снова посчитается)
             await conn.execute_query(
                 f'UPDATE "{user_table}" '
                 f'SET refer_id = NULL '
                 f'WHERE refer_id = {p1}',
+                [referrer_internal_id],
+            )
+
+            # 3) Сбрасываем статистику по персональным реф-ссылкам (petr_links / whodi_links / silobus_links)
+            await conn.execute_query(
+                f'UPDATE "{referral_links_table}" '
+                f'SET total_starts = 0, total_pays = 0, total_payment_amount = 0 '
+                f'WHERE user_id = {p1}',
                 [referrer_internal_id],
             )
 
@@ -760,16 +804,24 @@ async def reset_ref_stats(message: types.Message):
 
     await message.answer(
         "✅ Реферальная статистика полностью обнулена.\n\n"
-        f"Было:\n"
+        f"Было (агрегаты по рефералам):\n"
         f"Приведено пользователей: {invited_before}\n"
         f"Количество успешных оплат: {pays_before}\n\n"
+        f"Было (referral_links):\n"
+        f"Ссылок: {links_count}\n"
+        f"Запусков бота: {starts_before}\n"
+        f"Оплат: {pays_links_before}\n"
+        f"Сумма оплат: {amount_before:.2f}₽\n\n"
         f"Сейчас:\n"
         f"Приведено пользователей: 0\n"
-        f"Количество успешных оплат: 0"
+        f"Количество успешных оплат: 0\n"
+        f"По ссылкам: запуски=0, оплаты=0, сумма=0"
     )
     await send_coder(
         f"Админ полностью обнулил реф статистику для telegram_id={telegram_id}: "
-        f"ref_balance/total_ref_earnings=0, отвязано рефералов={invited_before}, оплат было={pays_before}."
+        f"ref_balance/total_ref_earnings=0, отвязано рефералов={invited_before}, "
+        f"оплат по приглашённым было={pays_before}, referral_links: links={links_count}, "
+        f"starts={starts_before}, pays={pays_links_before}, amount={amount_before:.2f}."
     )
 
 

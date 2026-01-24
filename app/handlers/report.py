@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime
 import html
 from app.db import models
-from app.dependencies import ADMINS, bot
+from app.dependencies import ADMINS, bot, USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
 import pytz
 from aiogram import Router, types, F
 from loguru import logger
@@ -19,7 +19,11 @@ async def user_report(message: types.Message):
     user_id = message.from_user.id
     logger.bind(user_id=user_id, action="user_report").log("USER_ACTION", "Запрос на генерацию отчёта по пользователю")
 
-    if user_id not in ADMINS:
+    allowed_users = set(ADMINS) | {
+        USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
+    }
+
+    if user_id not in allowed_users:
         logger.warning(f"Пользователь {user_id} не является администратором")
         return
 
