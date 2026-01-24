@@ -28,6 +28,7 @@ from app.services.periodic_tasks import (
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
+from app.services.smsfast_price_loader import update_smsfast_prices
 from logger_config import logger
 from app.scheduler_instance import scheduler
 from app.services import bot_texts as bt
@@ -188,6 +189,19 @@ def set_scheduled_jobs(scheduler):
     try:
 
         if ON_SCHEDULE:
+            # Обновление цен SMSFast (кэш price_smsfast) — ежедневно в 01:00 по МСК
+            scheduler.add_job(
+                update_smsfast_prices,
+                "cron",
+                hour="1,5,9,13,17,21",
+                minute=0,
+                timezone="Europe/Moscow",
+                id="smsfast_prices_daily",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=3600,
+            )
             # Проверка SMS
             scheduler.add_job(check_sms, "interval", seconds=10, max_instances=10)
             # Проверка Email
