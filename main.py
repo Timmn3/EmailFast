@@ -11,9 +11,11 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXEC
 from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
-    get_email_handler, receive_sms_handler, rent_number_handler, report, create_links
+    get_email_handler, receive_sms_handler, rent_number_handler, report, create_links,
+    terms_handler
 )
 from app.handlers.health_check_router import health_check_router
+from app.handlers.terms_middleware import TermsMiddleware
 from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
@@ -34,7 +36,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 16.01.2026"
+msg_text = "Версия 21.01.2026"
 
 
 
@@ -117,10 +119,12 @@ async def main(dp: Dispatcher):
     Основная функция запуска бота и планировщика.
     """
     logger.success("Запуск Telegram-бота")
+    dp.update.middleware(TermsMiddleware())
 
     main_routers = [
         admin_handler.router,
         report.router,
+        terms_handler.router,
         start_handler.router,
         affiliate_program.router,
         health_check_router,
@@ -133,6 +137,10 @@ async def main(dp: Dispatcher):
     # Регистрация глобальных обработчиков ошибок
     dp.errors.register(on_unknown_intent, ExceptionTypeFilter(UnknownIntent))
     dp.errors.register(on_unknown_state, ExceptionTypeFilter(UnknownState))
+
+    # ✅ Глобальный гейт по пользовательскому соглашению
+    dp.message.outer_middleware(TermsMiddleware())
+    dp.callback_query.outer_middleware(TermsMiddleware())
 
     # Подключение диалогов и роутеров
     from app.dialogs import setup_dialogs

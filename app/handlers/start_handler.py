@@ -113,6 +113,22 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
             )
             await message.message.delete()
 
+        # ✅ Гейт по пользовательскому соглашению
+        if not getattr(user, "terms_accepted", False):
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅Я ознакомился", callback_data="terms_accept")]
+            ])
+            terms_url = "https://telegra.ph/Polzovatelskoe-soglashenie-EmailFast-01-21"
+            await message.answer(
+                f'Перед использованием сервиса ознакомьтесь с <a href="{terms_url}">пользовательским соглашением</a>.',
+                reply_markup=kb,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+
+            return
+
+
         sub = await check_subscribe(user)
         if not sub:
             logger.bind(user_id=user_id, action='start').log(

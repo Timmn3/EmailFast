@@ -71,6 +71,9 @@ class User(Model):
         index=True,
         description="Код ссылки на реферал, если пользователь присоединился через личную реферальную ссылкуk"
     )
+    # ✅ Пользовательское соглашение
+    terms_accepted: bool = fields.BooleanField(default=False)
+
 
     @classmethod
     async def add_user(
@@ -826,6 +829,10 @@ class Activation(Model):
 
     id: int = fields.BigIntField(pk=True)
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
+
+    # ✅ Новый провайдер активации: smsfast / smsactivate / onlinesim
+    provider: str = fields.CharField(max_length=16, default="smsactivate", index=True)
+
     activation_id: int = fields.BigIntField(unique=True, index=True)
     country: CountriesSmsActivate = fields.ForeignKeyField('models.CountriesSmsActivate', related_name='activations')
     service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations', null=True)
@@ -839,8 +846,17 @@ class Activation(Model):
     service_msg_id: int = fields.BigIntField(null=True)
 
     @classmethod
-    async def add_activation_sms_activate(cls, user: User, activation_id: int, country: CountriesSmsActivate, cost: float,
-                                          service: ServicesSmsActivate, phone_number: str, activation_expire_at: datetime):
+    async def add_activation_sms_activate(
+        cls,
+        user: User,
+        activation_id: int,
+        country: CountriesSmsActivate,
+        cost: float,
+        service: ServicesSmsActivate,
+        phone_number: str,
+        activation_expire_at: datetime,
+        provider: str = "smsactivate",
+    ):
         """
         Добавляет новую активацию в базу данных.
 
@@ -851,10 +867,12 @@ class Activation(Model):
         :param service: Объект сервиса, связанного с активацией.
         :param phone_number: Номер телефона, используемый для активации.
         :param activation_expire_at: Время истечения активации.
+        :param provider: Провайдер активации (smsactivate/smsfast).
         :return: Созданный объект активации.
         """
         activation = await cls.create(
             user=user,
+            provider=provider,
             activation_id=activation_id,
             country=country,
             service=service,
@@ -865,12 +883,20 @@ class Activation(Model):
         return activation
 
     @classmethod
-    async def add_activation_onlinesim(cls, user: User, activation_id: int, country: CountriesSmsActivate,
-                                          cost: float,
-                                          service_2: ServicesOnlinesim, phone_number: str,
-                                          activation_expire_at: datetime):
+    async def add_activation_onlinesim(
+        cls,
+        user: User,
+        activation_id: int,
+        country: CountriesSmsActivate,
+        cost: float,
+        service_2: ServicesOnlinesim,
+        phone_number: str,
+        activation_expire_at: datetime,
+        provider: str = "onlinesim",
+    ):
         activation = await cls.create(
             user=user,
+            provider=provider,
             activation_id=activation_id,
             country=country,
             service_2=service_2,
@@ -1708,3 +1734,151 @@ class SupportForumMessageMap(Model):
     telegram_id: int = fields.BigIntField(index=True)
 
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
+
+
+class CountriesSmsFast(Model):
+    class Meta:
+        table = "countries_smsfast"
+        table_description = "Countries for SMSFast"
+        ordering = ["id"]
+
+    id: int = fields.IntField(pk=True)
+    country_id: int = fields.IntField(unique=True, index=True)
+    name: str = fields.CharField(max_length=128, null=False)
+
+    @classmethod
+    async def get_country_name_mapping(cls) -> dict[int, str]:
+        """
+        Получает словарь, где ключами являются идентификаторы стран,
+        а значениями — их имена (справочник SMSFast).
+        """
+        countries = await cls.all()
+        return {country.country_id: country.name for country in countries}
+
+
+# ============================================================================
+# Новая таблица для кеширования цен SMSFast по странам и сервисам
+# ============================================================================
+
+class PriceSmsFast(Model):
+    """
+    Таблица для хранения цен SMSFast по странам и сервисам.
+
+    Каждая запись описывает стоимость и количество доступных номеров
+    для определённого service_code в конкретной стране.
+
+    unique_together гарантирует, что для каждой пары (country, service_code)
+    существует не более одной записи.
+    """
+    class Meta:
+        table = "price_smsfast"
+        table_description = "Services by Country for SMSFast"
+        ordering = []
+        unique_together = (("country", "service_code"),)
+
+    id: int = fields.IntField(pk=True)
+    country: int = fields.IntField(null=False)  # SMSFast country_id
+    service_code: str = fields.CharField(max_length=64, null=False)
+    price: float = fields.DecimalField(max_digits=10, decimal_places=2, null=True)
+    count: int = fields.IntField(null=True)
+    updated_at: datetime = fields.DatetimeField(auto_now=True, timezone=True)
+
+
+    @classmethod
+    async def add_or_update_price(
+        cls,
+        country: int,
+        service_code: str,
+        price: float,
+        count: Optional[int] = None,
+    ):
+        """
+        Добавляет или обновляет цену сервиса для указанной страны.
+        Если запись существует, обновляет цену и количество. Иначе создаёт новую.
+        """
+        record = await cls.get_or_none(country=country, service_code=service_code)
+        if record:
+            record.price = price
+            record.count = count
+            await record.save(update_fields=["price", "count"])
+            return record
+        return await cls.create(country=country, service_code=service_code, price=price, count=count)
+
+    @classmethod
+    async def get_price(cls, country: int, service_code: str) -> Optional[float]:
+        """
+        Возвращает стоимость сервиса для указанной страны.
+        """
+        record = await cls.get_or_none(country=country, service_code=service_code)
+        return float(record.price) if record and record.price is not None else None
+
+    @classmethod
+    async def get_service_data(cls, service_code: str) -> dict:
+        """
+        Получает все цены по сервису, сгруппированные по странам.
+        Возвращает словарь вида {'Russia': 20.5, 'USA': 15.0, ...}.
+        """
+        prices = await cls.filter(service_code=service_code).all()
+        country_name_mapping = await CountriesSmsFast.get_country_name_mapping()
+        result: dict[str, float] = {}
+        for price_obj in prices:
+            country_name = country_name_mapping.get(price_obj.country)
+            if country_name:
+                result[country_name] = (
+                    float(price_obj.price) if price_obj.price is not None else None
+                )
+        return result
+
+
+async def map_smsfast_country_to_smsactivate(smsfast_country_id: int):
+    """
+    Маппит SMSFast country_id -> CountriesSmsActivate по названию страны.
+
+    Нужно, потому что SMSFast country_id != CountriesSmsActivate.country_id,
+    а в Activation для ветки smsfast мы храним country как CountriesSmsActivate.
+    """
+    try:
+        cid = int(smsfast_country_id)
+    except (TypeError, ValueError):
+        return None
+
+    row = await CountriesSmsFast.get_or_none(country_id=cid)
+    if not row or not row.name:
+        return None
+
+    name = str(row.name).strip()
+
+    # 1) Прямое совпадение
+    country = await CountriesSmsActivate.get_or_none(name=name)
+    if country:
+        return country
+
+    # 2) Совпадение без учёта регистра
+    country = await CountriesSmsActivate.get_or_none(name__iexact=name)
+    if country:
+        return country
+
+    # 3) Нормализация пробелов (в т.ч. NBSP)
+    normalized = " ".join(name.replace("\xa0", " ").split())
+    if normalized and normalized != name:
+        country = await CountriesSmsActivate.get_or_none(name=normalized)
+        if country:
+            return country
+        country = await CountriesSmsActivate.get_or_none(name__iexact=normalized)
+        if country:
+            return country
+
+    # 4) Мини-алиасы (best-effort)
+    aliases = {
+        "США (виртуальные)": "США",
+    }
+    alias = aliases.get(name) or aliases.get(normalized)
+    if alias:
+        country = await CountriesSmsActivate.get_or_none(name=alias)
+        if country:
+            return country
+        country = await CountriesSmsActivate.get_or_none(name__iexact=alias)
+        if country:
+            return country
+
+    return None
