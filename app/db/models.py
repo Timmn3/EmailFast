@@ -764,7 +764,11 @@ class Mail(Model):
 
         :return: Список объектов истекших почт.
         """
-        return await cls.filter(expire_at__lte=timezone.now(), is_active=True).all()
+        return (
+            await cls.filter(expire_at__lte=timezone.now(), is_active=True)
+            .prefetch_related("user")
+            .all()
+        )
 
     @classmethod
     async def has_used_free_week(cls, user: User) -> bool:

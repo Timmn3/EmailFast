@@ -581,11 +581,18 @@ async def check_email():
         # 1) Деактивация просроченных ящиков
         expired_emails = await models.Mail.get_expired_mails()
         for expired_mail in expired_emails:
+            # гарантируем, что relation user точно загружен
+            try:
+                await expired_mail.fetch_related("user")
+            except Exception:
+                pass
+
             expired_mail.is_active = False
             await expired_mail.save()
 
+            tg_id = getattr(getattr(expired_mail, "user", None), "telegram_id", None)
             logger.bind(
-                user_id=expired_mail.user.telegram_id,
+                user_id=tg_id,
                 action="deactivate_mail",
             ).log("USER_ACTION", f"Почтовый ящик {expired_mail.email} деактивирован (истёк срок аренды)")
 
