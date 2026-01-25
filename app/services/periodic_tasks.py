@@ -886,10 +886,12 @@ async def notify_week_expiration():
         mail.is_free_week = False
         await mail.save()
 
+
+from aiogram import types
 from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
-async def send_coder(msg_text: str) -> None:
+async def send_coder(msg_text: str, reply_markup: types.InlineKeyboardMarkup | None = None) -> None:
     """
     Отправка служебных сообщений в чат CODER.
 
@@ -906,13 +908,13 @@ async def send_coder(msg_text: str) -> None:
             text=str(msg_text),
             parse_mode=None,
             disable_web_page_preview=True,
+            reply_markup=reply_markup,
         )
     except TelegramBadRequest as e:
         # Не даём уведомлениям ронять бизнес-логику
         logger.warning(f"send_coder: TelegramBadRequest: {e}")
     except Exception as e:
         logger.opt(exception=e).error("send_coder: ошибка отправки сообщения в CODER")
-
 
 
 async def check_rent_sms():
@@ -1372,13 +1374,13 @@ async def process_referral_bonus(payment):
 
     await referral_bonus_notification(payment, refer, ref_sum)
 
-FRAUD_DIFF_THRESHOLD = 100.0
+FRAUD_DIFF_THRESHOLD = 200.0
 
 
 async def check_fraud_balance_discrepancy() -> None:
     """
     Ежечасная проверка по аналогии с /users_with_discrepancy:
-    если (расходы + баланс) - пополнения > 300₽ → уведомляем CODER и баним пользователя (fraud_banned=True).
+    если (расходы + баланс) - пополнения > FRAUD_DIFF_THRESHOLD → уведомляем CODER и баним пользователя (fraud_banned=True).
     """
     try:
         logger.bind(action="check_fraud_balance_discrepancy").info("Старт проверки fraud-дисбаланса")
@@ -1391,14 +1393,16 @@ async def check_fraud_balance_discrepancy() -> None:
         # --- агрегируем расходы (как в /users_with_discrepancy) ---
         rents = await models.Rent.filter(
             sms_text__isnull=False,
-            sms_text__not=""
+        ).exclude(
+            sms_text=""
         ).group_by("user_id").annotate(
             total_rent_cost=Sum("cost")
         ).values("user_id", "total_rent_cost")
 
         activations = await models.Activation.filter(
             sms_text__isnull=False,
-            sms_text__not=""
+        ).exclude(
+            sms_text=""
         ).group_by("user_id").annotate(
             total_activation_cost=Sum("cost")
         ).values("user_id", "total_activation_cost")
@@ -1426,7 +1430,21 @@ async def check_fraud_balance_discrepancy() -> None:
             uid = a["user_id"]
             _get(uid)["total_activation_cost"] = float(a["total_activation_cost"] or 0.0)
 
-        user_ids = list(user_data.keys())
+        base_ids = set(user_data.keys())
+
+        # ✅ КЛЮЧЕВОЕ: добавляем пользователей с большим балансом,
+        # даже если у них нет записей в payments/rents/activations (например, баланс поправили руками).
+        extra_balance_ids = await models.User.filter(
+            fraud_banned=False,
+            balance__gt=FRAUD_DIFF_THRESHOLD,
+        ).exclude(
+            telegram_id__in=dependencies.ADMINS
+        ).values_list("id", flat=True)
+
+        for uid in extra_balance_ids:
+            _get(int(uid))  # создаём дефолтные нули, чтобы diff считался корректно
+
+        user_ids = list(base_ids.union(set(map(int, extra_balance_ids))))
         if not user_ids:
             logger.bind(action="check_fraud_balance_discrepancy").info("Нет данных для проверки (user_ids пуст)")
             return
@@ -1437,6 +1455,10 @@ async def check_fraud_balance_discrepancy() -> None:
             fraud_banned=False,
         ).exclude(
             telegram_id__in=dependencies.ADMINS
+        )
+
+        logger.bind(action="check_fraud_balance_discrepancy").info(
+            f"Кандидаты: {len(candidates)} (base={len(base_ids)}, extra_balance={len(extra_balance_ids)})"
         )
 
         now = timezone.now()
@@ -1458,7 +1480,6 @@ async def check_fraud_balance_discrepancy() -> None:
 
             # --- баним ---
             user.fraud_banned = True
-
             update_fields = ["fraud_banned"]
 
             # эти поля могут отсутствовать — ставим только если реально есть в модели
@@ -1492,7 +1513,10 @@ async def check_fraud_balance_discrepancy() -> None:
                 f"diff: {diff:.2f}\n"
                 f"threshold: {FRAUD_DIFF_THRESHOLD:.2f}\n"
             )
-            await send_coder(msg)
+            kb = InlineKeyboardBuilder()
+            kb.button(text="✅ Разбанить", callback_data=f"fraud_unban:{user.telegram_id}")
+
+            await send_coder(msg, reply_markup=kb.as_markup())
 
             # опционально: уведомим пользователя (мягко)
             try:
@@ -1516,3 +1540,4 @@ async def check_fraud_balance_discrepancy() -> None:
 
     except Exception as e:
         logger.opt(exception=e).error("Ошибка в check_fraud_balance_discrepancy")
+

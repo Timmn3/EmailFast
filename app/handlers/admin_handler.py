@@ -1377,6 +1377,108 @@ async def users_with_overspent(message: types.Message):
         caption="Пользователи с расходами выше пополнений"
     )
 
+from tortoise.transactions import in_transaction
+from tortoise.functions import Sum
+
+@router.callback_query(F.data.startswith("fraud_unban:"))
+async def fraud_unban(callback_query: types.CallbackQuery):
+    admin_id = callback_query.from_user.id
+
+    if admin_id not in ADMINS:
+        await callback_query.answer("Недостаточно прав", show_alert=True)
+        return
+
+    try:
+        telegram_id = int(callback_query.data.split(":", 1)[1])
+    except Exception:
+        await callback_query.answer("Некорректные данные кнопки", show_alert=True)
+        return
+
+    async with in_transaction() as conn:
+        user = await models.User.select_for_update().using_db(conn).get_or_none(telegram_id=telegram_id)
+        if not user:
+            await callback_query.answer("Пользователь не найден", show_alert=True)
+            return
+
+        if not getattr(user, "fraud_banned", False):
+            await callback_query.answer("Пользователь уже не в бане", show_alert=True)
+            return
+
+        # ✅ пересчитываем diff на лету: (spent + balance) - paid
+        paid_rows = await (
+            models.Payment.filter(
+                user_id=user.id,
+                is_success=True,
+            )
+            .using_db(conn)
+            .annotate(total_paid=Sum("amount"))
+            .values("total_paid")
+        )
+        total_paid = float((paid_rows[0].get("total_paid") if paid_rows else 0.0) or 0.0)
+
+        rent_rows = await (
+            models.Rent.filter(
+                user_id=user.id,
+                sms_text__isnull=False,
+                sms_text__not="",
+            )
+            .using_db(conn)
+            .annotate(total_rent_cost=Sum("cost"))
+            .values("total_rent_cost")
+        )
+        total_rent_cost = float((rent_rows[0].get("total_rent_cost") if rent_rows else 0.0) or 0.0)
+
+        act_rows = await (
+            models.Activation.filter(
+                user_id=user.id,
+                sms_text__isnull=False,
+                sms_text__not="",
+            )
+            .using_db(conn)
+            .annotate(total_activation_cost=Sum("cost"))
+            .values("total_activation_cost")
+        )
+        total_activation_cost = float((act_rows[0].get("total_activation_cost") if act_rows else 0.0) or 0.0)
+
+        total_spent = total_rent_cost + total_activation_cost
+        balance = float(getattr(user, "balance", 0.0) or 0.0)
+
+        diff = (total_spent + balance) - total_paid
+        diff = float(diff)
+
+        # ✅ создаём запись в payments как “пополнил админ”, чтобы закрыть расхождение в отчётах
+        if diff > 0:
+            await models.Payment.create(
+                user=user,
+                method=models.PaymentMethod.ADMIN,
+                amount=diff,
+                is_success=True,
+                continue_data={
+                    "source": "auto_fraud_unban",
+                    "unbanned_by": admin_id,
+                    "telegram_id": telegram_id,
+                    "total_paid": total_paid,
+                    "total_spent": total_spent,
+                    "balance": balance,
+                    "diff": diff,
+                },
+                using_db=conn,
+            )
+
+        # ✅ снимаем бан (у тебя только одно поле — так и оставляем)
+        user.fraud_banned = False
+        await user.save(update_fields=["fraud_banned"], using_db=conn)
+
+    # убираем кнопку, чтобы не нажимали повторно
+    try:
+        await callback_query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await callback_query.answer(
+        f"✅ Разбанен. Запись в payments добавлена на {diff:.2f} ₽.",
+        show_alert=True
+    )
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
