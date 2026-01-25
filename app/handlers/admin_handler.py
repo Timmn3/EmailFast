@@ -658,10 +658,37 @@ async def add_balance(message: types.Message):
         await message.answer("Пользователь с таким Telegram ID не найден.")
         return
 
-    user.balance += amount
-    await user.save()
+    # Важно: делаем изменение баланса и запись в payments атомарно (одной транзакцией)
+    from tortoise.transactions import in_transaction
 
-    logger.bind(user_id=message.from_user.id, action='add_balance').log('USER_ACTION', f'Пополнение баланса {telegram_id} на {amount}')
+    try:
+        async with in_transaction() as conn:
+            user.balance += amount
+            await user.save(using_db=conn)
+
+            # Запись в payments как успешное пополнение админом (для отчётов)
+            await models.Payment.create(
+                user=user,
+                method=models.PaymentMethod.ADMIN,
+                amount=amount,
+                is_success=True,
+                continue_data={
+                    "source": "admin_command",
+                    "command": "add_balance",
+                    "admin_id": message.from_user.id,
+                },
+                using_db=conn
+            )
+    except Exception as e:
+        logger.bind(user_id=message.from_user.id, action="add_balance").opt(exception=e).error(
+            "Ошибка при ручном пополнении: не удалось записать изменения в БД"
+        )
+        await message.answer("❌ Не удалось пополнить баланс (ошибка записи в БД). Проверь логи.")
+        return
+
+    logger.bind(user_id=message.from_user.id, action='add_balance').log(
+        "USER_ACTION", f"Пополнение баланса {telegram_id} на {amount}"
+    )
     await message.answer(f"Баланс пользователя {user} пополнен на {amount}.")
 
     if amount > 0:

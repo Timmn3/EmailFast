@@ -41,6 +41,7 @@ class PaymentMethod(Enum):
     CKASSA = 'ckassa'
     CRYPTOMUS = 'cryptomus'
     STARS = 'stars'
+    ADMIN = 'admin'
 
 
 class User(Model):
