@@ -38,25 +38,33 @@ DATABASE_URL = f'postgresql+asyncpg://{DATABASE_DATA}'
 DATABASE_URL_SYNC = f'postgresql://{DATABASE_DATA}'
 
 DB_CONFIG = {
-    'connections': {
-        'default': {
-            'engine': 'tortoise.backends.asyncpg',
-            'credentials': {
-                'host': f'{DB_HOST}',
-                'port': f'{DB_PORT}',
-                'user': f'{DB_USER}',
-                'password': f'{DB_PASS}',
-                'database': f'{DB_NAME}',
+    "connections": {
+        "default": {
+            "engine": "tortoise.backends.asyncpg",
+            "credentials": {
+                "host": f"{DB_HOST}",
+                "port": f"{DB_PORT}",
+                "user": f"{DB_USER}",
+                "password": f"{DB_PASS}",
+                "database": f"{DB_NAME}",
+
+                # ✅ Настройки пула asyncpg (уменьшают риск "протухших" / оборванных коннектов)
+                # docs: tortoise -> PostgreSQL optional parameters (pass-through to driver)
+                "minsize": 1,
+                "maxsize": 10,
+                "max_queries": 10000,
+                "max_inactive_connection_lifetime": 120.0,
             },
         },
     },
-    'apps': {
-        'models': {
-            'models': ['app.db.models', 'aerich.models'],
-            'default_connection': 'default',
+    "apps": {
+        "models": {
+            "models": ["app.db.models", "aerich.models"],
+            "default_connection": "default",
         },
     },
 }
+
 
 # --- Aerich: безопасно подставляем DATABASE_URL, не завися от Working Directory ---
 AERICH_INI_PATH = (BAS_DIR.parent / "aerich.ini").resolve()
