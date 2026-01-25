@@ -201,7 +201,7 @@ def set_scheduled_jobs(scheduler):
                 misfire_grace_time=3600,
             )
             # Проверка пользователей на пополнение и расходы (бан)
-            scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=1, max_instances=1)
+            scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
             # Проверка SMS
             scheduler.add_job(check_sms, "interval", seconds=10, max_instances=10)
             # Проверка Email
