@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
+from app import dependencies
 
 from aiogram import BaseMiddleware, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
@@ -53,6 +54,26 @@ class TermsMiddleware(BaseMiddleware):
 
         # --- получаем/создаём пользователя ---
         user = await models.User.get_user(user_tg.id)
+        # --- fraud-ban гейт (аналогично terms gate) ---
+        if getattr(user, "fraud_banned", False) and user_tg.id not in dependencies.ADMINS:
+            banned_text = (
+                "🚫 Доступ ограничен.\n\n"
+                "Обнаружено несоответствие баланса и пополнений.\n"
+                "Если это ошибка — напишите в поддержку."
+            )
+
+            try:
+                if isinstance(event, types.CallbackQuery):
+                    await event.answer("🚫 Доступ ограничен.", show_alert=True)
+                    if event.message:
+                        await event.message.answer(banned_text, disable_web_page_preview=True)
+                else:
+                    await event.answer(banned_text, disable_web_page_preview=True)
+            except Exception:
+                logging.exception("TermsMiddleware: failed to send fraud_banned message")
+
+            return  # стопаем цепочку
+
         if not user:
             user = await models.User.add_user(user_tg)
 

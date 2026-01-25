@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import types
 from aiohttp import ClientSession
 from app.services.onlinesim.sms_client import OnlineSMS
+from tortoise.functions import Sum
 
 from tortoise import timezone
 from loguru import logger
@@ -1371,3 +1372,147 @@ async def process_referral_bonus(payment):
 
     await referral_bonus_notification(payment, refer, ref_sum)
 
+FRAUD_DIFF_THRESHOLD = 100.0
+
+
+async def check_fraud_balance_discrepancy() -> None:
+    """
+    Ежечасная проверка по аналогии с /users_with_discrepancy:
+    если (расходы + баланс) - пополнения > 300₽ → уведомляем CODER и баним пользователя (fraud_banned=True).
+    """
+    try:
+        logger.bind(action="check_fraud_balance_discrepancy").info("Старт проверки fraud-дисбаланса")
+
+        # --- агрегируем пополнения ---
+        payments = await models.Payment.filter(is_success=True).group_by("user_id").annotate(
+            total_paid=Sum("amount")
+        ).values("user_id", "total_paid")
+
+        # --- агрегируем расходы (как в /users_with_discrepancy) ---
+        rents = await models.Rent.filter(
+            sms_text__isnull=False,
+            sms_text__not=""
+        ).group_by("user_id").annotate(
+            total_rent_cost=Sum("cost")
+        ).values("user_id", "total_rent_cost")
+
+        activations = await models.Activation.filter(
+            sms_text__isnull=False,
+            sms_text__not=""
+        ).group_by("user_id").annotate(
+            total_activation_cost=Sum("cost")
+        ).values("user_id", "total_activation_cost")
+
+        user_data: dict[int, dict[str, float]] = {}
+
+        def _get(uid: int) -> dict[str, float]:
+            if uid not in user_data:
+                user_data[uid] = {
+                    "total_paid": 0.0,
+                    "total_rent_cost": 0.0,
+                    "total_activation_cost": 0.0,
+                }
+            return user_data[uid]
+
+        for p in payments:
+            uid = p["user_id"]
+            _get(uid)["total_paid"] = float(p["total_paid"] or 0.0)
+
+        for r in rents:
+            uid = r["user_id"]
+            _get(uid)["total_rent_cost"] = float(r["total_rent_cost"] or 0.0)
+
+        for a in activations:
+            uid = a["user_id"]
+            _get(uid)["total_activation_cost"] = float(a["total_activation_cost"] or 0.0)
+
+        user_ids = list(user_data.keys())
+        if not user_ids:
+            logger.bind(action="check_fraud_balance_discrepancy").info("Нет данных для проверки (user_ids пуст)")
+            return
+
+        # берём только не забаненных fraud и НЕ админов
+        candidates = await models.User.filter(
+            id__in=user_ids,
+            fraud_banned=False,
+        ).exclude(
+            telegram_id__in=dependencies.ADMINS
+        )
+
+        now = timezone.now()
+        banned_count = 0
+
+        for user in candidates:
+            d = user_data.get(user.id, {})
+            total_paid = float(d.get("total_paid", 0.0) or 0.0)
+            total_rent_cost = float(d.get("total_rent_cost", 0.0) or 0.0)
+            total_activation_cost = float(d.get("total_activation_cost", 0.0) or 0.0)
+
+            total_spent = total_rent_cost + total_activation_cost
+            balance = float(getattr(user, "balance", 0.0) or 0.0)
+
+            diff = (total_spent + balance) - total_paid
+
+            if diff <= FRAUD_DIFF_THRESHOLD:
+                continue
+
+            # --- баним ---
+            user.fraud_banned = True
+
+            update_fields = ["fraud_banned"]
+
+            # эти поля могут отсутствовать — ставим только если реально есть в модели
+            if hasattr(user, "fraud_banned_reason"):
+                user.fraud_banned_reason = f"auto: (spent+balance)-paid > {FRAUD_DIFF_THRESHOLD}"
+                update_fields.append("fraud_banned_reason")
+
+            if hasattr(user, "fraud_banned_diff"):
+                user.fraud_banned_diff = float(diff)
+                update_fields.append("fraud_banned_diff")
+
+            if hasattr(user, "fraud_banned_at"):
+                user.fraud_banned_at = now
+                update_fields.append("fraud_banned_at")
+
+            await user.save(update_fields=update_fields)
+            banned_count += 1
+
+            username = getattr(user, "username", None) or "-"
+            first_name = getattr(user, "first_name", None) or "-"
+            last_name = getattr(user, "last_name", None) or "-"
+
+            msg = (
+                "🚨 AUTO-FRAUD BAN\n"
+                f"telegram_id: {user.telegram_id}\n"
+                f"username: @{username}\n"
+                f"name: {first_name} {last_name}\n"
+                f"paid: {total_paid:.2f}\n"
+                f"spent: {total_spent:.2f} (rent={total_rent_cost:.2f} + act={total_activation_cost:.2f})\n"
+                f"balance: {balance:.2f}\n"
+                f"diff: {diff:.2f}\n"
+                f"threshold: {FRAUD_DIFF_THRESHOLD:.2f}\n"
+            )
+            await send_coder(msg)
+
+            # опционально: уведомим пользователя (мягко)
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=(
+                        "🚫 Доступ ограничен.\n\n"
+                        "Обнаружено несоответствие баланса и пополнений.\n"
+                        "Если это ошибка — напишите в поддержку."
+                    ),
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                pass
+
+            logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").warning(
+                f"Пользователь fraud_banned=True, diff={diff:.2f}"
+            )
+
+        logger.bind(action="check_fraud_balance_discrepancy").info(f"Готово. Забанено: {banned_count}")
+
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка в check_fraud_balance_discrepancy")

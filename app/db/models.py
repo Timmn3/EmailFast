@@ -73,8 +73,16 @@ class User(Model):
         description="Код ссылки на реферал, если пользователь присоединился через личную реферальную ссылкуk"
     )
     # ✅ Пользовательское соглашение
-    terms_accepted: bool = fields.BooleanField(default=False)
+    terms_accepted: bool = fields.BooleanField(
+        default=False, description="Согласие с пользовательским соглашением"
+    )
 
+    # === Anti-fraud ===
+    fraud_banned: bool = fields.BooleanField(
+        default=False,
+        index=True,
+        description="Автоблокировка при расхождении: расходы+баланс > пополнений",
+    )
 
     @classmethod
     async def add_user(
