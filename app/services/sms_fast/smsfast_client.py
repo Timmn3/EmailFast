@@ -21,7 +21,7 @@ try:
 except Exception:  # pragma: no cover
     SMSFAST_RPS = 1.0
 
-from app.services.smsfast_receive import SmsFastReceive
+from app.services.sms_fast.smsfast_receive import SmsFastReceive
 
 _smsfast_client: Optional[SmsFastReceive] = None
 

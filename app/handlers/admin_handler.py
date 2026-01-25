@@ -1,4 +1,3 @@
-import asyncio
 import random
 import string
 from datetime import datetime, timedelta
@@ -11,9 +10,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
-from app.db.models import Activation, AdminSettings, ReferralLink
-from app.dependencies import ADMINS, bot, REFERRAL_PREFIX, USER_ACCESS_TO_THE_COMMAND, \
-    USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
+from app.db.models import Activation, AdminSettings
+from app.dependencies import ADMINS, bot, USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
 from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
@@ -21,7 +19,7 @@ from loguru import logger
 from tortoise.functions import Sum, Count
 import calendar
 
-from app.services.smsfast_price_loader import update_smsfast_prices
+from app.services.sms_fast.smsfast_price_loader import update_smsfast_prices
 from celery_worker import tasks as broadcast_tasks
 from celery_worker.tasks import send_message_batch
 
@@ -890,7 +888,7 @@ async def info_id(message: types.Message):
     rent_date = rent_with_sms.created_at.strftime("%Y-%m-%d %H:%M") if rent_with_sms else "Нет"
 
     # Получаем сумму всех успешных пополнений
-    from tortoise.functions import Sum, Count
+    from tortoise.functions import Sum
     total_payments_result = await models.Payment.filter(user=user, is_success=True).annotate(total=Sum("amount")).values("total")
     total_payments = total_payments_result[0]["total"] or 0
 
@@ -1028,7 +1026,6 @@ async def users_without_payments(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
-    from tortoise.expressions import Q
     from tortoise.functions import Sum
 
     # Получаем всех пользователей с положительным балансом

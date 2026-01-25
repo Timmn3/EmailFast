@@ -1,14 +1,11 @@
 # === Импорты ===
 from aiogram.filters import ExceptionTypeFilter
-from aiogram.types import Message
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from aiogram import Dispatcher, F
 from app.db.database import init_db
 from app.dependencies import bot, ON_SCHEDULE, DB_NAME
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
-from app.dialogs.bot_menu.states import BotMenu
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
     get_email_handler, receive_sms_handler, rent_number_handler, report, create_links,
@@ -20,15 +17,15 @@ from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import (
-    check_sms, check_email, check_payment_lava, check_mail_expiration_and_notify,
-    check_payment_freekassa, check_payment_yoomoney, check_payment_anypay, check_payment_streampay,
+    check_sms, check_email, check_mail_expiration_and_notify,
+    check_payment_freekassa, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration, refund_and_cleanup_expired_sms
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
-from app.services.smsfast_price_loader import update_smsfast_prices
+from app.services.sms_fast.smsfast_price_loader import update_smsfast_prices
 from logger_config import logger
 from app.scheduler_instance import scheduler
 from app.services import bot_texts as bt
@@ -273,7 +270,6 @@ signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 
 
 from aiogram.types import ErrorEvent
-from aiogram_dialog.api.exceptions import OutdatedIntent
 
 
 async def error_handler(

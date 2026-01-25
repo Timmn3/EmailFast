@@ -3,7 +3,7 @@ from typing import Optional
 from loguru import logger
 
 from app.db.models import CountriesSmsFast, PriceSmsFast
-from app.services.smsfast_client import get_smsfast_client
+from app.services.sms_fast.smsfast_client import get_smsfast_client
 
 async def update_smsfast_prices() -> None:
     """
