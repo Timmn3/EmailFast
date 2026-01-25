@@ -225,6 +225,10 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
     user_id = call.from_user.id
+    if user_id:
+        await call.answer(text='Номер автоматически отменится через 15 минут', show_alert=True)
+        await call.answer()
+        return
     try:
         user = await models.User.get_user(telegram_id=call.from_user.id)
         activation_id = int(call.data.split(':')[1])
