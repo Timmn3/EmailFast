@@ -86,6 +86,7 @@ except Exception:
 API_TOKEN = config.get('API_TOKEN')
 ADMINS = config.get('ADMINS', [])
 CODER = config.get('CODER')
+PROJECT_MANAGER = config.get('PROJECT_MANAGER')
 USER_BOT = config.get('USER_BOT')
 
 

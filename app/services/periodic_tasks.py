@@ -10,7 +10,7 @@ from tortoise import timezone
 from loguru import logger
 from app import dependencies
 from app.db import models
-from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM
+from app.dependencies import bot, FK_SHOP_ID, FK_FK_API_KEY, CODER, API_KEY_ONLINESIM, PROJECT_MANAGER
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.rent_sms.getters import get_day_string
 from app.handlers.get_email_handler import get_extend_email_kb
@@ -1506,17 +1506,28 @@ async def check_fraud_balance_discrepancy() -> None:
                 "🚨 AUTO-FRAUD BAN\n"
                 f"telegram_id: {user.telegram_id}\n"
                 f"username: @{username}\n"
-                f"name: {first_name} {last_name}\n"
-                f"paid: {total_paid:.2f}\n"
-                f"spent: {total_spent:.2f} (rent={total_rent_cost:.2f} + act={total_activation_cost:.2f})\n"
-                f"balance: {balance:.2f}\n"
-                f"diff: {diff:.2f}\n"
-                f"threshold: {FRAUD_DIFF_THRESHOLD:.2f}\n"
+                f"оплаты: {total_paid:.2f}\n"
+                f"потрачено: {total_spent:.2f} (rent={total_rent_cost:.2f} + act={total_activation_cost:.2f})\n"
+                f"баланс: {balance:.2f}\n"
+                f"разница: {diff:.2f}\n"
+                f"порог: {FRAUD_DIFF_THRESHOLD:.2f}\n"
             )
             kb = InlineKeyboardBuilder()
             kb.button(text="✅ Разбанить", callback_data=f"fraud_unban:{user.telegram_id}")
 
             await send_coder(msg, reply_markup=kb.as_markup())
+
+            if PROJECT_MANAGER:
+                try:
+                    await bot.send_message(
+                        chat_id=PROJECT_MANAGER,
+                        text=str(msg),
+                        parse_mode=None,
+                        disable_web_page_preview=True,
+                        reply_markup=kb.as_markup(),
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить AUTO-FRAUD BAN PM={PROJECT_MANAGER}: {e}")
 
             # опционально: уведомим пользователя (мягко)
             try:
