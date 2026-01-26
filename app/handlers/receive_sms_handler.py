@@ -2,6 +2,8 @@ from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
 from app.services.onlinesim.sms_client import OnlineSMS
+from datetime import timedelta
+from tortoise import timezone
 
 from aiogram.exceptions import TelegramBadRequest
 from app.db import models
@@ -224,102 +226,96 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
+    from datetime import timedelta
+    from tortoise import timezone
+    from tortoise.transactions import in_transaction
+
     user_id = call.from_user.id
-    if user_id:
-        await call.answer(text='Номер автоматически отменится через 15 минут', show_alert=True)
-        await call.answer()
-        return
+
     try:
-        user = await models.User.get_user(telegram_id=call.from_user.id)
-        activation_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Пользователь запрашивает отмену активации ID={activation_id}, баланс = {user.balance} ₽")
-        if await service_is_smsactivate():
-            activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service')
-        else:
-            activation = await models.Activation.get_or_none(id=activation_id).prefetch_related('service_2')
-        logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Результат из БД: активация найдена={activation is not None}")
+        activation_id = int(call.data.split(':', 1)[1])
 
-        if not activation:
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Активация не найдена")
-            await call.answer(text='Номер автоматически отменится через 10 минут', show_alert=True)
-            await call.answer()
-            return
+        # ⚙️ Никаких вызовов Telegram внутри транзакции — сначала решаем, что делать, потом отвечаем.
+        answer_text: str | None = None
+        answer_alert: bool = True
+        need_clear_kb: bool = False
 
-        formatted_time = activation.activation_expire_at.strftime("%H:%M")
-        try:
-            if await service_is_smsactivate():
-                service = activation.service.code
+        refund_amount: float = 0.0
+        new_balance: float | None = None
+
+        async with in_transaction() as conn:
+            user = await models.User.select_for_update().using_db(conn).get_or_none(telegram_id=user_id)
+            if not user:
+                answer_text = "Пользователь не найден."
             else:
-                service = activation.service_2.code
-        except AttributeError:
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Ошибка: сервис не найден")
-            await call.answer(text=f'Номер автоматически отменится в {formatted_time}', show_alert=True)
-            return
+                activation = await models.Activation.select_for_update().using_db(conn).get_or_none(id=activation_id)
+                if not activation:
+                    logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Активация не найдена")
+                    answer_text = "Номер автоматически отменится через 15 минут"
+                else:
+                    # ⏱️ Блокируем отмену в первые 2 минуты
+                    now = timezone.now()
+                    created_at = activation.created_at
 
-        cancellation_successful = False
-        if service in SERVICES_TRANSLATION or not await service_is_smsactivate():
-            client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-            cancel_status = await client.finish_order(operation_id=activation.activation_id, ban=False)
-            cancellation_successful = cancel_status.get("response") == 1
-        else:
-            sms = SmsReceive()
-            status = str(await sms.set_activation_status(activation_id=activation.activation_id,
-                                                         status=models.ActivationCode.CANCEL))
-            if status == 'STATUS_WAIT_CODE':
-                await call.answer(text='Ожидание смс', show_alert=True)
-                return
-            elif status == 'EARLY_CANCEL_DENIED':
-                await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
-                return
-            elif status == "ACCESS_CANCEL":
-                cancellation_successful = True
+                    # на случай, если created_at наивный, а now aware (или наоборот)
+                    if created_at and created_at.tzinfo is None and now.tzinfo is not None:
+                        now = now.replace(tzinfo=None)
 
-        if cancellation_successful:
-            activation.activation_expire_at = None
-            user = await models.User.get_user(telegram_id=call.from_user.id)
-            if activation.sms_text is None and activation.status == models.StatusResponse.STATUS_WAIT_CODE:
-                    user.balance += activation.cost
-                    await user.save()
-                    logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", f"Если нет смс, возвращаем деньги, баланс = {user.balance} ₽")
-                    msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
-            else:
-                msg_text = bt.SERVICE_CANCEL.strip()
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
+                    if created_at:
+                        delta = now - created_at
+                        if delta < timedelta(minutes=1):
+                            seconds_left = int((timedelta(minutes=1) - delta).total_seconds())
+                            answer_text = f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек."
+                    else:
+                        # если почему-то нет created_at — не даём отменять “сразу”
+                        answer_text = "Нельзя отменить в первые 2 минуты."
+
+                    if answer_text is None:
+                        # 📩 Если SMS уже пришло — отмену/возврат не даём
+                        if (activation.sms_text or "").strip():
+                            answer_text = "SMS уже получено — отмена недоступна."
+                        # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
+                        elif activation.status == models.StatusResponse.STATUS_CANCEL:
+                            answer_text = "Отмена больше не доступна"
+                        else:
+                            # ✅ Делаем отмену + возврат атомарно под локом
+                            activation.status = models.StatusResponse.STATUS_CANCEL
+                            await activation.save(using_db=conn, update_fields=["status"])
+
+                            refund_amount = float(activation.cost or 0.0)
+                            user.balance = float(user.balance or 0.0) + refund_amount
+                            await user.save(using_db=conn, update_fields=["balance"])
+
+                            new_balance = float(user.balance or 0.0)
+                            need_clear_kb = True
+                            answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
+                            answer_alert = False  # можно оставить False как раньше
+
+        # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
+        if need_clear_kb:
             try:
-                if call.message.text.strip() != msg_text or call.message.reply_markup is not None:
-                    await call.message.edit_text(text=msg_text)
-                    # await call.message.edit_reply_markup(reply_markup=None)
-            except TelegramBadRequest as e:
-                logger.opt(exception=e).warning("Не удалось изменить сообщение или клавиатуру")
-        else:
-            await call.answer(text='Отмена больше не доступна', show_alert=True)
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
-                                                                      f"Отмена больше не доступна")
+                if call.message:
+                    await call.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+
+        # Лог после транзакции (чтобы не держать локи)
+        if refund_amount > 0:
+            logger.bind(user_id=user_id, action="cancel_service").log(
+                "USER_ACTION",
+                f"Возврат выполнен: activation_pk={activation_id}, refund={refund_amount}, new_balance={new_balance} ₽"
+            )
+
+        await call.answer(text=answer_text or "Отмена больше не доступна", show_alert=answer_alert)
+
     except TelegramBadRequest as e:
         logger.opt(exception=e).warning(f"Telegram server error: {e}")
     except Exception as e:
-        error_text = str(e)
-        if error_text == 'Unable to finish order':
-            await call.answer(text='Нельзя отменить в первые 2 минуты', show_alert=True)
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
-                                                                      f"Нельзя отменить в первые 2 минуты")
-        elif error_text == 'Wrong operation ID':
-            activation.activation_expire_at = None
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
-            await call.answer(text='Отмена больше не доступна', show_alert=True)
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
-                                                                      f"Отмена больше не доступна")
-        elif error_text == 'Try again later':
-            await call.answer(text='Повторите попытку позже', show_alert=True)
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
-                                                                      f"Повторите попытку позже")
-        else:
-            text = error_text[0].upper() + error_text[1:] if error_text else "Неизвестная ошибка"
-            logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION",
-                                                                      f"Ошибка при отмене номера.\n{text}")
-            await call.answer(text=f'Ошибка при отмене номера.\n{text}', show_alert=True)
+        logger.opt(exception=e).error(f"Ошибка в cancel_service: {e}")
+        try:
+            await call.answer(text="❌ Ошибка при отмене. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith('full_unread_message|'))

@@ -30,67 +30,126 @@ import pytz
 import datetime
 
 from app.services.payments.yoomoney import check_payment_status
-# === AUTO REFUND & CLEANUP EXPIRED SMS ACTIVATIONS ===
+
 from tortoise import timezone
 from tortoise.transactions import in_transaction
-from loguru import logger
 
+from app.db import models
 from app.db.models import Activation, StatusResponse
 from app.dependencies import bot
 
+
 async def refund_and_cleanup_expired_sms() -> None:
     """
-    Находит истёкшие (20 мин) активации, по которым не пришло СМС (WAIT_CODE),
+    Находит истёкшие активации, по которым не пришло СМС (WAIT_CODE),
     удаляет сервисное сообщение, возвращает деньги и уведомляет пользователя.
+
+    Идемпотентность:
+    - Лочим строку Activation через SELECT FOR UPDATE
+    - Внутри транзакции повторно проверяем status/expiry/sms_text
+    - Переводим в CANCEL и возвращаем деньги строго один раз
     """
     now = timezone.now()
-    # Берём только те, по которым всё ещё ждём код
-    expired = await Activation.filter(
+
+    # Берём только ID (чтобы не тащить user relation и не работать со "старыми" объектами)
+    expired_ids = await Activation.filter(
         activation_expire_at__lte=now,
         status=StatusResponse.STATUS_WAIT_CODE,
-    ).prefetch_related("user").all()
+    ).values_list("id", flat=True)
 
-    if not expired:
+    if not expired_ids:
         return
 
-    for act in expired:
+    for activation_pk in expired_ids:
         try:
-            # 1) Пытаемся удалить выданное ранее сообщение с номером
-            if act.service_msg_id and act.user and act.user.telegram_id:
-                try:
-                    await bot.delete_message(
-                        chat_id=act.user.telegram_id,
-                        message_id=act.service_msg_id
-                    )
-                    logger.info(f"🗑 Удалено сервисное сообщение: activation_id={act.activation_id}, msg_id={act.service_msg_id}")
-                except Exception as e:
-                    logger.warning(f"Не удалось удалить сообщение activation_id={act.activation_id}: {e}")
+            did_refund = False
+            user_tg_id: int | None = None
+            service_msg_id: int | None = None
+            phone_number: str | None = None
+            cost: float = 0.0
+            ext_activation_id: int | None = None
 
-            # 2) Рефанд и перевод статуса в CANCEL — в транзакции
-            async with in_transaction():
-                # вернуть средства пользователю
-                if act.user:
-                    act.user.balance = float(act.user.balance or 0) + float(act.cost or 0)
-                    await act.user.save(update_fields=["balance"])
+            async with in_transaction() as conn:
+                # 🔒 Лочим активацию
+                act = await Activation.filter(id=activation_pk).using_db(conn).select_for_update().first()
+                if not act:
+                    continue
 
-                # помечаем активацию как отменённую
+                # Повторный чек условий уже "под замком"
+                if act.status != StatusResponse.STATUS_WAIT_CODE:
+                    continue
+
+                # если expire_at по какой-то причине NULL — не трогаем
+                if not act.activation_expire_at or act.activation_expire_at > timezone.now():
+                    continue
+
+                # если СМС уже есть — не рефандим
+                sms_text = (getattr(act, "sms_text", None) or "").strip()
+                if sms_text:
+                    continue
+
+                if not getattr(act, "user_id", None):
+                    # на всякий — просто закрываем активацию, но без рефанда
+                    act.status = StatusResponse.STATUS_CANCEL
+                    await act.save(using_db=conn, update_fields=["status"])
+                    continue
+
+                # 🔒 Лочим пользователя
+                user = await models.User.filter(id=act.user_id).using_db(conn).select_for_update().first()
+                if not user:
+                    act.status = StatusResponse.STATUS_CANCEL
+                    await act.save(using_db=conn, update_fields=["status"])
+                    continue
+
+                cost = float(getattr(act, "cost", 0.0) or 0.0)
+
+                user.balance = float(getattr(user, "balance", 0.0) or 0.0) + cost
+                await user.save(using_db=conn, update_fields=["balance"])
+
                 act.status = StatusResponse.STATUS_CANCEL
-                await act.save(update_fields=["status"])
+                await act.save(using_db=conn, update_fields=["status"])
 
-            # 3) Уведомление пользователю
+                # сохраняем данные для действий после коммита
+                did_refund = True
+                user_tg_id = int(getattr(user, "telegram_id", 0) or 0) or None
+                service_msg_id = getattr(act, "service_msg_id", None)
+                phone_number = getattr(act, "phone_number", None)
+                ext_activation_id = getattr(act, "activation_id", None)
+
+            if not did_refund or not user_tg_id:
+                continue
+
+            # 1) Пытаемся удалить выданное ранее сообщение с номером
+            if service_msg_id:
+                try:
+                    await bot.delete_message(chat_id=user_tg_id, message_id=service_msg_id)
+                    logger.info(
+                        f"🗑 Удалено сервисное сообщение: activation_id={ext_activation_id}, msg_id={service_msg_id}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить сообщение activation_id={ext_activation_id}: {e}")
+
+            # 2) Уведомление пользователю
             try:
                 await bot.send_message(
-                    chat_id=act.user.telegram_id,
+                    chat_id=user_tg_id,
                     text=(
                         "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс.</b>\n\n"
                         "🔄Попробуйте новый номер или выберите другую страну.\n"
-                    )
+                    ),
+                    parse_mode="HTML",
                 )
             except Exception as e:
-                logger.warning(f"Не удалось отправить уведомление пользователю {act.user.telegram_id}: {e}")
+                logger.warning(f"Не удалось отправить уведомление пользователю {user_tg_id}: {e}")
+
+            logger.bind(user_id=user_tg_id, action="refund_activation").log(
+                "USER_ACTION",
+                f"Возврат средств за истёкшую активацию: id={ext_activation_id}, номер={phone_number}, сумма={cost}₽"
+            )
 
         except Exception as e:
-            logger.opt(exception=e).error(f"Ошибка при обработке истёкшей активации id={act.id}")
+            logger.opt(exception=e).error(f"Ошибка при обработке истёкшей активации pk={activation_pk}")
+
 
 
 async def check_payment_lava():
@@ -517,37 +576,8 @@ async def check_sms():
                         "USER_ACTION",
                         f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status}"
                     )
-
-        # Получаем все истекшие активации
-        activations = await models.Activation.get_expired_activations()
-
-        # Обрабатываем каждую истекшую активацию
-        for activation in activations:
-            activation.status = models.StatusResponse.STATUS_CANCEL
-            await activation.save()
-
-            activation.user.balance += activation.cost
-            await activation.user.save()
-
-            try:
-                await bot.send_message(
-                    chat_id=activation.user.telegram_id,
-                    text=(
-                        "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс.</b>\n\n"
-                        "🔄Попробуйте новый номер или выберите другую страну.\n"
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.warning(f"Не удалось отправить уведомление пользователю {activation.user.telegram_id}: {e}")
-
-            logger.bind(
-                user_id=activation.user.telegram_id,
-                action="refund_activation"
-            ).log(
-                "USER_ACTION",
-                f"Возврат средств за истёкшую активацию: Номер: {activation.phone_number}, сумма {activation.cost}₽, Баланс = {activation.user.balance} ₽"
-            )
+        # Идемпотентный авто-рефанд SMS
+        await refund_and_cleanup_expired_sms()
 
     except asyncio.CancelledError:
         pass
