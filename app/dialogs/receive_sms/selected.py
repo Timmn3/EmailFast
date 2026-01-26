@@ -9,7 +9,7 @@ from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from tortoise.transactions import in_transaction
 
-from app.services.onlinesim.sms_client import OnlineSMS
+from pyonlinesim import OnlineSMS
 from aiogram.exceptions import TelegramBadRequest
 
 from app.db import models
