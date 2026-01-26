@@ -18,6 +18,7 @@ from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum, Count
 import calendar
+from tortoise import timezone
 
 from app.services.sms_fast.smsfast_price_loader import update_smsfast_prices
 from celery_worker import tasks as broadcast_tasks
@@ -1482,6 +1483,120 @@ async def fraud_unban(callback_query: types.CallbackQuery):
         f"✅ Разбанен. Запись в payments добавлена на {diff:.2f} ₽.",
         show_alert=True
     )
+
+@router.message(Command("fix_discrepancy_balance"))
+async def fix_discrepancy_balance(message: types.Message):
+    """
+    Админ-команда: находит пользователей с расхождением (как /users_with_discrepancy),
+    но НЕ учитывает операции за последние 30 минут, и правит баланс так, чтобы diff стал 0.
+    """
+    if message.from_user.id not in ADMINS:
+        return
+
+    logger.bind(user_id=message.from_user.id, action="fix_discrepancy_balance").log(
+        "USER_ACTION", "Команда /fix_discrepancy_balance вызвана"
+    )
+
+    cutoff_dt = timezone.now() - timedelta(minutes=30)
+
+    # ✅ пополнения (до cutoff)
+    payments = (
+        await models.Payment.filter(is_success=True, created_at__lte=cutoff_dt)
+        .group_by("user_id")
+        .annotate(total_paid=Sum("amount"))
+        .values("user_id", "total_paid")
+    )
+
+    # ✅ расходы на аренды (до cutoff)
+    rents = (
+        await models.Rent.filter(created_at__lte=cutoff_dt, sms_text__isnull=False)
+        .exclude(sms_text="")
+        .group_by("user_id")
+        .annotate(total_rent=Sum("cost"))
+        .values("user_id", "total_rent")
+    )
+
+    # ✅ расходы на активации (до cutoff)
+    activations = (
+        await models.Activation.filter(created_at__lte=cutoff_dt, sms_text__isnull=False)
+        .exclude(sms_text="")
+        .group_by("user_id")
+        .annotate(total_activation=Sum("cost"))
+        .values("user_id", "total_activation")
+    )
+
+    user_data: dict[int, dict[str, float]] = {}
+
+    def _get(uid: int) -> dict[str, float]:
+        if uid not in user_data:
+            user_data[uid] = {"total_paid": 0.0, "total_spent": 0.0}
+        return user_data[uid]
+
+    for p in payments:
+        uid = int(p["user_id"])
+        _get(uid)["total_paid"] = float(p["total_paid"] or 0.0)
+
+    for r in rents:
+        uid = int(r["user_id"])
+        _get(uid)["total_spent"] += float(r["total_rent"] or 0.0)
+
+    for a in activations:
+        uid = int(a["user_id"])
+        _get(uid)["total_spent"] += float(a["total_activation"] or 0.0)
+
+    user_ids = list(user_data.keys())
+    if not user_ids:
+        await message.answer("Нет данных для пересчёта (user_ids пуст).")
+        return
+
+    # Берём текущие балансы кандидатов
+    users = await models.User.filter(id__in=user_ids).values(
+        "id", "telegram_id", "full_name", "username", "mention", "balance"
+    )
+    user_info_map = {u["id"]: u for u in users}
+
+    changed = 0
+    total_adjustment = 0.0
+
+    for uid, data in user_data.items():
+        u = user_info_map.get(uid)
+        if not u:
+            continue
+
+        total_paid = float(data["total_paid"] or 0.0)
+        total_spent = float(data["total_spent"] or 0.0)
+        balance = float(u["balance"] or 0.0)
+
+        diff = (total_spent + balance - total_paid)
+        if diff <= 0:
+            continue
+
+        # мелочь игнорируем, чтобы не дрожать по копейкам
+        if abs(diff) < 0.01:
+            continue
+
+        new_balance = balance - diff
+
+        await models.User.filter(id=uid).update(balance=new_balance)
+
+        changed += 1
+        total_adjustment += diff
+
+        logger.bind(
+            user_id=u["telegram_id"],
+            action="fix_discrepancy_balance"
+        ).log(
+            "USER_ACTION",
+            f"Баланс скорректирован: был={balance:.2f} -> стал={new_balance:.2f}, diff={diff:.2f}, cutoff={cutoff_dt}"
+        )
+
+    await message.answer(
+        "✅ Готово.\n"
+        f"cutoff: {cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"пользователей исправлено: {changed}\n"
+        f"суммарно снято (diff): {total_adjustment:.2f} ₽"
+    )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
