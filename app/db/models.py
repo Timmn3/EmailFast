@@ -975,8 +975,9 @@ class Activation(Model):
         activation = await (
             cls.filter(user_id=user_id, activation_expire_at__gt=utc_now)
             .exclude(status=StatusResponse.STATUS_CANCEL)
-            .order_by("id")
-            .last()
+            # Tortoise ORM: .last() нет, поэтому берём "последнюю" через сортировку по убыванию + first()
+            .order_by("-id")
+            .first()
         )
         return activation
 
