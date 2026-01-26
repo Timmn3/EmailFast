@@ -441,10 +441,18 @@ async def check_sms():
                 # STATUS_OK:1231
             else:
                 client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-                order_info = await client.get_order_info(
-                    operation_id=activation.activation_id,
-                    get_full_message=True
-                )
+
+                # ⚠️ OnlineSim может отвечать временной ошибкой TryAgainLater — не валим весь job, просто ждём следующий тик
+                try:
+                    order_info = await client.get_order_info(
+                        operation_id=activation.activation_id,
+                        get_full_message=True
+                    )
+                except Exception as e:
+                    if e.__class__.__name__ == "TryAgainLater":
+                        continue
+                    raise
+
                 name = await activation.get_service_2_name()
 
                 if order_info and isinstance(order_info, list) and "msg" in order_info[0]:
@@ -461,16 +469,11 @@ async def check_sms():
                 # Смотрим какая смс в БД
                 current_sms = activation.sms_text if activation.sms_text is not None else '1'
 
-                # Извлекаем текст SMS из статуса
                 # Извлекаем полный текст SMS из статуса
                 sms_from_status_raw = status.split(":", 1)[1].strip()
 
-                # Ты хочешь хранить/передавать весь текст — ок, просто фиксируем переменную
+                # Ты хочешь хранить/передавать весь текст — ок
                 sms_from_status = sms_from_status_raw
-
-                # ВАЖНО: выдёргиваем именно код (цифры), чтобы не ловить "<#>" и прочий мусор
-                # sms_digits = re.findall(r"\d+", sms_from_status_raw)
-                # sms_from_status = sms_digits[0] if sms_digits else sms_from_status_raw
 
                 activation.sms_text = sms_from_status_raw
                 await activation.save()
@@ -549,14 +552,34 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
+        # ✅ Безопасно достаём telegram_id: relation может быть не загружен и выглядеть как QuerySet/manager
+        user_tg = None
+        user_pk = None
+        phone = None
+        act_id = None
+        status_name = None
+        svc_name = None
+
+        if 'activation' in locals():
+            user_tg = getattr(getattr(activation, "user", None), "telegram_id", None)
+            user_pk = getattr(activation, "user_id", None)
+            phone = getattr(activation, "phone_number", None)
+            act_id = getattr(activation, "activation_id", None)
+            status_obj = getattr(activation, "status", None)
+            status_name = getattr(status_obj, "name", None)
+        if 'name' in locals():
+            svc_name = name
+
+        user_label = user_tg or (f"Неизвестно (user_id={user_pk})" if user_pk else "Неизвестно")
+
         error_info = f"""
         ❌ Ошибка в check_sms
         ───────────────────
-        🔹 Пользователь: {activation.user.telegram_id if 'activation' in locals() and activation.user else 'Неизвестно'}
-        🔹 Номер: {activation.phone_number if 'activation' in locals() else 'Неизвестно'}
-        🔹 Сервис: {name if 'name' in locals() else 'Неизвестно'}
-        🔹 ID активации: {activation.activation_id if 'activation' in locals() else 'Неизвестно'}
-        🔹 Статус: {activation.status.name if 'activation' in locals() else 'Неизвестно'}
+        🔹 Пользователь: {user_label}
+        🔹 Номер: {phone or 'Неизвестно'}
+        🔹 Сервис: {svc_name or 'Неизвестно'}
+        🔹 ID активации: {act_id or 'Неизвестно'}
+        🔹 Статус: {status_name or 'Неизвестно'}
 
         ⚠️ Ошибка: {e}
         """
