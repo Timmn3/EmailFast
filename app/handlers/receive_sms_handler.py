@@ -263,8 +263,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                     if created_at:
                         delta = now - created_at
-                        if delta < timedelta(minutes=1):
-                            seconds_left = int((timedelta(minutes=1) - delta).total_seconds())
+                        if delta < timedelta(minutes=2):
+                            seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
                             answer_text = f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек."
                     else:
                         # если почему-то нет created_at — не даём отменять “сразу”
@@ -288,7 +288,10 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                             new_balance = float(user.balance or 0.0)
                             need_clear_kb = True
-                            answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
+                            answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED
+                            await bot.send_message(
+                                chat_id=user_id,
+                                text=bt.SERVICE_CANCEL_MONEY_RETURNED)
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
