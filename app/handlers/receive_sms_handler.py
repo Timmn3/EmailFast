@@ -289,7 +289,6 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                             new_balance = float(user.balance or 0.0)
                             need_clear_kb = True
                             answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED.strip()
-                            answer_alert = False  # можно оставить False как раньше
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
@@ -306,7 +305,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 f"Возврат выполнен: activation_pk={activation_id}, refund={refund_amount}, new_balance={new_balance} ₽"
             )
 
-        await call.answer(text=answer_text or "Отмена больше не доступна", show_alert=answer_alert)
+        await call.answer(text=answer_text or "Отмена больше не доступна")
 
     except TelegramBadRequest as e:
         logger.opt(exception=e).warning(f"Telegram server error: {e}")
