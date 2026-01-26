@@ -179,7 +179,10 @@ async def stat(message: types.Message):
     user_purchases = await models.Rent.all().group_by("user_id").annotate(
         total_purchases=Sum("purchase_count")
     ).values("user_id", "total_purchases")
-    repeat_purchases_total = sum(user["total_purchases"] - 1 for user in user_purchases)
+    repeat_purchases_total = sum(
+        max(int(user.get("total_purchases") or 0) - 1, 0)
+        for user in user_purchases
+    )
 
     # --- Month boundaries ---
     first_day_of_month = utc_now.replace(day=1, hour=0, minute=0, second=0)
