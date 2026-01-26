@@ -7,6 +7,8 @@ from aiogram import types
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
+from tortoise.transactions import in_transaction
+
 from app.services.onlinesim.sms_client import OnlineSMS
 from aiogram.exceptions import TelegramBadRequest
 
@@ -435,33 +437,54 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             country = await models.CountriesSmsActivate.get_country_by_id(country_id=country_id)
             service = await models.ServicesSmsActivate.get_service(code=service_code)
 
-        if provider_is_smsactivate:
-            activation = await models.Activation.add_activation_sms_activate(
-                user=user,
-                activation_id=activation_id,
-                country=country,
-                service=service,
-                cost=price,
-                phone_number=phone_number,
-                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
-            )
-            service_name = activation.service.name
-        else:
-            activation = await models.Activation.add_activation_onlinesim(
-                user=user,
-                activation_id=activation_id,
-                country=country,
-                service_2=service,
-                cost=price,
-                phone_number=phone_number,
-                activation_expire_at=datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
-            )
-            service_name = activation.service_2.name
+        # 🔒 Атомарно: создание активации + списание баланса
+        expire_at = datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
+
+        async with in_transaction() as conn:
+            user_locked = await models.User.filter(id=user.id).using_db(conn).select_for_update().first()
+            if not user_locked:
+                raise RuntimeError("Пользователь не найден при блокировке")
+
+            # повторная проверка баланса под локом (на случай конкуренции)
+            if float(user_locked.balance or 0.0) < float(price):
+                raise RuntimeError("Недостаточно средств после блокировки пользователя")
+
+            if provider_is_smsactivate:
+                activation = await models.Activation.create(
+                    user=user_locked,
+                    provider="smsactivate",
+                    activation_id=activation_id,
+                    country=country,
+                    service=service,
+                    cost=price,
+                    phone_number=phone_number,
+                    activation_expire_at=expire_at,
+                    using_db=conn,
+                )
+                service_name = service.name
+            else:
+                activation = await models.Activation.create(
+                    user=user_locked,
+                    provider="onlinesim",
+                    activation_id=activation_id,
+                    country=country,
+                    service_2=service,
+                    cost=price,
+                    phone_number=phone_number,
+                    activation_expire_at=expire_at,
+                    using_db=conn,
+                )
+                service_name = service.name
+
+            user_locked.balance = float(user_locked.balance or 0.0) - float(price)
+            await user_locked.save(using_db=conn, update_fields=["balance"])
+
+        # чтобы ниже по коду был актуальный баланс
+        await user.refresh_from_db(fields=["balance"])
 
         low_balance = await check_low_balance(user, price)
 
-        user.balance -= price
-        await user.save(update_fields=['balance'])
+
 
         # удаляем "запрос отправлен" (если было)
         if sent_message_id:
