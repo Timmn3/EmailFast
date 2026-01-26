@@ -969,18 +969,16 @@ class Activation(Model):
         :param user_id: Идентификатор пользователя.
         :return: Объект активации пользователя, если она активна, или None, если активация не найдена или истекла.
         """
-        # Получаем текущее время в UTC
         utc_now = datetime.now(pytz.timezone("Europe/Moscow"))
 
-        # Получаем все активные активации пользователя
-        active_activations = await cls.filter(user_id=user_id, activation_expire_at__gt=utc_now).all()
-
-        # Если есть активные активации, возвращаем их
-        if active_activations:
-            return active_activations[-1]
-
-        # Если активных активаций нет, возвращаем None
-        return None
+        # ВАЖНО: исключаем отменённые, иначе после cancel_service номер будет снова "активным" до expire_at
+        activation = await (
+            cls.filter(user_id=user_id, activation_expire_at__gt=utc_now)
+            .exclude(status=StatusResponse.STATUS_CANCEL)
+            .order_by("id")
+            .last()
+        )
+        return activation
 
     @classmethod
     async def delete_user_activations(cls, user_id: int):
