@@ -170,7 +170,7 @@ def payment_method_window_country():
         # Button(Const(bt.METHOD_ANYPAY), id='anypay', on_click=send_payment_keyboard_anypay),
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
-        Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
+        # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit),
         state=states.CountryMenu.payment_method
     )
@@ -184,7 +184,7 @@ def payment_method_window_country_minimum_pay():
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment),
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
-        Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
+        # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit),
         state=states.CountryMenu.payment_method_minimum_pay
     )
