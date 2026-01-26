@@ -201,6 +201,22 @@ async def check_payment_lava():
                         # Если бонус не активен, сумма остается без изменений.
                         amount = payment.amount
 
+                    # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
+                    bonus_amount = int(amount - payment.amount)
+                    if bonus_amount > 0:
+                        bonus_payment = await models.Payment.create_payment(
+                            user=payment.user,
+                            method=models.PaymentMethod.BONUS10,
+                            amount=bonus_amount,
+                            continue_data={
+                                "source_payment_id": payment.id,
+                                "source_method": payment.method.value,
+                                "source_invoice_id": payment.invoice_id,
+                            }
+                        )
+                        bonus_payment.is_success = True
+                        await bonus_payment.save()
+
                     # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                     payment.user.balance += amount
                     await balance_replenishment_notification(payment, "Lava")
@@ -394,45 +410,52 @@ async def check_payment_ckassa():
     """
     Асинхронная функция для проверки статуса платежей CKassa.
     """
-    # Получаем список платежей, которые нужно проверить, из базы данных.
     payments = await models.Payment.get_ckassa_payments()
 
     for payment in payments:
         try:
-            # Получаем статус платежа через CKassa
             payment_data = await get_ckassa_payments(payment.invoice_id)
 
-            # Проверяем, успешен ли платеж
             if payment_data and payment_data.get('state') == 'PAYED':
-                # Отмечаем платеж как успешный в базе данных.
                 payment.is_success = True
                 await payment.save()
 
-                # Проверяем, есть ли у пользователя активный бонус и его срок не истек.
                 if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
-                    # Если бонус активен, увеличиваем сумму платежа на 10%.
                     amount = floor(payment.amount * 1.1)
-                    # Сбрасываем срок действия бонуса.
                     payment.user.bonus_end_at = None
                 else:
-                    # Если бонус не активен, сумма остается без изменений.
                     amount = payment.amount
 
-                # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса).
+                # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
+                bonus_amount = int(amount - payment.amount)
+                if bonus_amount > 0:
+                    bonus_payment = await models.Payment.create_payment(
+                        user=payment.user,
+                        method=models.PaymentMethod.BONUS10,
+                        amount=bonus_amount,
+                        continue_data={
+                            "source_payment_id": payment.id,
+                            "source_method": payment.method.value,
+                            "source_invoice_id": payment.invoice_id,
+                        }
+                    )
+                    bonus_payment.is_success = True
+                    await bonus_payment.save()
+
                 payment.user.balance += amount
                 await payment.user.save()
-                await balance_replenishment_notification(payment, "ckassa")
-                # Отправляем сообщение пользователю об успешном пополнении баланса.
-                await bot.send_message(chat_id=payment.user.telegram_id,
-                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
 
-                # Если у пользователя есть реферал, начисляем реферальный бонус.
+                await balance_replenishment_notification(payment, "ckassa")
+                await bot.send_message(
+                    chat_id=payment.user.telegram_id,
+                    text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
+                )
+
                 await process_referral_bonus(payment)
 
         except TelegramBadRequest:
             pass
         except Exception as e:
-            # Логгируем любые исключения.
             logger.warning(e)
             await replenishment_error_message(payment, "CKassa")
 
@@ -442,6 +465,7 @@ async def check_payment_cryptomus():
     payments = await models.Payment.get_cryptomus_payments()
     # Получаем список оплаченных инвойсов
     payments_cryptomus = get_paid_order_ids()
+
     for payment in payments:
         try:
             # Получаем список оплаченных заказов
@@ -460,11 +484,29 @@ async def check_payment_cryptomus():
                     # Если бонус не активен, сумма остается без изменений.
                     amount = payment.amount
 
+                # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
+                bonus_amount = int(amount - payment.amount)
+                if bonus_amount > 0:
+                    bonus_payment = await models.Payment.create_payment(
+                        user=payment.user,
+                        method=models.PaymentMethod.BONUS10,
+                        amount=bonus_amount,
+                        continue_data={
+                            "source_payment_id": payment.id,
+                            "source_method": payment.method.value,
+                            "source_invoice_id": getattr(payment, "invoice_id", None),
+                        }
+                    )
+                    bonus_payment.is_success = True
+                    await bonus_payment.save()
+
                 # Увеличиваем баланс пользователя на сумму платежа (с учетом бонуса, если он был).
                 payment.user.balance += amount
                 await balance_replenishment_notification(payment, "Cryptomus")
-                await bot.send_message(chat_id=payment.user.telegram_id,
-                                       text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>')
+                await bot.send_message(
+                    chat_id=payment.user.telegram_id,
+                    text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
+                )
                 await payment.user.save()
 
                 # Если у пользователя есть реферал, начисляем реферальный бонус.
@@ -473,7 +515,6 @@ async def check_payment_cryptomus():
         except TelegramBadRequest:
             pass
         except Exception as e:
-            # Логируем любые исключения, возникшие в процессе обработки платежа.
             logger.warning(e)
             await replenishment_error_message(payment, "Cryptomus")
 

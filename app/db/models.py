@@ -42,6 +42,7 @@ class PaymentMethod(Enum):
     CRYPTOMUS = 'cryptomus'
     STARS = 'stars'
     ADMIN = 'admin'
+    BONUS10 = "bonus10"
 
 
 class User(Model):
