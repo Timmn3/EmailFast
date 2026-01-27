@@ -157,12 +157,31 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             country_name = selected_country['country']
             price = selected_country['price']
             free_price_map = selected_country.get('freePriceMap')
-            if free_price_map is None:
-                country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
-                if await service_is_smsactivate():
-                    service_code = SERVICES_TRANSLATION[service_code]
+
+            # ✅ провайдер определяется настройкой админа
+            smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+
+            if smsfast_active:
+                # SMSFast использует собственные ID стран — берём из CountriesSmsFast по имени
+                country_obj = await models.CountriesSmsFast.get_or_none(name=country_name)
+                if not country_obj:
+                    await _safe_cb_answer(
+                        c,
+                        text="⚠️ Эта страна сейчас недоступна у провайдера SMSFast.",
+                        show_alert=True
+                    )
+                    await manager.switch_to(CountryMenu.select_country)
+                    return
+                country_id = int(country_obj.country_id)
+
             else:
-                country_id = await models.CountriesSmsActivate.get_country_id_by_name(country_name)
+                # Старое поведение: наличие freePriceMap определяет, откуда пришёл список стран
+                if free_price_map is None:
+                    country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
+                    if await service_is_smsactivate():
+                        service_code = SERVICES_TRANSLATION[service_code]
+                else:
+                    country_id = await models.CountriesSmsActivate.get_country_id_by_name(country_name)
 
             retail_price = selected_country.get('retail_price')
 
@@ -173,6 +192,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
 
             await send_service_on_country(
                 country_id=country_id,
+                country_name=country_name,
                 service_code=service_code,
                 price=price,
                 retail_price=retail_price,
@@ -187,6 +207,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_select_country_new: {e}")
+
 
 
 @logger.catch()
@@ -607,14 +628,19 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             f"Запрос информации о сервисе: {service_code}"
         )
 
-        # Здесь будет итоговый список стран с ценами (после всех преобразований)
+        # app/dialogs/receive_sms/selected.py (фрагмент функции send_country_info)
+
+        # Определяем активного провайдера на основе настроек
+        smsactivate_active = await service_is_smsactivate()
+        smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+
         sorted_countries_with_prices: list[dict] = []
 
-        if await service_is_smsactivate():
-            # Ветка работы через SmsActivate
+        if smsactivate_active:
+            # Ветка работы через SMSActivate (как было ранее)
             if service_code in SERVICES_TRANSLATION:
-                # Сервис маппится на OnlineSim-код (цены берём из OnlineSim)
-                code_onlinesim = SERVICES_TRANSLATION.get(service_code)
+                # Если сервис маппится на код OnlineSim, используем данные из OnlineSim
+                code_onlinesim = SERVICES_TRANSLATION[service_code]
                 services = await PriceOnlinesim.get_service_data(code_onlinesim)
                 sorted_countries_with_prices = [
                     {
@@ -626,43 +652,53 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                     for country, price in services.items()
                 ]
             else:
-                # Цены берём из SmsActivate
+                # Получаем цены через SMSActivate API
                 sms = SmsReceive()
                 services = await sms.get_top_country(service=service_code)
                 if not services:
-                    logger.bind(user_id=user_id, action='send_country_info').log(
-                        "USER_ACTION",
-                        f"Сервис не найден: {service_code}"
-                    )
                     await c.answer("Извините, информация о сервисе недоступна.")
                     return
-
                 countries_with_prices = [
                     {
-                        "country": service.get("country"),
-                        "price": math.ceil(float(service.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
-                        "retail_price": service.get("retail_price"),
-                        "freePriceMap": service.get("freePriceMap") or {},
-
+                        "country": svc.get("country"),
+                        "price": math.ceil(float(svc.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
+                        "retail_price": svc.get("retail_price"),
+                        "freePriceMap": svc.get("freePriceMap") or {}
                     }
-                    for service in services.values()
+                    for svc in services.values()
                 ]
-
-                # Маппим числовой ID страны на человекочитаемое имя
+                # Маппим ID страны на название страны из БД
                 country_name_mapping = await models.CountriesSmsActivate.get_country_name_mapping()
-                for country in countries_with_prices:
-                    raw_id = country.get("country")
-                    try:
-                        country_id = int(raw_id)
-                        country["country"] = country_name_mapping.get(country_id, "Unknown Country")
-                    except (TypeError, ValueError):
-                        # Если пришёл неожиданный формат — оставляем как есть
-                        country["country"] = str(raw_id) if raw_id is not None else "Unknown Country"
-
+                for item in countries_with_prices:
+                    raw_id = item["country"]
+                    if isinstance(raw_id, int) or raw_id.isdigit():
+                        item["country"] = country_name_mapping.get(int(raw_id), "Unknown Country")
                 sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
+        elif smsfast_active:
+            # 🔄 Ветка работы через SMSFast
+            # Загружаем данные цен из кэша (PriceSmsFast) для выбранного сервиса
+            services = await models.PriceSmsFast.get_service_data(service_code)
+            if not services:
+                await c.answer("Извините, информация о сервисе недоступна для SMSFast.")
+                return
+            sorted_countries_with_prices = [
+                {
+                    "country": country,
+                    "price": math.ceil(float(price) * DOLLAR_SMS_ACTIVATE),
+                    # используем коэффициент аналогично SMSActivate
+                    "retail_price": int(float(price)),
+                    "freePriceMap": None
+                }
+                for country, price in services.items()
+            ]
+            # Приводим название стран к единообразию (используем справочник SMSFast стран)
+            # Здесь предполагается, что ключи словаря services уже являются названиями стран.
+            # Если нужны флаги или сортировка — применяем ту же логику, что и для других провайдеров.
+            sorted_countries_with_prices = sort_countries_by_dict(sorted_countries_with_prices)
+
         else:
-            # Ветка работы через OnlineSim
+            # Ветка работы через OnlineSim (как было ранее)
             if service_code not in SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM:
                 services = await PriceOnlinesim.get_service_data(service_code)
                 sorted_countries_with_prices = [
@@ -675,62 +711,48 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                     for country, price in services.items()
                 ]
                 if service_code == 'vkcom':
-                    # Порядок не важен, потому что дальше всё равно отфильтруем "Россия"
                     sorted_countries_with_prices = move_russia_first(sorted_countries_with_prices)
             else:
+                # Если код относится к SMSActivate (типы "ot", "ts"), получаем через SMSActivate
                 sms = SmsReceive()
                 services = await sms.get_top_country(service=service_code)
                 if not services:
-                    logger.bind(user_id=user_id, action='send_country_info').log(
-                        "USER_ACTION",
-                        f"Сервис не найден: {service_code}"
-                    )
                     await c.answer("Извините, информация о сервисе недоступна в данный момент.")
                     return
-
                 countries_with_prices = [
                     {
-                        "country": service.get("country"),
-                        "price": math.ceil(float(service.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
-                        "retail_price": service.get("retail_price"),
-                        "freePriceMap": service.get("freePriceMap") or {},
-
+                        "country": svc.get("country"),
+                        "price": math.ceil(float(svc.get("retail_price")) * DOLLAR_SMS_ACTIVATE),
+                        "retail_price": svc.get("retail_price"),
+                        "freePriceMap": svc.get("freePriceMap") or {}
                     }
-                    for service in services.values()
+                    for svc in services.values()
                 ]
-
+                # Маппинг ID стран на названия (через CountriesSmsActivate)
                 country_name_mapping = await models.CountriesSmsActivate.get_country_name_mapping()
-                for country in countries_with_prices:
-                    raw_id = country.get("country")
-                    try:
-                        country_id = int(raw_id)
-                        country["country"] = country_name_mapping.get(country_id, "Unknown Country")
-                    except (TypeError, ValueError):
-                        country["country"] = str(raw_id) if raw_id is not None else "Unknown Country"
-
+                for item in countries_with_prices:
+                    raw_id = item["country"]
+                    if isinstance(raw_id, int) or str(raw_id).isdigit():
+                        item["country"] = country_name_mapping.get(int(raw_id), "Unknown Country")
                 sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
-        # === ЕДИНАЯ ФИЛЬТРАЦИЯ СТРАН-ПО-ИСКЛЮЧЕНИЯМ ДЛЯ ОБОИХ ПУТЕЙ ===
+        # Фильтрация исключённых стран и доп. сортировка (общая для всех провайдеров)
         sorted_countries_with_prices = [
             item for item in sorted_countries_with_prices
             if str(item.get("country", "")).strip() not in EXCLUDED_COUNTRIES
         ]
-
-        # Доп. сортировка под Telegram — применяем уже к отфильтрованному списку
         if service_code == 'telegram':
             sorted_countries_with_prices = await sort_countries_tg(
-                sorted_countries_with_prices,
-                list_for_sorting_countries_for_telegram
+                sorted_countries_with_prices, list_for_sorting_countries_for_telegram
             )
 
+        # Передаем данные в диалог выбора страны
         await manager.start(
             CountryMenu.select_country,
             mode=StartMode.NORMAL,
-            data={
-                "countries_with_prices": sorted_countries_with_prices,
-                "service_code": service_code
-            }
+            data={"countries_with_prices": sorted_countries_with_prices, "service_code": service_code}
         )
+
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_country_info: {e}")

@@ -22,6 +22,21 @@ import asyncio
 
 router = Router()
 
+# Сопоставление сервисов для провайдера SMSFast: название -> код
+SMSFAST_SERVICE_MAP = {
+    "telegram": "tg",
+    "vkcom":    "vk",
+    "google":   "go",
+    "tiktok":   "tt",
+    "amazon":   "am",
+    "claude":   "cl",
+    "ot":       "ot",   # "Любой другой"
+}
+
+async def is_smsfast_enabled() -> bool:
+    """Проверяет, включен ли провайдер SMSFast по флагу в настройках."""
+    value = await models.AdminSettings.get_setting_value("smsfast_enabled")
+    return (str(value).lower() in ("1", "true", "yes"))
 
 def log_exceptions(func):
     async def wrapper(*args, **kwargs):

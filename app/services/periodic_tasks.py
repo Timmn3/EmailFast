@@ -587,11 +587,29 @@ async def check_sms():
 
             # если получен статус STATUS_OK
             if status and status.startswith(models.StatusResponse.STATUS_OK.name):
-                activation.status = models.StatusResponse.STATUS_OK
-                current_sms = activation.sms_text if activation.sms_text is not None else '1'
                 sms_from_status_raw = status.split(":", 1)[1].strip()
-                activation.sms_text = sms_from_status_raw
-                await activation.save()
+
+                # ⚠️ Критично: финальная проверка под локом, чтобы не отправить SMS после cancel/refund
+                should_send = False
+
+                async with in_transaction() as conn:
+                    act = await models.Activation.filter(id=activation.id).using_db(conn).select_for_update().first()
+                    if not act:
+                        continue
+
+                    # если пользователь уже отменил (или авто-рефанд успел сработать) — ничего не пишем и не отправляем
+                    if act.status == models.StatusResponse.STATUS_CANCEL:
+                        continue
+
+                    prev_sms = (getattr(act, "sms_text", None) or "").strip()
+                    should_send = (prev_sms != sms_from_status_raw)
+
+                    act.status = models.StatusResponse.STATUS_OK
+                    act.sms_text = sms_from_status_raw
+                    await act.save(using_db=conn, update_fields=["status", "sms_text"])
+
+                # дальше работаем уже с "актуальной" активацией
+                activation = act
 
                 # загружаем нужные отношения
                 try:
@@ -602,9 +620,11 @@ async def check_sms():
                 except Exception:
                     pass
 
-                if current_sms != sms_from_status_raw:
+                # отправляем только если SMS реально новое
+                if should_send:
                     safe_name = html.escape(str(name)) if name else None
                     safe_code = html.escape(str(activation.sms_text))
+
                     if safe_name:
                         msg_text = (
                             f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
@@ -617,25 +637,21 @@ async def check_sms():
                             f"Ваш код активации:\n"
                             f"<code>{safe_code}</code>"
                         )
-                    try:
-                        await bot.send_message(
-                            chat_id=activation.user.telegram_id,
-                            text=msg_text,
-                            parse_mode="HTML",
-                        )
-                    except Exception:
-                        pass
+
+                    await bot.send_message(
+                        chat_id=activation.user.telegram_id,
+                        text=msg_text,
+                        parse_mode="HTML",
+                    )
+
                     await notice_of_arraignment("Получение смс", activation, name)
-                    try:
-                        logger.bind(
-                            user_id=activation.user.telegram_id,
-                            action="new_sms"
-                        ).log(
-                            "USER_ACTION",
-                            f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status_raw}"
-                        )
-                    except Exception:
-                        pass
+                    logger.bind(
+                        user_id=activation.user.telegram_id,
+                        action="new_sms"
+                    ).log(
+                        "USER_ACTION",
+                        f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status_raw}"
+                    )
 
         # после обхода делаем авто-рефанд просроченных активаций
         await refund_and_cleanup_expired_sms()

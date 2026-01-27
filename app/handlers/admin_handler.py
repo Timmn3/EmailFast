@@ -1597,6 +1597,58 @@ async def fix_discrepancy_balance(message: types.Message):
         f"суммарно снято (diff): {total_adjustment:.2f} ₽"
     )
 
+@router.message(Command('smsfast'))
+async def set_smsfast(message: types.Message):
+    logger.bind(user_id=message.from_user.id, action="smsfast").log(
+        "USER_ACTION", "Команда /smsfast вызвана"
+    )
+    if message.from_user.id not in ADMINS:
+        return
+
+    # /smsfast            -> toggle
+    # /smsfast on|off     -> set
+    # /smsfast status     -> show
+    args = (message.text or "").split(maxsplit=1)
+    subcmd = args[1].strip().lower() if len(args) > 1 else ""
+
+    # текущий статус
+    setting = await AdminSettings.get_or_none(name_setting="smsfast_enabled")
+    current = (setting.value_setting or "").strip().lower() if setting else ""
+    current_bool = current in ("true", "1", "yes", "y", "on", "enable", "enabled")
+
+    if subcmd in ("status", "статус"):
+        await message.answer(
+            text=f"SMSFast: {'✅ включен' if current_bool else '⛔ выключен'}"
+        )
+        return
+
+    if subcmd in ("on", "enable", "enabled", "1", "true", "вкл", "включить"):
+        new_bool = True
+    elif subcmd in ("off", "disable", "disabled", "0", "false", "выкл", "выключить"):
+        new_bool = False
+    elif subcmd == "":
+        new_bool = not current_bool
+    else:
+        await message.answer(
+            text=(
+                "Использование: /smsfast [on|off|status]\n"
+                "Примеры: /smsfast on, /smsfast off, /smsfast status\n"
+                "Без аргументов — переключает Включить/выключить."
+            )
+        )
+        return
+
+    # гарантируем наличие записи, иначе update_setting вернёт None
+    if not setting:
+        await AdminSettings.create(name_setting="smsfast_enabled", value_setting="false")
+        await AdminSettings.get_or_none(name_setting="smsfast_enabled")
+
+    await AdminSettings.update_setting("smsfast_enabled", "true" if new_bool else "false")
+
+    await message.answer(
+        text=f"SMSFast: {'✅ включен' if new_bool else '⛔ выключен'}"
+    )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -1625,8 +1677,7 @@ async def help_admin(message: types.Message):
     /create_silobus_links - Создать новую реферальную ссылку для Silobus (следующую по порядку)
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
+    /smsfast [on|off|status] - Включить/выключить SMSFast (без аргументов — просто переключение Включить/выключить)
     """
 
     await message.answer(f"<b>Доступные команды для админов:</b>\n{commands}", parse_mode="HTML")
-
-
