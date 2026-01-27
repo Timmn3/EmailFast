@@ -23,6 +23,7 @@ from app.services.payments.cryptomus import get_paid_order_ids
 from app.services.payments.freekassa import Freekassa
 from app.services.payments.lava import LavaApi
 from app.services.payments.streampay import get_payment_status_streampay
+from app.services.sms_fast.smsfast_client import get_smsfast_client
 from app.services.sms_receive import SmsReceive
 from app.services.temp_mail import TempMail
 from app.services import bot_texts as bt
@@ -519,30 +520,23 @@ async def check_payment_cryptomus():
             await replenishment_error_message(payment, "Cryptomus")
 
 
-import html  # <- добавь этот импорт рядом с import re
-import re
-
+import html  # убедитесь, что импорт html уже есть
 
 async def check_sms():
     try:
-        # Получаем все активные активации
         activations = await models.Activation.get_active_activations()
-
-        # Обрабатываем каждую активную активацию
         for activation in activations:
-            # Получаем статус активации по её идентификатору
-            if len(str(activation.activation_id)) > 9:
-                sms = SmsReceive()
-                status = str(await sms.get_activation_status(activation.activation_id))
-                try:
-                    name = activation.service.name
-                except Exception:
-                    name = None
-                # STATUS_OK:1231
-            else:
-                client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+            # определяем провайдера
+            provider = (getattr(activation, "provider", "") or "").strip().lower()
+            if not provider:
+                # для старых записей fallback по длине activation_id
+                provider = "smsactivate" if len(str(activation.activation_id)) > 9 else "onlinesim"
 
-                # ⚠️ OnlineSim может отвечать временной ошибкой TryAgainLater — не валим весь job, просто ждём следующий тик
+            name = None
+            status: str | None = None
+
+            if provider == "onlinesim":
+                client = OnlineSMS(api_key=API_KEY_ONLINESIM)
                 try:
                     order_info = await client.get_order_info(
                         operation_id=activation.activation_id,
@@ -552,43 +546,61 @@ async def check_sms():
                     if e.__class__.__name__ == "TryAgainLater":
                         continue
                     raise
-
-                name = await activation.get_service_2_name()
-
+                try:
+                    name = await activation.get_service_2_name()
+                except Exception:
+                    name = None
                 if order_info and isinstance(order_info, list) and "msg" in order_info[0]:
                     sms_code = order_info[0]["msg"]
                     status = f"STATUS_OK:{sms_code}"
                 else:
                     continue
 
-            # Проверяем, начинается ли статус с 'STATUS_OK'
-            if status.startswith(models.StatusResponse.STATUS_OK.name):
-                # Обновляем статус активации на 'STATUS_OK'
+            elif provider == "smsfast":
+                smsfast = get_smsfast_client()
+                try:
+                    status = str(await smsfast.get_status(activation.activation_id))
+                except Exception as e:
+                    logger.opt(exception=e).warning(f"Ошибка при получении статуса smsfast: {e}")
+                    continue
+                try:
+                    name = activation.service.name
+                except Exception:
+                    name = None
+
+            else:
+                # smsactivate и другие провайдеры
+                sms_client = SmsReceive()
+                try:
+                    status = str(await sms_client.get_activation_status(activation.activation_id))
+                except Exception as e:
+                    logger.opt(exception=e).warning(f"Ошибка при получении статуса smsactivate: {e}")
+                    continue
+                try:
+                    name = activation.service.name
+                except Exception:
+                    name = None
+
+            # если получен статус STATUS_OK
+            if status and status.startswith(models.StatusResponse.STATUS_OK.name):
                 activation.status = models.StatusResponse.STATUS_OK
-
-                # Смотрим какая смс в БД
                 current_sms = activation.sms_text if activation.sms_text is not None else '1'
-
-                # Извлекаем полный текст SMS из статуса
                 sms_from_status_raw = status.split(":", 1)[1].strip()
-
-                # Ты хочешь хранить/передавать весь текст — ок
-                sms_from_status = sms_from_status_raw
-
                 activation.sms_text = sms_from_status_raw
                 await activation.save()
 
-                # Загружаем связанные данные пользователя и сервиса
-                if await service_is_smsactivate():
-                    await activation.fetch_related("user", "service")
-                else:
-                    await activation.fetch_related("user", "service_2")
+                # загружаем нужные отношения
+                try:
+                    if provider == "onlinesim":
+                        await activation.fetch_related("user", "service_2")
+                    else:
+                        await activation.fetch_related("user", "service")
+                except Exception:
+                    pass
 
-                # Формируем текст сообщения для отправки пользователю если смс новая
-                if current_sms != sms_from_status:
+                if current_sms != sms_from_status_raw:
                     safe_name = html.escape(str(name)) if name else None
                     safe_code = html.escape(str(activation.sms_text))
-
                     if safe_name:
                         msg_text = (
                             f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
@@ -601,29 +613,33 @@ async def check_sms():
                             f"Ваш код активации:\n"
                             f"<code>{safe_code}</code>"
                         )
-
-                    # Отправляем сообщение пользователю в Telegram (явно HTML)
-                    await bot.send_message(
-                        chat_id=activation.user.telegram_id,
-                        text=msg_text,
-                        parse_mode="HTML",
-                    )
-
+                    try:
+                        await bot.send_message(
+                            chat_id=activation.user.telegram_id,
+                            text=msg_text,
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
                     await notice_of_arraignment("Получение смс", activation, name)
-                    logger.bind(
-                        user_id=activation.user.telegram_id,
-                        action="new_sms"
-                    ).log(
-                        "USER_ACTION",
-                        f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status}"
-                    )
-        # Идемпотентный авто-рефанд SMS
+                    try:
+                        logger.bind(
+                            user_id=activation.user.telegram_id,
+                            action="new_sms"
+                        ).log(
+                            "USER_ACTION",
+                            f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status_raw}"
+                        )
+                    except Exception:
+                        pass
+
+        # после обхода делаем авто-рефанд просроченных активаций
         await refund_and_cleanup_expired_sms()
 
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        # ✅ Безопасно достаём telegram_id: relation может быть не загружен и выглядеть как QuerySet/manager
+        # обработка ошибок остаётся без изменений
         user_tg = None
         user_pk = None
         phone = None
@@ -655,7 +671,6 @@ async def check_sms():
         ⚠️ Ошибка: {e}
         """
         await send_coder(error_info)
-        logger.opt(exception=e).error("Необработанная ошибка в check_sms")
 
 
 import asyncio
