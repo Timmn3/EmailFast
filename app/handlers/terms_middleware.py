@@ -51,6 +51,10 @@ class TermsMiddleware(BaseMiddleware):
 
         if not user_tg:
             return await handler(event, data)
+        # ✅ ВАЖНО: /start должен обрабатываться start_handler'ом,
+        # иначе теряем реферала (middleware создаёт user без refer_id)
+        if isinstance(event, types.Message) and (event.text or "").startswith("/start"):
+            return await handler(event, data)
 
         # --- получаем/создаём пользователя ---
         user = await models.User.get_user(user_tg.id)
