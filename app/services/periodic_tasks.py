@@ -76,12 +76,16 @@ async def refund_and_cleanup_expired_sms() -> None:
                 if not act:
                     continue
 
+                # ♻️ Идемпотентность: если уже CANCEL — значит отменили вручную или ранее авто-рефандом
+                if act.status == StatusResponse.STATUS_CANCEL:
+                    continue
+
                 # Повторный чек условий уже "под замком"
                 if act.status != StatusResponse.STATUS_WAIT_CODE:
                     continue
 
                 # если expire_at по какой-то причине NULL — не трогаем
-                if not act.activation_expire_at or act.activation_expire_at > timezone.now():
+                if not act.activation_expire_at or act.activation_expire_at > now:
                     continue
 
                 # если СМС уже есть — не рефандим
