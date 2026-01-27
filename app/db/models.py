@@ -956,11 +956,15 @@ class Activation(Model):
         """
         Получает все активные активации.
 
-        :return: Список объектов активных активаций.
+        ВАЖНО: исключаем отменённые (STATUS_CANCEL), иначе по ним может прийти SMS уже после рефанда,
+        и система ошибочно запишет sms_text / отправит SMS пользователю.
         """
-        # return await cls.filter(activation_expire_at__gt=timezone.now()).all()
-
-        return await cls.filter(activation_expire_at__gt=timezone.now()).select_related("service_2").all()
+        return await (
+            cls.filter(activation_expire_at__gt=timezone.now())
+            .exclude(status=StatusResponse.STATUS_CANCEL)
+            .select_related("service_2")
+            .all()
+        )
 
     @classmethod
     async def get_active_activation(cls, user_id: int):
