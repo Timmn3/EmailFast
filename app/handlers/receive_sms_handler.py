@@ -2,20 +2,16 @@ from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
 from app.services.onlinesim.sms_client import OnlineSMS
-from datetime import timedelta
-from tortoise import timezone
-
 from aiogram.exceptions import TelegramBadRequest
 from app.db import models
 from app.dependencies import API_KEY_ONLINESIM, bot
-from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.selected import send_service_info_with_keyboard
 from app.dialogs.receive_sms.states import ServiceMenu
 from app.services import bot_texts as bt
-from app.services.bot_texts import SERVICES_TRANSLATION
 from app.services.mail.receive_messages import fetch_full_message
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.periodic_tasks import notice_of_arraignment
+from app.services.sms_fast.smsfast_client import get_smsfast_client
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 import html
@@ -106,7 +102,7 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
             f"Фоновая обработка request_code: activation_pk={activation_pk}"
         )
 
-        activation = await models.Activation.get_or_none(id=activation_pk).prefetch_related('service')
+        activation = await models.Activation.get_or_none(id=activation_pk).prefetch_related('service', 'service_2')
         if not activation:
             return
 
@@ -116,19 +112,13 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
         except Exception:
             pass
 
-        try:
-            _ = activation.service.code
-            service_name = "SMSActivate"
-        except AttributeError:
-            service_name = "Onlinesim"
-        except Exception:
-            logger.bind(user_id=user_id, action="request_code_worker").log(
-                "USER_ACTION",
-                "Ошибка: сервис не найден"
-            )
-            return
+        # ✅ Определяем провайдера строго по activation.provider (а не по наличию relation)
+        provider = (getattr(activation, "provider", "") or "").strip().lower()
+        if not provider:
+            # fallback для старых записей
+            provider = "smsactivate" if getattr(activation, "service_id", None) else "onlinesim"
 
-        if service_name == "Onlinesim":
+        if provider == "onlinesim":
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
 
             try:
@@ -179,6 +169,21 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
 
             return
 
+        if provider == "smsfast":
+            smsfast = get_smsfast_client()
+            try:
+                resp = await smsfast.request_additional_sms(activation.activation_id)
+            except Exception as e:
+                logger.opt(exception=e).warning(f"Повторный запрос SMS (smsfast) упал: {e}")
+                await bot.send_message(chat_id=user_id, text="⚠️ Не удалось запросить повторное SMS. Попробуйте позже.")
+                return
+
+            # По текущей реализации клиента SMSFast часто отвечает BAD_STATUS, если повторное SMS недоступно
+            resp_str = str(resp)
+            if "BAD_STATUS" in resp_str or "BAD_ACTION" in resp_str:
+                await bot.send_message(chat_id=user_id, text="⚠️ Повторная отправка недоступна для этого номера.")
+            return
+
         # SMSActivate: просто ставим статус, без долгих ожиданий в callback
         sms = SmsReceive()
         try:
@@ -201,7 +206,7 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
     finally:
         current = asyncio.current_task()
         if current is not None and _request_code_tasks.get(activation_pk) is current:
-            _request_code_tasks.pop(activation_pk, None)
+            await _request_code_tasks.pop(activation_pk, None)
 
 
 @router.callback_query(F.data.startswith('request_code:'))
