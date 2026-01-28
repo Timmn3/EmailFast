@@ -135,64 +135,50 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
 async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager: DialogManager, country_index: str):
     """
     Обрабатывает выбор страны и сервиса.
-    :param c: Объект CallbackQuery от aiogram.
-    :param widget: Виджет Select от aiogram_dialog.
-    :param manager: Менеджер диалогов от aiogram_dialog.
-    :param country_index: Индекс выбранной страны.
     """
     try:
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='on_select_country_new').log(
-            "USER_ACTION",
-            f"Выбор страны по индексу: {country_index}"
+            "USER_ACTION", f"Выбор страны по индексу: {country_index}"
         )
-
         ctx = manager.current_context()
         service_code = ctx.start_data.get('service_code')
         countries_with_prices = ctx.start_data.get('countries_with_prices', [])
         country_index = int(country_index)
-
         if 0 <= country_index < len(countries_with_prices):
             selected_country = countries_with_prices[country_index]
             country_name = selected_country['country']
             price = selected_country['price']
             free_price_map = selected_country.get('freePriceMap')
-
-            # ✅ провайдер определяется настройкой админа
-            smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
-
-            if smsfast_active:
-                # SMSFast использует собственные ID стран — берём из CountriesSmsFast по имени
+            # Проверяем, включён ли провайдер SMSFast
+            smsfast_flag = await models.AdminSettings.get_setting_value("smsfast_enabled")
+            smsfast_enabled = str(smsfast_flag).strip().lower() in ("true", "1", "yes", "y", "on", "enable", "enabled")
+            if smsfast_enabled:
+                # Получаем ID страны из справочника SMSFast по названию страны
                 country_obj = await models.CountriesSmsFast.get_or_none(name=country_name)
-                if not country_obj:
-                    await _safe_cb_answer(
-                        c,
-                        text="⚠️ Эта страна сейчас недоступна у провайдера SMSFast.",
-                        show_alert=True
-                    )
-                    await manager.switch_to(CountryMenu.select_country)
-                    return
-                country_id = int(country_obj.country_id)
-
+                country_id = country_obj.country_id if country_obj else 0
+                # Если режим SMS_Activate, но цена бралась с OnlineSim (free_price_map=None), переводим код сервиса обратно
+                if await service_is_smsactivate() and free_price_map is None and service_code in SERVICES_TRANSLATION:
+                    # Например: "telegram" -> "tg"
+                    for code, transl in SERVICES_TRANSLATION.items():
+                        if transl == service_code:
+                            service_code = code
+                            break
             else:
-                # Старое поведение: наличие freePriceMap определяет, откуда пришёл список стран
                 if free_price_map is None:
                     country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
                     if await service_is_smsactivate():
-                        service_code = SERVICES_TRANSLATION[service_code]
+                        # В режиме SMSActivate мог использоваться код OnlineSim – маппим обратно
+                        service_code = SERVICES_TRANSLATION.get(service_code, service_code)
                 else:
                     country_id = await models.CountriesSmsActivate.get_country_id_by_name(country_name)
-
             retail_price = selected_country.get('retail_price')
-
             logger.bind(user_id=user_id, action='on_select_country_new').log(
                 "USER_ACTION",
                 f"Выбрана страна: {country_name}, цена: {price}, сервис: {service_code}"
             )
-
             await send_service_on_country(
                 country_id=country_id,
-                country_name=country_name,
                 service_code=service_code,
                 price=price,
                 retail_price=retail_price,
@@ -202,8 +188,7 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             )
         else:
             logger.bind(user_id=user_id, action='on_select_country_new').log(
-                "USER_ACTION",
-                f"Неверный индекс страны: {country_index}"
+                "USER_ACTION", f"Неверный индекс страны: {country_index}"
             )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_select_country_new: {e}")
