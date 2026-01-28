@@ -221,7 +221,7 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
     finally:
         current = asyncio.current_task()
         if current is not None and _request_code_tasks.get(activation_pk) is current:
-            await _request_code_tasks.pop(activation_pk, None)
+            _request_code_tasks.pop(activation_pk, None)
 
 
 @router.callback_query(F.data.startswith('request_code:'))
@@ -241,7 +241,20 @@ async def request_code(call: types.CallbackQuery, **kwargs):
     if existing and not existing.done():
         return
 
-    _request_code_tasks[activation_pk] = asyncio.create_task(_request_code_worker(user_id, activation_pk))
+    task = asyncio.create_task(_request_code_worker(user_id, activation_pk))
+    _request_code_tasks[activation_pk] = task
+
+    # ✅ Забираем исключение задачи, чтобы не было "Task exception was never retrieved"
+    def _consume_task_result(t: asyncio.Task) -> None:
+        try:
+            _ = t.exception()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            # exception() уже вернул исключение — логирование делается внутри worker через logger.opt(exception=e)
+            pass
+
+    task.add_done_callback(_consume_task_result)
 
 
 @router.callback_query(F.data.startswith('cancel_service:'))
