@@ -196,13 +196,13 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
             # По текущей реализации клиента SMSFast часто отвечает BAD_STATUS, если повторное SMS недоступно
             resp_str = str(resp)
             if "BAD_STATUS" in resp_str or "BAD_ACTION" in resp_str:
-                await bot.send_message(chat_id=user_id, text="⚠️ Повторная отправка недоступна для этого номера.")
+                await bot.send_message(chat_id=user_id, text="⚠️ Повторная отправка недоступна. Попробуйте позже")
             return
 
         # SMSActivate: просто ставим статус, без долгих ожиданий в callback
         sms = SmsReceive()
         try:
-            _ = await sms.get_activation_status(activation.activation_id)
+            await sms.get_activation_status(activation.activation_id)
             await sms.set_activation_status(
                 activation_id=activation.activation_id,
                 status=models.ActivationCode.RETRY_GET

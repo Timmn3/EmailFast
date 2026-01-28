@@ -21,7 +21,7 @@ from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services.bot_texts import country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, DOLLAR_ONLINESIM, DOLLAR_SMS_ACTIVATE, \
     SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT, list_for_sorting_countries_for_telegram, \
-    EXCLUDED_COUNTRIES
+    EXCLUDED_COUNTRIES, INTEREST
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.onlinesim.get_tariffs import fetch_tariffs
 from app.services.sms_receive import SmsReceive
@@ -593,8 +593,15 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
 
     buttons = []
 
-    # Добавляем первую кнопку только если длина activation_id > 9
-    if len(str(activation.activation_id)) > 8:
+    # ✅ Показываем кнопку "повторное SMS" по провайдеру, а не по длине activation_id
+    provider = (getattr(activation, "provider", None) or "").strip().lower()
+
+    # Fallback для старых записей, где provider мог не выставляться
+    if not provider:
+        provider = "onlinesim" if getattr(activation, "service_2_id", None) else "smsactivate"
+
+    # Кнопка "📩Принять новое SMS..." должна быть и для smsfast тоже
+    if provider in ("smsfast", "onlinesim") and getattr(activation, "activation_id", None) is not None:
         buttons.append([types.InlineKeyboardButton(
             text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
             callback_data=f"request_code:{activation.id}"
@@ -649,7 +656,6 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     )
 
 
-@logger.catch()
 async def send_country_info(service_code: str, c: types.CallbackQuery, manager: DialogManager = None):
     """
     Отправляет информацию о сервисе пользователю и обрабатывает активацию номера.
@@ -722,30 +728,88 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                 smsfast_service_code = SMSFAST_SERVICE_MAP[service_code]
             elif service_code in SMSFAST_SERVICE_MAP.values():
                 smsfast_service_code = service_code
-            # Загружаем данные цен из кэша PriceSmsFast для выбранного сервиса
-            services = await models.PriceSmsFast.get_service_data(smsfast_service_code)
-            if not services:
-                await c.answer("Извините, информация о сервисе недоступна для SMSFast.")
+
+            # Берём список стран из справочника (countries_smsfast), а цены/кол-во — из кеша price_smsfast
+            rows = await models.CountriesSmsFast.all().order_by("id")
+            if not rows:
+                logger.bind(user_id=user_id, action="send_country_info", provider=provider).log(
+                    "USER_ACTION",
+                    "Справочник стран SMSFast пуст (countries_smsfast)"
+                )
+                await c.answer("Извините, список стран временно недоступен.")
                 return
 
-            sorted_countries_with_prices = [
-                {
-                    "country": country,
-                    "price": math.ceil(float(price/100) * DOLLAR_SMS_ACTIVATE),  # коэффициент аналогично SMSActivate
-                    "retail_price":  math.ceil(float(price/100)),
-                    "freePriceMap": None
+            price_rows = await models.PriceSmsFast.filter(
+                service_code=smsfast_service_code
+            ).values("country", "price", "count")
+
+            price_by_country_id: dict[int, dict] = {}
+            for pr in price_rows:
+                try:
+                    cid = int(pr.get("country"))
+                except (TypeError, ValueError):
+                    continue
+                price_by_country_id[cid] = {
+                    "price": pr.get("price"),
+                    "count": pr.get("count"),
                 }
-                for country, price in services.items()
-            ]
 
-            # Дополнительно скрываем "США (виртуальные)" из списка стран (по требованию).
-            sorted_countries_with_prices = [
-                item for item in sorted_countries_with_prices
-                if str(item.get("country", "")).strip() != "США (виртуальные)"
-            ]
+            countries_with_prices: list[dict] = []
+            for r in rows:
+                cid = int(r.country_id)
+                country_name = str(r.name or "").strip()
 
-            # Приводим названия стран к единообразию и сортируем список
-            sorted_countries_with_prices = sort_countries_by_dict(sorted_countries_with_prices)
+                # ✅ 3) Явно исключаем "США (виртуальные)"
+                if country_name == "США (виртуальные)":
+                    continue
+
+                raw = price_by_country_id.get(cid) or {}
+                raw_price = raw.get("price")
+                raw_count = raw.get("count")
+
+                # ✅ Нет цены в кеше — страну НЕ показываем
+                if raw_price is None:
+                    continue
+
+                # ✅ Если count известен и 0 — номеров нет, страну НЕ показываем
+                if raw_count is not None:
+                    try:
+                        if int(raw_count) <= 0:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+
+                try:
+                    retail_price_float = float(raw_price)
+                except (TypeError, ValueError):
+                    # ✅ Цена битая/не парсится — тоже НЕ показываем
+                    continue
+
+                # ✅ 2) Фильтрация retail_price == 1 (как ты просил)
+                # Важно: это эвристика. Если увидишь что "дешёвые, но реальные" страны пропали — убери этот блок.
+                if retail_price_float == 1.0:
+                    continue
+
+                # retail_price — сырой прайс провайдера; price — наша цена (с наценкой)
+                retail_price = retail_price_float
+                price = math.ceil(retail_price_float * INTEREST)
+
+                countries_with_prices.append(
+                    {
+                        "country": country_name,
+                        "price": price,
+                        "retail_price": retail_price,
+                        # не None, чтобы старая логика воспринимала как smsactivate-подобный поток
+                        "freePriceMap": {},
+                        # важно для SMSFast
+                        "smsfast_country_id": cid,
+                        "smsfast_service_code": smsfast_service_code,
+                        # опционально: пригодится для дебага/логов
+                        "smsfast_count": raw_count,
+                    }
+                )
+
+            sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
         else:
             # Ветка работы через OnlineSim (как было ранее)
@@ -785,19 +849,18 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                 sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
         # Фильтрация исключённых стран и доп. сортировка (общая для всех провайдеров)
+        excluded_countries = set(EXCLUDED_COUNTRIES)
+        excluded_countries.add("США (виртуальные)")
+
         sorted_countries_with_prices = [
             item for item in sorted_countries_with_prices
-            if str(item.get("country", "")).strip() not in EXCLUDED_COUNTRIES
+            if str(item.get("country", "")).strip() not in excluded_countries
         ]
+
         if service_code == 'telegram':
             sorted_countries_with_prices = await sort_countries_tg(
                 sorted_countries_with_prices, list_for_sorting_countries_for_telegram
             )
-
-        sorted_countries_with_prices = [
-            item for item in sorted_countries_with_prices
-            if item.get("retail_price") != 1
-        ]
 
         # Передаем данные в диалог выбора страны
         await manager.start(
