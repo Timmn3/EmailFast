@@ -186,6 +186,11 @@ async def main(dp: Dispatcher):
 def set_scheduled_jobs(scheduler):
     try:
 
+        # Проверка SMS
+        scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
+        # Проверка арендованных SMS
+        scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
+
         if ON_SCHEDULE:
             # Обновление цен SMSFast (кэш price_smsfast) — ежедневно в 01:00 по МСК
             scheduler.add_job(
@@ -202,8 +207,6 @@ def set_scheduled_jobs(scheduler):
             )
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
-            # Проверка SMS
-            scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
             # Проверка Email
             scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
             # Проверка платежей через CKassa
@@ -224,8 +227,6 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
             # Проверка истечения срока почты арендованной на неделю
             scheduler.add_job(notify_week_expiration, "interval", minutes=10)
-            # Проверка арендованных SMS
-            scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
             # Уведомление об аренде, которая скоро завершится
             scheduler.add_job(rents_ending_soon, "interval", minutes=1, max_instances=3)
             # Автопродление аренды за 2 часа до окончания
