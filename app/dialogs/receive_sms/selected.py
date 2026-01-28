@@ -391,11 +391,31 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                 # Определяем код сервиса для SMSFast API
                 api_service_code = smsfast_service_code or service_code
                 max_price_val = math.ceil(float(retail_price) if retail_price is not None else float(price))
-                order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id, maxPrice=max_price_val)
-                # Если первый запрос не вернул активацию, пробуем с чуть большей ценой
-                if (isinstance(order_response, str) and 'activation' not in order_response.lower()) or (isinstance(order_response, dict) and 'activationId' not in order_response):
-                    max_price_val = math.ceil(float(retail_price or 0) * 1.05)
-                    order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id, maxPrice=max_price_val)
+                order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id)
+
+                # ✅ Если нет денег на балансе SMSFast (может прийти строкой или dict)
+                smsfast_error = None
+                if isinstance(order_response, dict):
+                    smsfast_error = order_response.get("error")
+                elif isinstance(order_response, str):
+                    smsfast_error = order_response.strip()
+
+                if smsfast_error == "NO_BALANCE":
+                    for admin_id in ADMINS:
+                        await bot.send_message(
+                            chat_id=admin_id,
+                            text=(
+                                "🚨 *Внимание, администратор!*\n"
+                                "❌ На сервисе *SMSFast* недостаточно средств для выполнения операции.\n"
+                                f"💬 *Ошибка*: `{smsfast_error}`\n"
+                            ),
+                            parse_mode="Markdown"
+                        )
+
+                    await _reply(text=NOT_NUMBERS_ALERT)
+                    await manager.switch_to(CountryMenu.select_country)
+                    return
+
                 # Разбираем ответ
                 if isinstance(order_response, str):
                     # Ожидаемый формат: "ACCESS_NUMBER:ID:NUMBER"
