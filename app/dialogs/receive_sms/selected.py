@@ -727,15 +727,23 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             if not services:
                 await c.answer("Извините, информация о сервисе недоступна для SMSFast.")
                 return
+
             sorted_countries_with_prices = [
                 {
                     "country": country,
                     "price": math.ceil(float(price/100) * DOLLAR_SMS_ACTIVATE),  # коэффициент аналогично SMSActivate
-                    "retail_price": int(float(price/100)),
+                    "retail_price":  math.ceil(float(price/100)),
                     "freePriceMap": None
                 }
                 for country, price in services.items()
             ]
+
+            # Дополнительно скрываем "США (виртуальные)" из списка стран (по требованию).
+            sorted_countries_with_prices = [
+                item for item in sorted_countries_with_prices
+                if str(item.get("country", "")).strip() != "США (виртуальные)"
+            ]
+
             # Приводим названия стран к единообразию и сортируем список
             sorted_countries_with_prices = sort_countries_by_dict(sorted_countries_with_prices)
 
@@ -785,6 +793,11 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             sorted_countries_with_prices = await sort_countries_tg(
                 sorted_countries_with_prices, list_for_sorting_countries_for_telegram
             )
+
+        sorted_countries_with_prices = [
+            item for item in sorted_countries_with_prices
+            if item.get("retail_price") != 1
+        ]
 
         # Передаем данные в диалог выбора страны
         await manager.start(
