@@ -143,3 +143,15 @@ bot = Bot(
 )
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+
+# Сопоставление сервисов для SMSFast: название сервиса -> код для SMSFast
+SMSFAST_SERVICE_MAP = {
+    "telegram": "tg",
+    "vkcom":    "vk",
+    "google":   "go",
+    "tiktok":   "tt",
+    "amazon":   "am",
+    "claude":   "cl",
+    "ot":       "ot",   # "Любой другой"
+}
