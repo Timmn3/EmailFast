@@ -8,13 +8,13 @@ from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 from tortoise.transactions import in_transaction
-
+from app.services.sms_fast.smsfast_client import get_smsfast_client
 from pyonlinesim import OnlineSMS
 from aiogram.exceptions import TelegramBadRequest
 
 from app.db import models
 from app.db.models import PriceOnlinesim
-from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot
+from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot, SMSFAST_SERVICE_MAP
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
@@ -150,35 +150,51 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             country_name = selected_country['country']
             price = selected_country['price']
             free_price_map = selected_country.get('freePriceMap')
-            # Проверяем, включён ли провайдер SMSFast
-            smsfast_flag = await models.AdminSettings.get_setting_value("smsfast_enabled")
-            smsfast_enabled = str(smsfast_flag).strip().lower() in ("true", "1", "yes", "y", "on", "enable", "enabled")
-            if smsfast_enabled:
-                # Получаем ID страны из справочника SMSFast по названию страны
+            # Определяем флаги провайдера
+            smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+            # Флаг частичного использования SMSFast
+            smsfast_enabled_val = await models.AdminSettings.get_setting_value("smsfast_enabled")
+            smsfast_enabled = str(smsfast_enabled_val or "").strip().lower() in ("1", "true", "yes", "y", "on", "enable", "enabled")
+            use_smsfast = False
+            smsfast_service_code = None
+            if not smsfast_active and smsfast_enabled:
+                # Проверяем, входит ли выбранный сервис в список разрешённых для SMSFast
+                if service_code in SMSFAST_SERVICE_MAP:
+                    smsfast_service_code = SMSFAST_SERVICE_MAP[service_code]
+                elif service_code in SMSFAST_SERVICE_MAP.values():
+                    smsfast_service_code = service_code
+                if smsfast_service_code:
+                    use_smsfast = True
+            if smsfast_active or use_smsfast:
+                # Используем провайдера SMSFast
                 country_obj = await models.CountriesSmsFast.get_or_none(name=country_name)
-                country_id = country_obj.country_id if country_obj else 0
-                # Если режим SMS_Activate, но цена бралась с OnlineSim (free_price_map=None), переводим код сервиса обратно
-                if await service_is_smsactivate() and free_price_map is None and service_code in SERVICES_TRANSLATION:
-                    # Например: "telegram" -> "tg"
-                    for code, transl in SERVICES_TRANSLATION.items():
-                        if transl == service_code:
-                            service_code = code
-                            break
+                if not country_obj:
+                    # Страна недоступна у SMSFast
+                    await _safe_cb_answer(c, text="⚠️ Эта страна сейчас недоступна у провайдера SMSFast.", show_alert=True)
+                    await manager.switch_to(CountryMenu.select_country)
+                    return
+                country_id = int(country_obj.country_id)
+                # Если partial SMSFast режим, сохраняем код сервиса SMSFast для дальнейшего использования
+                if use_smsfast and smsfast_service_code:
+                    # Заменяем код сервиса на SMSFast-код для дальнейшей обработки
+                    service_code = smsfast_service_code
             else:
+                # Стандартное поведение: выбор провайдера по free_price_map (None -> OnlineSim, not None -> SMSActivate)
                 if free_price_map is None:
                     country_id = await models.CountriesOnlinesim.get_country_id_by_name(country_name)
                     if await service_is_smsactivate():
-                        # В режиме SMSActivate мог использоваться код OnlineSim – маппим обратно
+                        # Если основной провайдер SMSActivate, маппим код сервиса на код для OnlineSim
                         service_code = SERVICES_TRANSLATION.get(service_code, service_code)
                 else:
                     country_id = await models.CountriesSmsActivate.get_country_id_by_name(country_name)
             retail_price = selected_country.get('retail_price')
             logger.bind(user_id=user_id, action='on_select_country_new').log(
-                "USER_ACTION",
-                f"Выбрана страна: {country_name}, цена: {price}, сервис: {service_code}"
+                "USER_ACTION", f"Выбрана страна: {country_name}, цена: {price}, сервис: {service_code}"
             )
+            # Переходим к обработке активации номера с выбранными параметрами
             await send_service_on_country(
                 country_id=country_id,
+                country_name=country_name,
                 service_code=service_code,
                 price=price,
                 retail_price=retail_price,
@@ -192,7 +208,6 @@ async def on_select_country_new(c: types.CallbackQuery, widget: Select, manager:
             )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_select_country_new: {e}")
-
 
 
 @logger.catch()
@@ -245,27 +260,17 @@ async def on_result_country(m: types.Message, widget: TextInput, manager: Dialog
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_result_country: {e}")
 
+
 @logger.catch()
-async def send_service_on_country(country_id: int, service_code: str, price: float, retail_price, free_price_map,
+async def send_service_on_country(country_id: int, country_name: str, service_code: str, price: float, retail_price, free_price_map,
                                   c: types.CallbackQuery, manager: DialogManager = None):
     """
     Отправляет информацию о сервисе пользователю и обрабатывает активацию номера.
-    :param country_id: Идентификатор страны.
-    :param service_code: Код сервиса.
-    :param price: Цена для клиента.
-    :param retail_price: Цена сервиса.
-    :param free_price_map: Дополнительные цены.
-    :param c: Объект CallbackQuery от aiogram.
-    :param manager: Менеджер диалогов от aiogram_dialog (опционально).
     """
     try:
         user_id = c.from_user.id
-
+        # Функция для безопасного ответа/отправки сообщения
         async def _reply(text: str, **kwargs):
-            """
-            Универсальная отправка: если есть message -> answer, иначе -> bot.send_message.
-            Полезно, когда после оплаты callback протух, либо нет message-контекста.
-            """
             try:
                 if getattr(c, "message", None):
                     return await c.message.answer(text=text, **kwargs)
@@ -275,58 +280,76 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                     f"Не удалось отправить сообщение пользователю: {e}"
                 )
                 return None
-
-        # Снимаем "часики" с кнопки (если callback уже протух — _safe_cb_answer не уронит логику)
+        # Снимаем "часики" с кнопки (если callback уже протух — не уронит логику)
         await _safe_cb_answer(c)
-
         logger.bind(user_id=user_id, action='send_service_on_country').log(
-            "USER_ACTION",
-            f"Запрос на активацию сервиса: страна={country_id}, сервис={service_code}, цена={price}"
+            "USER_ACTION", f"Запрос на активацию сервиса: страна={country_id}, сервис={service_code}, цена={price}"
         )
-
         # Получаем информацию о пользователе
         user = await models.User.get_user(user_id)
         if not user:
             logger.bind(user_id=user_id, action='send_service_on_country').warning("Пользователь не найден в базе")
             return
-
-        # Лимитер запросов (5 сек)
-        if user.last_request_time is not None and (
-                datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
+        # Лимитер запросов (не чаще одного запроса за 5 сек)
+        if user.last_request_time is not None and (datetime.now(pytz.utc) - user.last_request_time.astimezone(pytz.utc)).total_seconds() < 5:
             await _safe_cb_answer(c, text=PLEASE_WAIT_SECONDS, show_alert=True)
             return
-
         current_time = datetime.now(pytz.timezone('Europe/Moscow'))
         user.last_request_time = current_time.astimezone(pytz.utc)
         await user.save(update_fields=['last_request_time'])
-
+        # Проверяем глобальный флаг основного провайдера
         is_smsactivate = await service_is_smsactivate()
-
-        # ✅ ФАКТИЧЕСКИЙ провайдер для выдачи номера определяется так же,
-        # как формировался список стран/цен:
-        # free_price_map is None -> OnlineSim
-        # free_price_map is not None -> SMSActivate
-        provider_is_smsactivate = free_price_map is not None
-
-        # ✅ Precheck наличия номеров перед пополнением / запросом номера
-        if not provider_is_smsactivate:
-            client = OnlineSMS(api_key=API_KEY_ONLINESIM)
-            # OnlineSim — проверяем наличие номеров
+        # Определяем провайдер для выдачи номера (с учётом SMSFast)
+        smsfast_flag_val = await models.AdminSettings.get_setting_value("smsfast_enabled")
+        smsfast_enabled_flag = str(smsfast_flag_val or "").strip().lower() in ("1", "true", "yes", "y", "on", "enable", "enabled")
+        smsfast_condition = False
+        smsfast_service_code = None
+        if smsfast_enabled_flag:
+            if service_code in SMSFAST_SERVICE_MAP:
+                smsfast_service_code = SMSFAST_SERVICE_MAP[service_code]
+            elif service_code in SMSFAST_SERVICE_MAP.values():
+                smsfast_service_code = service_code
+        # Условие использования SMSFast: либо глобально выбран SMSFast, либо флаг включён и сервис разрешён
+        smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+        if smsfast_active or (smsfast_enabled_flag and smsfast_service_code):
+            smsfast_condition = True
+        # Флаги провайдеров
+        provider_is_smsfast = smsfast_condition
+        provider_is_smsactivate = (free_price_map is not None) and not smsfast_condition
+        # Предварительная проверка наличия номеров у провайдера
+        if provider_is_smsfast:
+            # Проверяем через кэш цен SMSFast наличие доступных номеров
+            has_numbers = True
             try:
-                await client.order_number(service=service_code, country=country_id)
+                record = await models.PriceSmsFast.get_or_none(country=country_id, service_code=smsfast_service_code or service_code)
+                if record and record.count is not None:
+                    if int(record.count) <= 0:
+                        has_numbers = False
             except Exception as e:
-                await _reply(text=bt.NOT_NUMBERS_ALERT)
+                # В случае ошибки кэша пропускаем строгую проверку
+                logger.bind(user_id=user_id, action='send_service_on_country').warning(
+                    f"Не удалось проверить наличие номеров у SMSFast: {e}"
+                )
+            if not has_numbers:
+                await _reply(text=NOT_NUMBERS_ALERT)
+                return
+        elif not provider_is_smsactivate:
+            # Провайдер OnlineSim – пробуем зарезервировать номер (тест наличия)
+            client_check = OnlineSMS(api_key=API_KEY_ONLINESIM)
+            try:
+                await client_check.order_number(service=service_code, country=country_id)
+            except Exception as e:
+                await _reply(text=NOT_NUMBERS_ALERT)
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
-                    "USER_ACTION",
-                    f"Нет доступных номеров OnlineSim: {e}"
+                    "USER_ACTION", f"Нет доступных номеров OnlineSim: {e}"
                 )
                 return
         else:
-            # SMSActivate — проверяем наличие номеров у провайдера по стране + сервису
-            sms = SmsReceive()
+            # Провайдер SMSActivate – проверяем наличие номеров через API
+            sms_client = SmsReceive()
             has_numbers = False
             try:
-                services_in_country = await sms.get_services_by_country_id(country_id=country_id)
+                services_in_country = await sms_client.get_services_by_country_id(country_id=country_id)
                 for svc in services_in_country:
                     if svc.get("code") == service_code and int(svc.get("count", 0)) > 0:
                         has_numbers = True
@@ -335,15 +358,13 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 logger.bind(user_id=user_id, action='send_service_on_country').warning(
                     f"Не удалось проверить наличие номеров у SMSActivate: {e}"
                 )
-                has_numbers = True
-
+                has_numbers = True  # при ошибке считаем, что номера могут быть
             if not has_numbers:
                 await _reply(text=NOT_NUMBERS_ALERT)
                 return
-
-        # Проверяем, достаточно ли средств на балансе
-        if user.balance < price:
-            missing_amount = max(price - user.balance, 50.0)
+        # Проверяем баланс пользователя
+        if float(user.balance or 0.0) < float(price):
+            missing_amount = max(float(price) - float(user.balance or 0.0), 50.0)
             manager.current_context().dialog_data.update({
                 'country_id': country_id,
                 'service_code': service_code,
@@ -354,145 +375,182 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
             from app.dialogs.personal_cabinet.selected import send_payment_keyboard
             await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
             return
-
-        # Сообщаем, что запрос номера отправлен
+        # Сообщаем пользователю, что запрос номера отправлен
         sent_message = await _reply(text=NUMBER_REQUEST_SENT)
         sent_message_id = sent_message.message_id if sent_message else None
-
-        # ===== получение номера =====
-        if not provider_is_smsactivate:
+        activation_id = None
+        phone_number = None
+        country_obj = None
+        service_obj = None
+        # === Получение номера от провайдера ===
+        if provider_is_smsfast:
+            # Заказываем номер через SMSFast
+            smsfast_client = get_smsfast_client()
+            try:
+                logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "SMSFast")
+                # Определяем код сервиса для SMSFast API
+                api_service_code = smsfast_service_code or service_code
+                max_price_val = math.ceil(float(retail_price) if retail_price is not None else float(price))
+                order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id, maxPrice=max_price_val)
+                # Если первый запрос не вернул активацию, пробуем с чуть большей ценой
+                if (isinstance(order_response, str) and 'activation' not in order_response.lower()) or (isinstance(order_response, dict) and 'activationId' not in order_response):
+                    max_price_val = math.ceil(float(retail_price or 0) * 1.05)
+                    order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id, maxPrice=max_price_val)
+                # Разбираем ответ
+                if isinstance(order_response, str):
+                    # Ожидаемый формат: "ACCESS_NUMBER:ID:NUMBER"
+                    parts = order_response.split(':')
+                    if parts and parts[0].startswith("ACCESS") and len(parts) >= 3:
+                        activation_id = int(parts[1]) if parts[1].isdigit() else None
+                        phone_number = parts[2].lstrip('+') if parts[2] else None
+                elif isinstance(order_response, dict):
+                    # Ожидаемый формат JSON: {"activationId": ..., "phoneNumber": ...}
+                    if order_response.get("activationId"):
+                        activation_id = int(order_response["activationId"])
+                        phone_number = str(order_response.get("phoneNumber") or order_response.get("number") or "").lstrip('+')
+                # Проверяем, удалось ли получить номер
+                if not activation_id or not phone_number:
+                    await _reply(text=NOT_NUMBERS_ALERT)
+                    await manager.switch_to(CountryMenu.select_country)
+                    return
+                # Маппим страну SMSFast -> объект CountriesSmsActivate для сохранения в активации
+                country_obj = await models.map_smsfast_country_to_smsactivate(country_id)
+                if not country_obj:
+                    # Если не удалось отобразить страну, отменяем активацию у SMSFast и сообщаем об ошибке
+                    try:
+                        await smsfast_client._call(action="setStatus", id=activation_id, status=8)
+                    except Exception as e:
+                        logger.warning(f"Не удалось отменить активацию SMSFast #{activation_id}: {e}")
+                    await _reply(text=NOT_NUMBERS_ALERT)
+                    await manager.switch_to(CountryMenu.select_country)
+                    return
+                # Определяем объект сервиса для SMSFast (используем таблицу SMSActivate)
+                api_code = smsfast_service_code or service_code
+                service_obj = await models.ServicesSmsActivate.get_or_none(code=api_code)
+            except Exception as e:
+                await _reply(text=NOT_NUMBERS_ALERT)
+                logger.bind(user_id=user_id, action='send_service_on_country').error(f"Ошибка при получении номера SMSFast: {e}")
+                await manager.switch_to(CountryMenu.select_country)
+                return
+        elif not provider_is_smsactivate:
+            # Заказываем номер через OnlineSim
             client = OnlineSMS(api_key=API_KEY_ONLINESIM)
             try:
                 logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "OnlineSim")
-
                 order_number_response = await client.order_number(service=service_code, country=country_id)
                 activation_id = order_number_response.get('tzid')
-
                 info = await client.get_order_info(operation_id=activation_id)
                 phone_number = info[0].get('number').lstrip('+') if info else None
-
                 if not phone_number:
-                    await _reply(text=bt.NOT_NUMBERS_ALERT)
+                    await _reply(text=NOT_NUMBERS_ALERT)
                     await manager.switch_to(CountryMenu.select_country)
                     return
-
-                country = await models.CountriesOnlinesim.get_country_from_country_by_id(country_id=country_id)
-
-                # определяем сервис по текущему режиму
+                # Маппим страну OnlineSim -> CountriesSmsActivate
+                country_obj = await models.CountriesOnlinesim.get_country_from_country_by_id(country_id=country_id)
+                # Определяем сервис для сохранения: если глобальный провайдер SMSActivate, используем код SMSActivate
                 if is_smsactivate:
-                    key = REVERSE_SERVICES_TRANSLATION.get(service_code)
-                    service = await models.ServicesSmsActivate.get_service(code=key)
+                    key = REVERSE_SERVICES_TRANSLATION.get(service_code, service_code)
+                    service_obj = await models.ServicesSmsActivate.get_or_none(code=key)
                 else:
-                    service = await models.ServicesOnlinesim.get_service(code=service_code)
-
+                    service_obj = await models.ServicesOnlinesim.get_or_none(code=service_code)
             except Exception as e:
-                await _reply(text=bt.NOT_NUMBERS_ALERT)
-
+                await _reply(text=NOT_NUMBERS_ALERT)
                 error_message = str(e)
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
-                    "USER_ACTION",
-                    f"Ошибка при получении номера сервиса OnlineSim: {error_message}"
+                    "USER_ACTION", f"Ошибка при получении номера OnlineSim: {error_message}"
                 )
-
-                if "No available numbers for this service" in error_message:
-                    await manager.switch_to(CountryMenu.select_country)
-                    return
-
                 if "Not enough funds" in error_message:
+                    # Оповещение администраторов о нехватке средств на OnlineSim
                     for admin_id in ADMINS:
                         await bot.send_message(
                             chat_id=admin_id,
                             text=(
-                                "🚨 *Внимание, администратор!*\n"
-                                "❌ На сервисе *OnlineSim* недостаточно средств для выполнения операции.\n"
-                                f"📅 *Время*: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                "🚨 *Внимание, администратор!*\\n"
+                                "❌ На сервисе *OnlineSim* недостаточно средств для выполнения операции.\\n"
                                 f"💬 *Описание ошибки*: {error_message}"
                             ),
                             parse_mode="Markdown"
                         )
-
                 await manager.switch_to(CountryMenu.select_country)
                 return
-
         else:
-            sms = SmsReceive()
-            max_price = math.ceil(retail_price)
-
-            phone_number_data = await sms.get_phone_number(
-                country_id=country_id,
-                service_code=service_code,
-                max_price=max_price
-            )
-
-            logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "SMSActivate")
-
-            if 'activationId' not in phone_number_data:
-                max_price = math.ceil(retail_price * 1.05)
-                phone_number_data = await sms.get_phone_number(
-                    country_id=country_id,
-                    service_code=service_code,
-                    max_price=max_price
-                )
-                if 'activationId' not in phone_number_data:
-                    await _safe_cb_answer(c, text=bt.NOT_NUMBERS_ALERT, show_alert=True)
+            # Заказываем номер через SMSActivate
+            sms_client = SmsReceive()
+            try:
+                logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "SMSActivate")
+                max_price_val = math.ceil(float(retail_price) if retail_price is not None else float(price))
+                phone_data = await sms_client.get_phone_number(country_id=country_id, service_code=service_code, max_price=max_price_val)
+                if 'activationId' not in phone_data:
+                    # При первом запросе не получили номер, пробуем с +5% цены
+                    max_price_val = math.ceil(float(retail_price or 0) * 1.05)
+                    phone_data = await sms_client.get_phone_number(country_id=country_id, service_code=service_code, max_price=max_price_val)
+                if 'activationId' not in phone_data:
+                    await _safe_cb_answer(c, text=NOT_NUMBERS_ALERT, show_alert=True)
                     await manager.switch_to(CountryMenu.select_country)
                     return
-
-            activation_id = int(phone_number_data['activationId'])
-            phone_number = phone_number_data['phoneNumber']
-            country = await models.CountriesSmsActivate.get_country_by_id(country_id=country_id)
-            service = await models.ServicesSmsActivate.get_service(code=service_code)
-
-        # 🔒 Атомарно: создание активации + списание баланса
-        expire_at = datetime.now(pytz.timezone("Europe/Moscow")).replace(microsecond=0) + timedelta(minutes=14)
-
+                activation_id = int(phone_data['activationId'])
+                phone_number = phone_data['phoneNumber']
+                country_obj = await models.CountriesSmsActivate.get_country_by_id(country_id=country_id)
+                service_obj = await models.ServicesSmsActivate.get_or_none(code=service_code)
+            except Exception as e:
+                await _reply(text=NOT_NUMBERS_ALERT)
+                logger.bind(user_id=user_id, action='send_service_on_country').error(f"Ошибка при получении номера SMSActivate: {e}")
+                await manager.switch_to(CountryMenu.select_country)
+                return
+        # Атомарно: создаём активацию и списываем баланс
+        expire_at = datetime.now(pytz.timezone('Europe/Moscow')).replace(microsecond=0) + timedelta(minutes=14)
         async with in_transaction() as conn:
             user_locked = await models.User.filter(id=user.id).using_db(conn).select_for_update().first()
             if not user_locked:
                 raise RuntimeError("Пользователь не найден при блокировке")
-
-            # повторная проверка баланса под локом (на случай конкуренции)
             if float(user_locked.balance or 0.0) < float(price):
                 raise RuntimeError("Недостаточно средств после блокировки пользователя")
-
-            if provider_is_smsactivate:
+            if provider_is_smsfast:
                 activation = await models.Activation.create(
                     user=user_locked,
-                    provider="smsactivate",
+                    provider="smsfast",
                     activation_id=activation_id,
-                    country=country,
-                    service=service,
-                    cost=price,
+                    country=country_obj,
+                    service=service_obj,
+                    cost=float(price),
                     phone_number=phone_number,
                     activation_expire_at=expire_at,
                     using_db=conn,
                 )
-                service_name = service.name
+                service_name = service_obj.name if service_obj else str(service_code)
+            elif provider_is_smsactivate:
+                activation = await models.Activation.create(
+                    user=user_locked,
+                    provider="smsactivate",
+                    activation_id=activation_id,
+                    country=country_obj,
+                    service=service_obj,
+                    cost=float(price),
+                    phone_number=phone_number,
+                    activation_expire_at=expire_at,
+                    using_db=conn,
+                )
+                service_name = service_obj.name if service_obj else str(service_code)
             else:
                 activation = await models.Activation.create(
                     user=user_locked,
                     provider="onlinesim",
                     activation_id=activation_id,
-                    country=country,
-                    service_2=service,
-                    cost=price,
+                    country=country_obj,
+                    service_2=service_obj,
+                    cost=float(price),
                     phone_number=phone_number,
                     activation_expire_at=expire_at,
                     using_db=conn,
                 )
-                service_name = service.name
-
+                service_name = service_obj.name if service_obj else str(service_code)
+            # Списываем баланс
             user_locked.balance = float(user_locked.balance or 0.0) - float(price)
             await user_locked.save(using_db=conn, update_fields=["balance"])
-
-        # чтобы ниже по коду был актуальный баланс
+        # Обновляем объект user (актуальный баланс)
         await user.refresh_from_db(fields=["balance"])
-
         low_balance = await check_low_balance(user, price)
-
-
-
-        # удаляем "запрос отправлен" (если было)
+        # Удаляем служебное сообщение "запрос отправлен"
         if sent_message_id:
             try:
                 await bot.delete_message(chat_id=user_id, message_id=sent_message_id)
@@ -500,32 +558,26 @@ async def send_service_on_country(country_id: int, service_code: str, price: flo
                 logger.bind(user_id=user_id, action='send_service_on_country').warning(
                     f"Не удалось удалить служебное сообщение: {e}"
                 )
-
+        # Готовим данные для ответа пользователю
         try:
-            country_name = activation.country.name
-        except Exception as e:
-            country_name = None
-            logger.opt(exception=e).error("country = None")
-
-        # Отправляем инфо по сервису (используем message, который точно есть)
+            country_name_result = activation.country.name
+        except Exception:
+            country_name_result = country_name  # на случай, если country не связан
         base_message = c.message if getattr(c, "message", None) else sent_message
         if base_message is None:
-            # крайний случай: просто отправим текстом
+            # Если нет контекста сообщения, отправляем текстом и затем используем base_message
             await _reply(text="✅ Номер получен. Открываю детали…")
-            # и всё равно пробуем отправить клавиатуру через c.message если появится
-            base_message = c.message
-
+            base_message = c.message or sent_message
+        # Отправляем информацию о полученном номере и кнопки управления
         await send_service_info_with_keyboard(
             message=base_message,
             activation=activation,
             service=service_name,
-            country=country_name
+            country=country_name_result
         )
-
         await asyncio.sleep(1)
         if low_balance:
             await send_low_balance_alert(user)
-
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_service_on_country: {e}")
 
