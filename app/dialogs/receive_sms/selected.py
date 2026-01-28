@@ -608,10 +608,6 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='send_country_info').log(
-            "USER_ACTION",
-            f"Запрос информации о сервисе: {service_code}"
-        )
 
         # app/dialogs/receive_sms/selected.py (фрагмент функции send_country_info)
 
@@ -619,7 +615,11 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         smsactivate_active = await service_is_smsactivate()
         smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
 
-        sorted_countries_with_prices: list[dict] = []
+        provider = "SMSActivate" if smsactivate_active else "SMSFast" if smsfast_active else "OnlineSim"
+        logger.bind(user_id=user_id, action='send_country_info').log(
+            "USER_ACTION",
+            f"Запрос информации о сервисе: {service_code}, провайдер: {provider}"
+        )
 
         if smsactivate_active:
             # Ветка работы через SMSActivate (как было ранее)

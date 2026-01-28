@@ -1645,9 +1645,10 @@ async def set_smsfast(message: types.Message):
 
     await AdminSettings.update_setting("smsfast_enabled", "true" if new_bool else "false")
 
-    await message.answer(
-        text=f"SMSFast: {'✅ включен' if new_bool else '⛔ выключен'}"
-    )
+    text = f"SMSFast: {'✅ включен' if new_bool else '⛔ выключен'}"
+    await message.answer(text)
+    logger.bind(user_id=message.from_user.id, action="smsfast").log(
+        "USER_ACTION", text)
 
 
 @router.message(Command('help_admin'))
