@@ -1678,6 +1678,7 @@ async def help_admin(message: types.Message):
     /create_silobus_links - Создать новую реферальную ссылку для Silobus (следующую по порядку)
     /smsactivate - Установить SMS_Activate
     /onlinesim - Установить Onlinesim
+    /update_price_smsfast - Вручную обновить сервисы SMSFast
     /smsfast [on|off|status] - Включить/выключить SMSFast (без аргументов — просто переключение Включить/выключить)
     """
 
