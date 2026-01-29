@@ -393,12 +393,13 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                 max_price_val = math.ceil(float(retail_price) if retail_price is not None else float(price))
                 order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id)
 
-                logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", f'Ответ SMSFast {order_response}')
+                request_reply = f'service={api_service_code}, country={country_id} Ответ SMSFast {order_response}'
+                logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", request_reply)
 
                 if user_id == CODER:
                     await bot.send_message(
                         chat_id=user_id,
-                        text=f'Ответ SMSFast: {order_response}')
+                        text=request_reply)
 
                 # ✅ Если нет денег на балансе SMSFast (может прийти строкой или dict)
                 smsfast_error = None
