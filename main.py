@@ -185,7 +185,7 @@ def set_scheduled_jobs(scheduler):
     try:
 
         # Проверка SMS
-        scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
+        scheduler.add_job(check_sms, "interval", seconds=20, max_instances=10)
         # Находит истёкшие активации, по которым не пришло СМС
         scheduler.add_job(
             refund_and_cleanup_expired_sms,
@@ -195,21 +195,10 @@ def set_scheduled_jobs(scheduler):
             coalesce=True,  # если пропустили — выполнить один раз
             misfire_grace_time=10  # окно на отставание
         )
+        # Обновление цен SMSFast (кэш price_smsfast)
+        scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
 
         if ON_SCHEDULE:
-            # Обновление цен SMSFast (кэш price_smsfast) — ежедневно в 01:00 по МСК
-            scheduler.add_job(
-                update_smsfast_prices,
-                "cron",
-                hour="1,5,9,13,17,21",
-                minute=0,
-                timezone="Europe/Moscow",
-                id="smsfast_prices_daily",
-                replace_existing=True,
-                max_instances=1,
-                coalesce=True,
-                misfire_grace_time=3600,
-            )
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
             # Проверка Email

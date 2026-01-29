@@ -585,6 +585,7 @@ async def check_sms():
                 except Exception:
                     name = None
 
+            # print(f'activation {activation.activation_id} | status {status}')
             # если получен статус STATUS_OK
             if status and status.startswith(models.StatusResponse.STATUS_OK.name):
                 sms_from_status_raw = status.split(":", 1)[1].strip()
