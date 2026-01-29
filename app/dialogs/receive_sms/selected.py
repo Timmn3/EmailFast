@@ -14,7 +14,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from app.db import models
 from app.db.models import PriceOnlinesim
-from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot, SMSFAST_SERVICE_MAP
+from app.dependencies import API_KEY_ONLINESIM, ADMINS, bot, SMSFAST_SERVICE_MAP, CODER
 from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.receive_sms.states import ServiceMenu, CountryMenu
 from app.dialogs.rent_sms.states import RentCountryMenu
@@ -393,6 +393,13 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                 max_price_val = math.ceil(float(retail_price) if retail_price is not None else float(price))
                 order_response = await smsfast_client._call(action="getNumber", service=api_service_code, country=country_id)
 
+                logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", f'Ответ SMSFast {order_response}')
+
+                if user_id == CODER:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=f'Ответ SMSFast: {order_response}')
+
                 # ✅ Если нет денег на балансе SMSFast (может прийти строкой или dict)
                 smsfast_error = None
                 if isinstance(order_response, dict):
@@ -450,6 +457,10 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
             except Exception as e:
                 await _reply(text=NOT_NUMBERS_ALERT)
                 logger.bind(user_id=user_id, action='send_service_on_country').error(f"Ошибка при получении номера SMSFast: {e}")
+                if user_id == CODER:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=f'Ошибка: {e}')
                 await manager.switch_to(CountryMenu.select_country)
                 return
         elif not provider_is_smsactivate:
@@ -458,8 +469,20 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
             try:
                 logger.bind(user_id=user_id, action='send_service_on_country').log("USER_ACTION", "OnlineSim")
                 order_number_response = await client.order_number(service=service_code, country=country_id)
+                try:
+                    if user_id == CODER:
+                        await bot.send_message(chat_id=user_id, text=f'Ответ OnlineSim: {order_number_response}')
+                except Exception:
+                    pass
+
                 activation_id = order_number_response.get('tzid')
                 info = await client.get_order_info(operation_id=activation_id)
+                try:
+                    if user_id == CODER:
+                        await bot.send_message(chat_id=user_id, text=f'Ответ OnlineSim info: {info}')
+                except Exception:
+                    pass
+
                 phone_number = info[0].get('number').lstrip('+') if info else None
                 if not phone_number:
                     await _reply(text=NOT_NUMBERS_ALERT)
@@ -809,8 +832,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
 
                 # ✅ 2) Фильтрация retail_price == 1 (как ты просил)
                 # Важно: это эвристика. Если увидишь что "дешёвые, но реальные" страны пропали — убери этот блок.
-                if retail_price_float == 1.0:
-                    continue
+                # if retail_price_float == 1.0:
+                #     continue
 
                 # retail_price — сырой прайс провайдера; price — наша цена (с наценкой)
                 retail_price = retail_price_float
