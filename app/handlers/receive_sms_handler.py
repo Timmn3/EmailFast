@@ -111,7 +111,19 @@ _request_code_tasks: dict[int, asyncio.Task] = {}
 
 
 async def _request_code_worker(user_id: int, activation_pk: int) -> None:
+    """
+    Фоновая обработка кнопки "📩 Принять новое SMS на этот же номер".
+
+    Критично (анти-фрод / анти-гонки):
+    - Нельзя отправлять SMS, если активация уже отменена/рефанднута (STATUS_CANCEL).
+    - Любое решение "отправлять или нет" + запись sms_text делаем под SELECT FOR UPDATE,
+      чтобы закрыть гонку между cancel_service / авто-рефандом / check_sms.
+    - Если sms_text уже записан — повторно не шлём.
+    """
     try:
+        import html as _html
+        from tortoise.transactions import in_transaction
+
         logger.bind(user_id=user_id, action="request_code_worker").log(
             "USER_ACTION",
             f"Фоновая обработка request_code: activation_pk={activation_pk}"
@@ -162,22 +174,63 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
             if order_info and isinstance(order_info, list):
                 sms_text = (order_info[0] or {}).get("msg")
 
-            if sms_text:
+            if not sms_text:
+                return
+
+            sms_clean = str(sms_text).strip()
+
+            # ⚠️ Финальная проверка под локом: если CANCEL — ничего не отправляем.
+            should_send = False
+            act = None
+
+            async with in_transaction() as conn:
+                act = await models.Activation.filter(id=activation_pk).using_db(conn).select_for_update().first()
+                if not act:
+                    return
+
+                # если пользователь уже отменил (или авто-рефанд успел сработать) — не отдаём SMS
+                if act.status == models.StatusResponse.STATUS_CANCEL:
+                    logger.bind(user_id=user_id, action="request_code_worker").log(
+                        "USER_ACTION",
+                        f"SMS не отправлено: активация отменена (activation_pk={activation_pk})"
+                    )
+                    return
+
+                prev_sms = (getattr(act, "sms_text", None) or "").strip()
+                should_send = (prev_sms != sms_clean)
+
+                # фиксируем sms_text в БД, чтобы дальше всё было консистентно
+                if should_send or act.status != models.StatusResponse.STATUS_OK:
+                    act.status = models.StatusResponse.STATUS_OK
+                    act.sms_text = sms_clean
+                    await act.save(using_db=conn, update_fields=["status", "sms_text"])
+
+            # работаем дальше с "актуальной" активацией (после лока)
+            activation = act or activation
+
+            # подгрузим отношения для notice_of_arraignment
+            try:
+                await activation.fetch_related("user", "service_2")
+            except Exception:
+                pass
+
+            if should_send:
+                safe_sms = _html.escape(sms_clean)
                 msg_text = (
                     f"💬<b>Повторное SMS</b> на номер: +{activation.phone_number}\n\n"
                     f"Ваш код активации:\n"
-                    f"<code>{sms_text}</code>"
+                    f"<code>{safe_sms}</code>"
                 )
-                await bot.send_message(chat_id=user_id, text=msg_text)
-                await notice_of_arraignment("Получение смс", activation, sms_text)
+                await bot.send_message(chat_id=user_id, text=msg_text, parse_mode="HTML")
+                await notice_of_arraignment("Получение смс", activation, sms_clean)
 
                 try:
                     logger.bind(
-                        user_id=getattr(activation.user, "telegram_id", user_id),
+                        user_id=getattr(getattr(activation, "user", None), "telegram_id", user_id),
                         action="new_sms"
                     ).log(
                         "USER_ACTION",
-                        f"Получено новое SMS для номера {activation.phone_number}, код: {sms_text}"
+                        f"Получено новое SMS для номера {activation.phone_number}, код: {sms_clean}"
                     )
                 except Exception:
                     pass
