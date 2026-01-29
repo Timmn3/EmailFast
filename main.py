@@ -37,8 +37,6 @@ import logging
 # Версия для отображения/отладки
 msg_text = "Версия 28.01.2026"
 
-
-
 from contextlib import suppress
 from aiogram.types import Message, CallbackQuery
 
@@ -188,8 +186,15 @@ def set_scheduled_jobs(scheduler):
 
         # Проверка SMS
         scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
-        # Проверка арендованных SMS
-        scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
+        # Находит истёкшие активации, по которым не пришло СМС
+        scheduler.add_job(
+            refund_and_cleanup_expired_sms,
+            "interval",
+            seconds=20,  # частота проверки
+            max_instances=1,  # не пускать параллельные копии
+            coalesce=True,  # если пропустили — выполнить один раз
+            misfire_grace_time=10  # окно на отставание
+        )
 
         if ON_SCHEDULE:
             # Обновление цен SMSFast (кэш price_smsfast) — ежедневно в 01:00 по МСК
@@ -223,6 +228,8 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(add_services, "cron", hour=3, minute=0)
             # Пинг userbot
             scheduler.add_job(userbot_ping, "interval", seconds=300, max_instances=3)
+            # Проверка арендованных SMS
+            scheduler.add_job(check_rent_sms, "interval", seconds=35, max_instances=10)
             # Проверка истечения срока почты и уведомления
             scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
             # Проверка истечения срока почты арендованной на неделю
@@ -236,14 +243,6 @@ def set_scheduled_jobs(scheduler):
             # Проверка незавершенных аренд
             scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
 
-            scheduler.add_job(
-                refund_and_cleanup_expired_sms,
-                "interval",
-                seconds=20,  # частота проверки
-                max_instances=1,  # не пускать параллельные копии
-                coalesce=True,  # если пропустили — выполнить один раз
-                misfire_grace_time=10  # окно на отставание
-            )
         else:
             logger.info(f'ON_SCHEDULE выключен ({ON_SCHEDULE})')
     except Exception as e:

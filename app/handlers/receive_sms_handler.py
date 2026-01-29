@@ -312,6 +312,15 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
 @router.callback_query(F.data.startswith('cancel_service:'))
 async def cancel_service(call: types.CallbackQuery, **kwargs):
+    """
+    Отмена активации пользователем:
+    - Проверяем ограничения (первые 2 минуты, SMS уже пришло, идемпотентность).
+    - Ставим STATUS_CANCEL + возвращаем деньги атомарно в транзакции.
+    - После коммита: отвечаем на callback, чистим клавиатуру, шлём сообщение пользователю,
+      и отправляем простой запрос отмены провайдеру (OnlineSim/SMSActivate/SMSFast) + логируем ответ.
+
+    Важно: никаких запросов в Telegram и внешние API внутри транзакции.
+    """
     from datetime import timedelta
     from tortoise import timezone
     from tortoise.transactions import in_transaction
@@ -319,22 +328,31 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
     user_id = call.from_user.id
 
     try:
-        activation_id = int(call.data.split(':', 1)[1])
+        activation_pk = int(call.data.split(':', 1)[1])
 
-        # ⚙️ Никаких вызовов Telegram внутри транзакции — сначала решаем, что делать, потом отвечаем.
+        # Ответ пользователю (toast через call.answer)
         answer_text: str | None = None
-        answer_alert: bool = True
-        need_clear_kb: bool = False
 
+        # UX-флаги
+        need_clear_kb: bool = False
+        need_send_msg: bool = False
+        send_msg_text: str | None = None
+
+        # Данные возврата
         refund_amount: float = 0.0
         new_balance: float | None = None
+
+        # Данные для отмены у провайдера (после коммита)
+        provider_to_cancel: str | None = None
+        provider_activation_id: int | None = None
+        need_provider_cancel: bool = False
 
         async with in_transaction() as conn:
             user = await models.User.select_for_update().using_db(conn).get_or_none(telegram_id=user_id)
             if not user:
                 answer_text = "Пользователь не найден."
             else:
-                activation = await models.Activation.select_for_update().using_db(conn).get_or_none(id=activation_id)
+                activation = await models.Activation.select_for_update().using_db(conn).get_or_none(id=activation_pk)
                 if not activation:
                     logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Активация не найдена")
                     answer_text = "Номер автоматически отменится через 15 минут"
@@ -374,10 +392,22 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                             new_balance = float(user.balance or 0.0)
                             need_clear_kb = True
+
                             answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED
-                            await bot.send_message(
-                                chat_id=user_id,
-                                text=bt.SERVICE_CANCEL_MONEY_RETURNED)
+                            need_send_msg = True
+                            send_msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED
+
+                            # --- провайдер/ID для отмены (после коммита) ---
+                            provider_to_cancel = (getattr(activation, "provider", "") or "").strip().lower()
+                            if not provider_to_cancel:
+                                # fallback для старых записей (по наличию relation)
+                                provider_to_cancel = "smsactivate" if getattr(activation, "service_id", None) else "onlinesim"
+
+                            provider_activation_id = int(getattr(activation, "activation_id", 0) or 0)
+                            need_provider_cancel = bool(provider_activation_id)
+
+        # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
+        await call.answer(text=answer_text or "Отмена больше не доступна")
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
@@ -387,14 +417,56 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
             except Exception:
                 pass
 
-        # Лог после транзакции (чтобы не держать локи)
+        # ✉️ Обычным сообщением (не alert)
+        if need_send_msg and send_msg_text:
+            try:
+                await bot.send_message(chat_id=user_id, text=send_msg_text)
+            except Exception as e:
+                logger.opt(exception=e).warning("Не удалось отправить сообщение пользователю после отмены")
+
+        # 🧾 Лог возврата (после транзакции)
         if refund_amount > 0:
             logger.bind(user_id=user_id, action="cancel_service").log(
                 "USER_ACTION",
-                f"Возврат выполнен: activation_pk={activation_id}, refund={refund_amount}, new_balance={new_balance} ₽"
+                f"Возврат выполнен: activation_pk={activation_pk}, refund={refund_amount}, new_balance={new_balance} ₽"
             )
 
-        await call.answer(text=answer_text or "Отмена больше не доступна")
+        # 🔌 Отмена у провайдера (простая) + лог ответа
+        if need_provider_cancel and provider_to_cancel and provider_activation_id:
+            try:
+                provider_resp = None
+
+                if provider_to_cancel == "smsactivate":
+                    from app.services.sms_receive import SmsReceive
+                    sms = SmsReceive()
+                    provider_resp = await sms.set_activation_status(
+                        activation_id=provider_activation_id,
+                        status=models.ActivationCode.CANCEL
+                    )
+
+                elif provider_to_cancel == "smsfast":
+                    from app.services.sms_fast.smsfast_client import get_smsfast_client
+                    smsfast = get_smsfast_client()
+                    provider_resp = await smsfast.cancel_activation(activation_id=provider_activation_id)
+
+                elif provider_to_cancel == "onlinesim":
+                    from app.services.onlinesim.sms_client import OnlineSMS
+                    client = OnlineSMS(api_key=API_KEY_ONLINESIM)
+                    # В SDK явного cancel нет — закрываем операцию (release номера)
+                    provider_resp = await client.finish_order(operation_id=provider_activation_id, ban=False)
+
+                else:
+                    provider_resp = f"skip: unknown provider '{provider_to_cancel}'"
+
+                logger.bind(user_id=user_id, action="cancel_service").log(
+                    "USER_ACTION",
+                    f"Provider cancel: provider={provider_to_cancel}, provider_activation_id={provider_activation_id}, response={provider_resp}"
+                )
+
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка при отмене у провайдера: provider={provider_to_cancel}, provider_activation_id={provider_activation_id}"
+                )
 
     except TelegramBadRequest as e:
         logger.opt(exception=e).warning(f"Telegram server error: {e}")

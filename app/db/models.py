@@ -844,9 +844,6 @@ class Activation(Model):
     id: int = fields.BigIntField(pk=True)
     user: User = fields.ForeignKeyField('models.User', related_name='activations')
 
-    # ✅ Новый провайдер активации: smsfast / smsactivate / onlinesim
-    provider: str = fields.CharField(max_length=16, default="smsactivate", index=True)
-
     activation_id: int = fields.BigIntField(unique=True, index=True)
     country: CountriesSmsActivate = fields.ForeignKeyField('models.CountriesSmsActivate', related_name='activations')
     service: ServicesSmsActivate = fields.ForeignKeyField('models.ServicesSmsActivate', related_name='activations', null=True)
@@ -858,6 +855,8 @@ class Activation(Model):
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     activation_expire_at: datetime = fields.DatetimeField(null=True)
     service_msg_id: int = fields.BigIntField(null=True)
+    provider: str = fields.CharField(max_length=16, default="smsactivate", index=True)
+
 
     @classmethod
     async def add_activation_sms_activate(
