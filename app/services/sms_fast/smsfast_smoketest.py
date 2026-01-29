@@ -10,8 +10,8 @@ from app.services.sms_fast.smsfast_receive import SmsFastReceive
 # Топ-страны и сервисы берем с сайта документации (как "популярные" примеры):
 # страны: https://smsfast.guru/doc/countries  (вверху часто US/UK/TR/PH/TH/KZ/DE/ZA/HK/CO)
 # сервисы: https://smsfast.guru/doc/services (tg/wa/vk/go и т.д.)
-TOP_COUNTRIES_FALLBACK: List[int] = [187, 16, 62, 4, 52, 2, 43, 31, 14, 33]
-TOP_SERVICES_FALLBACK: List[str] = ["tg", "wa", "go", "vk", "fb"]
+TOP_COUNTRIES_FALLBACK: List[int] = [62]
+TOP_SERVICES_FALLBACK: List[str] = ["am"]
 
 
 @dataclass(frozen=True)

@@ -763,6 +763,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                 service_code=smsfast_service_code
             ).values("country", "price", "count")
 
+            # print(f'price_rows {price_rows}')
+
             price_by_country_id: dict[int, dict] = {}
             for pr in price_rows:
                 try:
@@ -881,6 +883,8 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             sorted_countries_with_prices = await sort_countries_tg(
                 sorted_countries_with_prices, list_for_sorting_countries_for_telegram
             )
+
+        # print(f'sorted_countries_with_prices {sorted_countries_with_prices}')
 
         # Передаем данные в диалог выбора страны
         await manager.start(
