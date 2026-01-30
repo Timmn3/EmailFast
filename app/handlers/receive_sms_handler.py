@@ -371,18 +371,18 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                         delta = now - created_at
                         if delta < timedelta(minutes=2):
                             seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
-                            answer_text = f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек."
+                            await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.")
                     else:
                         # если почему-то нет created_at — не даём отменять “сразу”
-                        answer_text = "Нельзя отменить в первые 2 минуты."
+                        await call.answer("Нельзя отменить в первые 2 минуты.")
 
                     if answer_text is None:
                         # 📩 Если SMS уже пришло — отмену/возврат не даём
                         if (activation.sms_text or "").strip():
                             activation.status = models.StatusResponse.STATUS_CANCEL
                             await activation.save(using_db=conn, update_fields=["status"])
-                            await bot.send_message(chat_id=user_id, text=SERVICE_CANCEL)
-                            
+                            answer_text = SERVICE_CANCEL
+
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
@@ -411,7 +411,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
 
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
-        await call.answer(text=answer_text or "Отмена больше не доступна")
+        # await call.answer(text=answer_text or "Отмена больше не доступна")
+        await bot.send_message(chat_id=user_id, text=answer_text or "Отмена больше не доступна")
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
