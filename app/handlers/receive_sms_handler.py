@@ -474,7 +474,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в cancel_service: {e}")
         try:
-            await call.answer(text="❌ Ошибка при отмене. Попробуйте позже.", show_alert=True)
+            activation.status = models.StatusResponse.STATUS_CANCEL
+            await activation.save(using_db=conn, update_fields=["status"])
+            await bot.send_message(chat_id=user_id, text="Отмена больше не доступна")
         except Exception:
             pass
 
