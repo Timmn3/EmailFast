@@ -372,9 +372,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                         if delta < timedelta(minutes=2):
                             seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
                             await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.")
-                    else:
-                        # если почему-то нет created_at — не даём отменять “сразу”
-                        await call.answer("Нельзя отменить в первые 2 минуты.")
+                            return
+
 
                     if answer_text is None:
                         # 📩 Если SMS уже пришло — отмену/возврат не даём
