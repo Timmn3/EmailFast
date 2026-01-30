@@ -152,6 +152,6 @@ SMSFAST_SERVICE_MAP = {
     "google":   "go",
     "tiktok":   "tt",
     "amazon":   "am",
-    "claude":   "cl",
+    "claude":   "acz",
     "ot":       "ot",   # "Любой другой"
 }
