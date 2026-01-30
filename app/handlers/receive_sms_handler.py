@@ -411,7 +411,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
 
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
-        # await call.answer(text=answer_text or "Отмена больше не доступна")
+        await call.answer()
         await bot.send_message(chat_id=user_id, text=answer_text or "Отмена больше не доступна")
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
