@@ -1,6 +1,8 @@
 from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
+
+from app.services.bot_texts import SERVICE_CANCEL
 from app.services.onlinesim.sms_client import OnlineSMS
 from aiogram.exceptions import TelegramBadRequest
 from app.db import models
@@ -377,16 +379,12 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                     if answer_text is None:
                         # 📩 Если SMS уже пришло — отмену/возврат не даём
                         if (activation.sms_text or "").strip():
-                            answer_text = "SMS было получено. Отменяем номер"
-                            activation.status = models.StatusResponse.STATUS_CANCEL
-                            await activation.save(using_db=conn, update_fields=["status"])
+                            answer_text = SERVICE_CANCEL
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
                         else:
                             # ✅ Делаем отмену + возврат атомарно под локом
-                            activation.status = models.StatusResponse.STATUS_CANCEL
-                            await activation.save(using_db=conn, update_fields=["status"])
 
                             refund_amount = float(activation.cost or 0.0)
                             user.balance = float(user.balance or 0.0) + refund_amount
@@ -408,6 +406,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                             provider_activation_id = int(getattr(activation, "activation_id", 0) or 0)
                             need_provider_cancel = bool(provider_activation_id)
 
+        activation.status = models.StatusResponse.STATUS_CANCEL
+        await activation.save(using_db=conn, update_fields=["status"])
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
         await call.answer(text=answer_text or "Отмена больше не доступна")
 
