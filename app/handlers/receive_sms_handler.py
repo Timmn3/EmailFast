@@ -1,3 +1,5 @@
+from operator import truediv
+
 from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
@@ -287,7 +289,7 @@ async def request_code(call: types.CallbackQuery, **kwargs):
 
     # ✅ СРАЗУ отпускаем Telegram-клиент (убираем "часики" и разблокируем кнопки)
     try:
-        await call.answer("⏳ Запросил новое SMS…")
+        await call.answer("⏳ Запросил новое SMS…", show_alert=True)
     except Exception:
         pass
 
@@ -372,7 +374,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                         delta = now - created_at
                         if delta < timedelta(minutes=2):
                             seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
-                            await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.")
+                            await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.", show_alert=True)
                             return
 
                     if answer_text is None:
