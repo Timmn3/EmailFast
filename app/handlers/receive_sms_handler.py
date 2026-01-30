@@ -394,8 +394,6 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                             new_balance = float(user.balance or 0.0)
                             need_clear_kb = True
-
-                            answer_text = bt.SERVICE_CANCEL_MONEY_RETURNED
                             need_send_msg = True
                             send_msg_text = bt.SERVICE_CANCEL_MONEY_RETURNED
 
