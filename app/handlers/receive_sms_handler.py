@@ -357,7 +357,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 activation = await models.Activation.select_for_update().using_db(conn).get_or_none(id=activation_pk)
                 if not activation:
                     logger.bind(user_id=user_id, action="cancel_service").log("USER_ACTION", "Активация не найдена")
-                    answer_text = "Номер автоматически отменится через 15 минут"
+                    await bot.send_message(chat_id=user_id, text="Номер автоматически отменится через 15 минут")
+                    return
                 else:
                     # ⏱️ Блокируем отмену в первые 2 минуты
                     now = timezone.now()
@@ -374,18 +375,21 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                             await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.")
                             return
 
-
                     if answer_text is None:
                         # 📩 Если SMS уже пришло — отмену/возврат не даём
                         if (activation.sms_text or "").strip():
+                            activation.status = models.StatusResponse.STATUS_CANCEL
+                            await activation.save(using_db=conn, update_fields=["status"])
                             answer_text = SERVICE_CANCEL
-
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
+                            activation.status = models.StatusResponse.STATUS_CANCEL
+                            await activation.save(using_db=conn, update_fields=["status"])
                         else:
                             # ✅ Делаем отмену + возврат атомарно под локом
-
+                            activation.status = models.StatusResponse.STATUS_CANCEL
+                            await activation.save(using_db=conn, update_fields=["status"])
                             refund_amount = float(activation.cost or 0.0)
                             user.balance = float(user.balance or 0.0) + refund_amount
                             await user.save(using_db=conn, update_fields=["balance"])
@@ -404,11 +408,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                             provider_activation_id = int(getattr(activation, "activation_id", 0) or 0)
                             need_provider_cancel = bool(provider_activation_id)
 
-        activation.status = models.StatusResponse.STATUS_CANCEL
-        await activation.save(using_db=conn, update_fields=["status"])
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
         await call.answer()
-        await bot.send_message(chat_id=user_id, text=answer_text or "Отмена больше не доступна")
+        await bot.send_message(chat_id=user_id, text=answer_text)
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
