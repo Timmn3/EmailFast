@@ -377,7 +377,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                     if answer_text is None:
                         # 📩 Если SMS уже пришло — отмену/возврат не даём
                         if (activation.sms_text or "").strip():
-                            answer_text = "SMS уже получено — отмена недоступна."
+                            answer_text = "SMS было получено. Отменяем номер"
+                            activation.status = models.StatusResponse.STATUS_CANCEL
+                            await activation.save(using_db=conn, update_fields=["status"])
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
