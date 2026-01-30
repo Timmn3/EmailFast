@@ -21,7 +21,7 @@ from app.dialogs.rent_sms.states import RentCountryMenu
 from app.services.bot_texts import country_flags, sort_countries, SERVICES_TRANSLATION, \
     REVERSE_SERVICES_TRANSLATION, NUMBER_REQUEST_SENT, PLEASE_WAIT_SECONDS, DOLLAR_ONLINESIM, DOLLAR_SMS_ACTIVATE, \
     SMS_ACTIVATE_SERVICE_CODES_AT_ONLINESIM, NOT_NUMBERS_ALERT, list_for_sorting_countries_for_telegram, \
-    EXCLUDED_COUNTRIES, INTEREST
+    EXCLUDED_COUNTRIES, INTEREST, COUNTRY_PRIORITY_LIST_BY_SERVICE
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.onlinesim.get_tariffs import fetch_tariffs
 from app.services.sms_receive import SmsReceive
@@ -903,9 +903,11 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             if str(item.get("country", "")).strip() not in excluded_countries
         ]
 
-        if service_code == 'telegram':
+        priority_list = COUNTRY_PRIORITY_LIST_BY_SERVICE.get(service_code)
+        if priority_list:
             sorted_countries_with_prices = await sort_countries_tg(
-                sorted_countries_with_prices, list_for_sorting_countries_for_telegram
+                sorted_countries_with_prices,
+                priority_list,
             )
 
         # print(f'sorted_countries_with_prices {sorted_countries_with_prices}')
