@@ -266,3 +266,29 @@ async def get_all_services(dialog_manager: DialogManager, **middleware_data):
         "services": services_list
     }
     return data
+
+
+async def get_show_smsfast_other_button(dialog_manager: "DialogManager", **middleware_data):
+    """
+    Возвращает флаг, нужно ли показывать кнопку "Любой другой" в ошибке поиска сервиса.
+
+    Показываем только когда реально можем обработать "ot" через SMSFast:
+    - либо SMSFast выбран как основной провайдер (sms_rental_service == "SMS_Fast")
+    - либо включён частичный режим SMSFast (smsfast_enabled == true/1/yes/on)
+
+    :return: dict вида {"show_smsfast_other": bool}
+    """
+    from app.db import models
+
+    try:
+        smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+
+        smsfast_enabled_val = await models.AdminSettings.get_setting_value("smsfast_enabled")
+        smsfast_enabled = str(smsfast_enabled_val or "").strip().lower() in (
+            "1", "true", "yes", "y", "on", "enable", "enabled"
+        )
+
+        return {"show_smsfast_other": bool(smsfast_active or smsfast_enabled)}
+    except Exception:
+        # Безопасный дефолт: не показываем кнопку
+        return {"show_smsfast_other": False}

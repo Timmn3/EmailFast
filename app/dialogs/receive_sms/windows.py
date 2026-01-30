@@ -9,10 +9,10 @@ from aiogram import F
 from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay, on_payment_method
 from app.dialogs.receive_sms import states
 from app.dialogs.receive_sms.getters import get_countries_service, get_services, get_need_balance, get_other_service, \
-    get_services_2
+    get_services_2, get_show_smsfast_other_button
 from app.dialogs.receive_sms.selected import on_select_country_new, on_select_service, on_search_country, \
     on_result_country, \
-    on_search_service, on_result_service, back_country
+    on_search_service, on_result_service, back_country, on_smsfast_other_service
 from app.services import bot_texts as bt
 from app.dialogs.personal_cabinet import keyboards
 from app.services.stars_pay import send_invoice_handler_stars
@@ -63,15 +63,26 @@ def enter_service_window():
 
 def enter_service_error_window():
     """
-    Создает окно ошибки ввода сервиса с кнопкой повторного ввода, кнопкой выбора другого сервиса и кнопкой назад.
-
-    :return: Объект Window от aiogram_dialog.
+    Создает окно ошибки ввода сервиса с возможностью:
+    - снова ввести сервис
+    - выбрать категорию "Любой другой" (только для SMSFast)
+    - вернуться назад
     """
     return Window(
         Const(bt.ENTER_SERVICE_ERROR),
         TextInput(id="service_name", on_success=on_result_service),
+
+        # ✅ "Любой другой" (SMSFast) — показываем только если SMSFast реально доступен
+        Button(
+            Const("Любой другой"),
+            id="smsfast_other_service",
+            on_click=on_smsfast_other_service,
+            when=F["show_smsfast_other"],
+        ),
+
         Back(Const(bt.BACK_BTN)),
-        state=states.ServiceMenu.enter_service_error
+        state=states.ServiceMenu.enter_service_error,
+        getter=get_show_smsfast_other_button,
     )
 
 

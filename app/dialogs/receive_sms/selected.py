@@ -961,3 +961,26 @@ def country_key(country_dict, priority_list):
 @logger.catch()
 async def sort_countries_tg(data, priority_list):
     return sorted(data, key=lambda x: country_key(x, priority_list))
+
+
+@logger.catch()
+async def on_smsfast_other_service(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    """
+    Обработчик кнопки "Любой другой" (только для SMSFast).
+
+    Переводим пользователя в выбор страны, используя service_code="ot".
+    Дальше логика уже существующая: send_country_info -> CountryMenu.select_country.
+    """
+    try:
+        user_id = c.from_user.id
+        logger.bind(user_id=user_id, action="on_smsfast_other_service").log(
+            "USER_ACTION",
+            "Пользователь выбрал 'Любой другой' (SMSFast, service_code=ot)"
+        )
+
+        # ВАЖНО: send_country_info уже умеет ветвиться на SMSFast по настройкам/флагам.
+        await send_country_info("ot", c, manager)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_smsfast_other_service: {e}")
+        await _safe_cb_answer(c, text="Ошибка. Попробуйте позже.", show_alert=True)
