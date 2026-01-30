@@ -381,7 +381,8 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                         if (activation.sms_text or "").strip():
                             activation.status = models.StatusResponse.STATUS_CANCEL
                             await activation.save(using_db=conn, update_fields=["status"])
-                            answer_text = SERVICE_CANCEL
+                            await bot.send_message(chat_id=user_id, text=SERVICE_CANCEL)
+                            
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
