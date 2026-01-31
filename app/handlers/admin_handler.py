@@ -1804,8 +1804,6 @@ async def sms_service_stat(message: types.Message) -> None:
     await message.answer(
         text=(
             f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(raw_service)}</code>\n"
-            f"🔎 <b>Резолв сервиса:</b>\n"
-            f"{_html.escape(' | '.join(resolved_lines))}\n\n"
             f"<pre>{_html.escape(table)}</pre>"
         ),
         parse_mode="HTML",
