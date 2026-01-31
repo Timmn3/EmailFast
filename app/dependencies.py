@@ -150,7 +150,7 @@ SMSFAST_SERVICE_MAP = {
     "telegram": "tg",
     "vkcom":    "vk",
     "google":   "go",
-    "tiktok":   "if",
+    "tiktok":   "lf",
     "amazon":   "am",
     "claude":   "acz",
     "ot":       "ot",   # "Любой другой"
