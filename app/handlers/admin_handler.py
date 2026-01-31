@@ -1650,6 +1650,96 @@ async def set_smsfast(message: types.Message):
     logger.bind(user_id=message.from_user.id, action="smsfast").log(
         "USER_ACTION", text)
 
+@router.message(Command("sms_service_stat"))
+async def sms_service_stat(message: types.Message) -> None:
+    """
+    Админ-команда: статистика по доставляемости SMS в разрезе провайдеров по конкретному сервису.
+
+    Использование:
+        /sms_service_stat tiktok
+
+    Где:
+        - "запрошено" = количество записей в activations по сервису и провайдеру
+        - "доставлено" = sms_text не NULL и не пустая строка
+        - "%" = доставлено / запрошено * 100
+    """
+    logger.bind(user_id=message.from_user.id, action="sms_service_stat").log(
+        "USER_ACTION", "Команда /sms_service_stat вызвана"
+    )
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip():
+        await message.answer(
+            "Использование: /sms_service_stat [service_code]\n"
+            "Пример: /sms_service_stat tiktok"
+        )
+        return
+
+    import html as _html
+
+    service_code = args[1].strip().lower()
+
+    providers = [
+        ("smsactivate", "SMSActivate"),
+        ("onlinesim", "OnlineSim"),
+        ("smsfast", "SMSFast"),
+    ]
+
+    rows: list[list[object]] = []
+    total_all = 0
+    delivered_all = 0
+
+    for provider, title in providers:
+        if provider == "onlinesim":
+            total = await models.Activation.filter(
+                provider=provider,
+                service_2__code=service_code,
+            ).count()
+
+            delivered = await models.Activation.filter(
+                provider=provider,
+                service_2__code=service_code,
+                sms_text__isnull=False,
+            ).exclude(sms_text="").count()
+        else:
+            total = await models.Activation.filter(
+                provider=provider,
+                service__code=service_code,
+            ).count()
+
+            delivered = await models.Activation.filter(
+                provider=provider,
+                service__code=service_code,
+                sms_text__isnull=False,
+            ).exclude(sms_text="").count()
+
+        pct = (delivered / total * 100.0) if total else 0.0
+
+        total_all += int(total)
+        delivered_all += int(delivered)
+
+        rows.append([title, int(total), int(delivered), f"{pct:.1f}%"])
+
+    pct_all = (delivered_all / total_all * 100.0) if total_all else 0.0
+    rows.append(["ИТОГО", int(total_all), int(delivered_all), f"{pct_all:.1f}%"])
+
+    table = tabulate(
+        rows,
+        headers=["Провайдер", "Запрошено", "Доставлено", "Доставляемость"],
+        tablefmt="github",
+    )
+
+    await message.answer(
+        text=(
+            f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(service_code)}</code>\n\n"
+            f"<pre>{_html.escape(table)}</pre>"
+        ),
+        parse_mode="HTML",
+    )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -1680,6 +1770,8 @@ async def help_admin(message: types.Message):
     /onlinesim - Установить Onlinesim
     /update_price_smsfast - Вручную обновить сервисы SMSFast
     /smsfast [on|off|status] - Включить/выключить SMSFast (без аргументов — просто переключение Включить/выключить)
+    /sms_service_stat [service_code] - Доставляемость SMS по сервису в разрезе провайдеров
+
     """
 
     await message.answer(f"<b>Доступные команды для админов:</b>\n{commands}", parse_mode="HTML")
