@@ -1770,7 +1770,7 @@ async def help_admin(message: types.Message):
     /onlinesim - Установить Onlinesim
     /update_price_smsfast - Вручную обновить сервисы SMSFast
     /smsfast [on|off|status] - Включить/выключить SMSFast (без аргументов — просто переключение Включить/выключить)
-    /sms_service_stat [service_code] - Доставляемость SMS по сервису в разрезе провайдеров
+    /sms_service_stat [service_code] - Доставляемость SMS по сервису
 
     """
 
