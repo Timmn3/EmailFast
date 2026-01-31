@@ -1653,15 +1653,19 @@ async def set_smsfast(message: types.Message):
 @router.message(Command("sms_service_stat"))
 async def sms_service_stat(message: types.Message) -> None:
     """
-    Админ-команда: статистика по доставляемости SMS в разрезе провайдеров по конкретному сервису.
+    Админ-команда: статистика доставляемости SMS по сервису в разрезе провайдеров.
 
     Использование:
         /sms_service_stat tiktok
+        /sms_service_stat TikTok
+        /sms_service_stat tk
+        /sms_service_stat тикток
 
-    Где:
-        - "запрошено" = количество записей в activations по сервису и провайдеру
-        - "доставлено" = sms_text не NULL и не пустая строка
-        - "%" = доставлено / запрошено * 100
+    Важно:
+    - Для smsactivate/smsfast сервис хранится в activations.service (FK на ServicesSmsActivate)
+    - Для onlinesim сервис хранится в activations.service_2 (FK на ServicesOnlinesim)
+    - Коды сервисов могут отличаться между провайдерами, поэтому резолвим сервис
+      по code / name / search_names в соответствующей таблице сервисов.
     """
     logger.bind(user_id=message.from_user.id, action="sms_service_stat").log(
         "USER_ACTION", "Команда /sms_service_stat вызвана"
@@ -1673,14 +1677,16 @@ async def sms_service_stat(message: types.Message) -> None:
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2 or not args[1].strip():
         await message.answer(
-            "Использование: /sms_service_stat [service_code]\n"
-            "Пример: /sms_service_stat tiktok"
+            "Использование: /sms_service_stat [service]\n"
+            "Примеры: /sms_service_stat tiktok | /sms_service_stat tk | /sms_service_stat тикток"
         )
         return
 
     import html as _html
+    from tortoise.expressions import Q
 
-    service_code = args[1].strip().lower()
+    raw_service = args[1].strip()
+    service_key = raw_service.lower()
 
     providers = [
         ("smsactivate", "SMSActivate"),
@@ -1688,33 +1694,96 @@ async def sms_service_stat(message: types.Message) -> None:
         ("smsfast", "SMSFast"),
     ]
 
+    async def _resolve_smsactivate_service_ids() -> tuple[list[int], list[str]]:
+        """
+        Ищем сервис в ServicesSmsActivate по:
+        - code (точно, без регистра)
+        - name (точно, без регистра)
+        - search_names (подстрока, без регистра)
+        """
+        qs = models.ServicesSmsActivate.filter(
+            Q(code__iexact=service_key)
+            | Q(name__iexact=raw_service)
+            | Q(search_names__icontains=service_key)
+        )
+        ids = list(await qs.values_list("id", flat=True))
+        codes = list(await qs.values_list("code", flat=True))
+        return ids, codes
+
+    async def _resolve_onlinesim_service_ids() -> tuple[list[int], list[str]]:
+        """
+        Ищем сервис в ServicesOnlinesim по:
+        - code (точно, без регистра)
+        - name (точно, без регистра)
+        - search_names (подстрока, без регистра)
+        """
+        qs = models.ServicesOnlinesim.filter(
+            Q(code__iexact=service_key)
+            | Q(name__iexact=raw_service)
+            | Q(search_names__icontains=service_key)
+        )
+        ids = list(await qs.values_list("id", flat=True))
+        codes = list(await qs.values_list("code", flat=True))
+        return ids, codes
+
+    # Резолвим заранее (дешевле, чем по кругу)
+    smsactivate_ids, smsactivate_codes = await _resolve_smsactivate_service_ids()
+    onlinesim_ids, onlinesim_codes = await _resolve_onlinesim_service_ids()
+
     rows: list[list[object]] = []
     total_all = 0
     delivered_all = 0
 
+    # Для наглядности покажем, что именно сматчилось в справочниках
+    resolved_lines: list[str] = []
+    resolved_lines.append(
+        f"SMSActivate/SMSFast: {', '.join(smsactivate_codes) if smsactivate_codes else 'не найдено'}"
+    )
+    resolved_lines.append(
+        f"OnlineSim: {', '.join(onlinesim_codes) if onlinesim_codes else 'не найдено'}"
+    )
+
     for provider, title in providers:
         if provider == "onlinesim":
-            total = await models.Activation.filter(
-                provider=provider,
-                service_2__code=service_code,
-            ).count()
+            ids = onlinesim_ids
+            if not ids:
+                total = 0
+                delivered = 0
+            else:
+                total = await models.Activation.filter(
+                    provider=provider,
+                    service_2_id__in=ids,
+                ).count()
 
-            delivered = await models.Activation.filter(
-                provider=provider,
-                service_2__code=service_code,
-                sms_text__isnull=False,
-            ).exclude(sms_text="").count()
+                delivered = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_2_id__in=ids,
+                        sms_text__isnull=False,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
         else:
-            total = await models.Activation.filter(
-                provider=provider,
-                service__code=service_code,
-            ).count()
+            ids = smsactivate_ids
+            if not ids:
+                total = 0
+                delivered = 0
+            else:
+                total = await models.Activation.filter(
+                    provider=provider,
+                    service_id__in=ids,
+                ).count()
 
-            delivered = await models.Activation.filter(
-                provider=provider,
-                service__code=service_code,
-                sms_text__isnull=False,
-            ).exclude(sms_text="").count()
+                delivered = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_id__in=ids,
+                        sms_text__isnull=False,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
 
         pct = (delivered / total * 100.0) if total else 0.0
 
@@ -1734,7 +1803,9 @@ async def sms_service_stat(message: types.Message) -> None:
 
     await message.answer(
         text=(
-            f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(service_code)}</code>\n\n"
+            f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(raw_service)}</code>\n"
+            f"🔎 <b>Резолв сервиса:</b>\n"
+            f"{_html.escape(' | '.join(resolved_lines))}\n\n"
             f"<pre>{_html.escape(table)}</pre>"
         ),
         parse_mode="HTML",
