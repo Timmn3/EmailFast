@@ -346,10 +346,13 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         refund_amount: float = 0.0
         new_balance: float | None = None
 
-        # Данные для отмены у провайдера (после коммита)
+        # Данные для действия у провайдера (после коммита)
         provider_to_cancel: str | None = None
         provider_activation_id: int | None = None
         need_provider_cancel: bool = False
+
+        # Что делаем у провайдера: "cancel" или "finish"
+        provider_action: str | None = None
 
         async with in_transaction() as conn:
             user = await models.User.select_for_update().using_db(conn).get_or_none(telegram_id=user_id)
@@ -362,7 +365,11 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                     await bot.send_message(chat_id=user_id, text="Номер автоматически отменится через 15 минут")
                     return
                 else:
-                    # ⏱️ Блокируем отмену в первые 2 минуты
+                    # 📩 Если SMS уже пришло — разрешаем "отменить" даже в первые 2 минуты,
+                    # но возврат денег не делаем. Для SMSFast корректнее завершить активацию (status=6).
+                    sms_already_received = bool((activation.sms_text or "").strip())
+
+                    # ⏱️ Блокируем отмену в первые 2 минуты ТОЛЬКО если SMS ещё НЕ пришло
                     now = timezone.now()
                     created_at = activation.created_at
 
@@ -370,28 +377,45 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                     if created_at and created_at.tzinfo is None and now.tzinfo is not None:
                         now = now.replace(tzinfo=None)
 
-                    if created_at:
+                    if created_at and (not sms_already_received):
                         delta = now - created_at
                         if delta < timedelta(minutes=2):
                             seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
-                            await call.answer(f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.", show_alert=True)
+                            await call.answer(
+                                f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.",
+                                show_alert=True
+                            )
                             return
 
                     if answer_text is None:
-                        # 📩 Если SMS уже пришло — отмену/возврат не даём
-                        if (activation.sms_text or "").strip():
+                        if sms_already_received:
+                            # SMS уже пришло — просто закрываем локально (без возврата)
                             activation.status = models.StatusResponse.STATUS_CANCEL
                             await activation.save(using_db=conn, update_fields=["status"])
                             answer_text = SERVICE_CANCEL
+
+                            # UX: убираем клавиатуру, чтобы не жали дальше
+                            need_clear_kb = True
+
+                            # Для SMSFast: вместо cancel -> finish (status=6), чтобы корректно завершить активацию
+                            provider_to_cancel = (getattr(activation, "provider", "") or "").strip().lower()
+                            if provider_to_cancel == "smsfast":
+                                provider_activation_id = int(getattr(activation, "activation_id", 0) or 0)
+                                if provider_activation_id:
+                                    need_provider_cancel = True
+                                    provider_action = "finish"
+
                         # ♻️ Идемпотентность: если уже CANCEL — повторно не возвращаем
                         elif activation.status == models.StatusResponse.STATUS_CANCEL:
                             answer_text = "Отмена больше не доступна"
                             activation.status = models.StatusResponse.STATUS_CANCEL
                             await activation.save(using_db=conn, update_fields=["status"])
+
                         else:
                             # ✅ Делаем отмену + возврат атомарно под локом
                             activation.status = models.StatusResponse.STATUS_CANCEL
                             await activation.save(using_db=conn, update_fields=["status"])
+
                             refund_amount = float(activation.cost or 0.0)
                             user.balance = float(user.balance or 0.0) + refund_amount
                             await user.save(using_db=conn, update_fields=["balance"])
@@ -409,6 +433,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                             provider_activation_id = int(getattr(activation, "activation_id", 0) or 0)
                             need_provider_cancel = bool(provider_activation_id)
+                            provider_action = "cancel"
 
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
         await call.answer()
@@ -437,7 +462,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 f"Возврат выполнен: activation_pk={activation_pk}, refund={refund_amount}, new_balance={new_balance} ₽"
             )
 
-        # 🔌 Отмена у провайдера (простая) + лог ответа
+        # 🔌 Действие у провайдера (простое) + лог ответа
         if need_provider_cancel and provider_to_cancel and provider_activation_id:
             try:
                 provider_resp = None
@@ -453,7 +478,12 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 elif provider_to_cancel == "smsfast":
                     from app.services.sms_fast.smsfast_client import get_smsfast_client
                     smsfast = get_smsfast_client()
-                    provider_resp = await smsfast.cancel_activation(activation_id=provider_activation_id)
+
+                    # Если SMS уже пришло — корректнее завершить (status=6), иначе — отменить (status=8)
+                    if provider_action == "finish":
+                        provider_resp = await smsfast.finish_activation(activation_id=provider_activation_id)
+                    else:
+                        provider_resp = await smsfast.cancel_activation(activation_id=provider_activation_id)
 
                 elif provider_to_cancel == "onlinesim":
                     from app.services.onlinesim.sms_client import OnlineSMS
@@ -466,12 +496,13 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
                 logger.bind(user_id=user_id, action="cancel_service").log(
                     "USER_ACTION",
-                    f"Provider cancel: provider={provider_to_cancel}, provider_activation_id={provider_activation_id}, response={provider_resp}"
+                    f"Provider action: action={provider_action}, provider={provider_to_cancel}, "
+                    f"provider_activation_id={provider_activation_id}, response={provider_resp}"
                 )
 
             except Exception as e:
                 logger.opt(exception=e).error(
-                    f"Ошибка при отмене у провайдера: provider={provider_to_cancel}, provider_activation_id={provider_activation_id}"
+                    f"Ошибка при действии у провайдера: provider={provider_to_cancel}, provider_activation_id={provider_activation_id}"
                 )
 
     except TelegramBadRequest as e:
