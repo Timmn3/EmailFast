@@ -251,23 +251,31 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
 
     # формируем ссылку на оплату api_yoomoney
     # yoomoney_url = await create_yoomoney_url(price, payment_yoomoney.id)
-
+    # --- StreamPay (bank card) ---
+    streampay_url = ''
     if price >= 300:
-        payment_streampay = await models.Payment.create_payment(
-            user=user,
-            method=models.PaymentMethod.STREAMPAY,
-            amount=price,
-            continue_data=continue_data
-        )
+        try:
+            payment_streampay = await models.Payment.create_payment(
+                user=user,
+                method=models.PaymentMethod.STREAMPAY,
+                amount=price,
+                continue_data=continue_data
+            )
 
-        # формируем ссылку на оплату
-        # ✅ external_id должен быть уникальным для каждого платежа
-        external_id = f"sms_email_{payment_streampay.id}"
-        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
-        await payment_streampay.save()
-    else:
-        streampay_url = ''
+            # ✅ external_id должен быть уникальным для каждого платежа
+            external_id = f"sms_email_{payment_streampay.id}"
 
+            payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
+            await payment_streampay.save()
+
+        except Exception as e:
+            # ✅ НЕ РОНЯЕМ UX: просто выключаем этот метод оплаты и пишем предупреждение
+            logger.opt(exception=e).warning(
+                f"StreamPay недоступен (создание инвойса). price={price}"
+            )
+            streampay_url = ''
+
+    # --- CKassa ---
     if price >= 50:
         payment_ckassa = await models.Payment.create_payment(
             user=user,
@@ -275,8 +283,6 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
             amount=price,
             continue_data=continue_data
         )
-
-        # формируем ссылку на оплату ckassa_url
         payment_ckassa.invoice_id, ckassa_url = await create_invoice_ckassa(price, str(payment_ckassa.user.telegram_id))
         await payment_ckassa.save()
     else:
@@ -320,6 +326,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
             await manager.start(PersonalMenu.payment_method, mode=StartMode.NORMAL, data={})
         else:
             await manager.start(PersonalMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
+
     # Получаем текущий контекст и обновляем dialog_data
     ctx = manager.current_context()
     ctx.dialog_data.update({
@@ -332,15 +339,13 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'other_url': other_url,
         'price': price,
         'country_id': country_id,
-        'rent_country_code': rent_country_code,
         'service_code': service_code,
+        'service_price': service_price,
+        'rent_country_code': rent_country_code,
         'selected_country': selected_country,
         'day_index': day_index,
         'retail_price': retail_price,
-        'service_price': service_price
     })
-
-    # await create_payment_keyboard(m, price, lava_url, sbp_url, other_url)
 
 
 async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: DialogManager):
