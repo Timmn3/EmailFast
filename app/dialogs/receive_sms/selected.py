@@ -87,10 +87,12 @@ async def on_search_service(c: types.CallbackQuery, widget: Button, manager: Dia
 async def on_result_service(m: types.Message, widget: TextInput, manager: DialogManager, service_name: str):
     """
     Обрабатывает результат поиска сервиса по введенному названию.
-    :param m: Объект Message от aiogram.
-    :param widget: Виджет TextInput от aiogram_dialog.
-    :param manager: Менеджер диалогов от aiogram_dialog.
-    :param service_name: Название сервиса, введенное пользователем.
+
+    Логика:
+    - Если глобально выбран SMSFast (sms_rental_service == "SMS_Fast") → ищем только в ServicesSmsFast.
+    - Иначе, если включён флаг smsfast_enabled → ищем в ServicesSmsFast + в основном провайдере (SMSActivate/OnlineSim),
+      затем объединяем результаты.
+    - Иначе — старое поведение (SMSActivate / OnlineSim).
     """
     try:
         user_id = m.from_user.id
@@ -99,14 +101,53 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
             f"Поиск сервиса: {service_name}"
         )
 
-        if await service_is_smsactivate():
-            services = await models.ServicesSmsActivate.search_service(service_name.lower())
+        query = (service_name or "").strip().lower()
+        if not query:
+            await manager.switch_to(ServiceMenu.enter_service_error)
+            return
+
+        smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
+
+        smsfast_enabled_val = await models.AdminSettings.get_setting_value("smsfast_enabled")
+        smsfast_enabled = str(smsfast_enabled_val or "").strip().lower() in (
+            "1", "true", "yes", "y", "on", "enable", "enabled"
+        )
+
+        services: list = []
+
+        if smsfast_active:
+            # ✅ Глобально выбран SMSFast — ищем только в справочнике SMSFast
+            services = await models.ServicesSmsFast.search_service(query)
         else:
-            services = await models.ServicesOnlinesim.search_service(service_name.lower())
+            # Старый провайдер (SMSActivate / OnlineSim)
+            if await service_is_smsactivate():
+                base_services = await models.ServicesSmsActivate.search_service(query)
+            else:
+                base_services = await models.ServicesOnlinesim.search_service(query)
+
+            if smsfast_enabled:
+                # ✅ Частичный режим SMSFast — добавляем результаты из справочника SMSFast
+                smsfast_services = await models.ServicesSmsFast.search_service(query)
+
+                # Объединяем без дублей (по code + name)
+                seen = set()
+                merged = []
+                for s in (smsfast_services or []) + (base_services or []):
+                    code = (getattr(s, "code", None) or getattr(s, "service_code", None) or "").strip()
+                    name = (getattr(s, "name", None) or "").strip()
+                    key = (code.lower(), name.lower())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(s)
+
+                services = merged
+            else:
+                services = base_services
 
         # Убираем из поиска псевдо-сервис "Любой другой"
         services = [
-            s for s in services
+            s for s in (services or [])
             if (getattr(s, "name", None) or "").strip() != "Любой другой"
         ]
 
@@ -127,6 +168,7 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
             f"Найдено сервисов: {len(services)}"
         )
         await manager.switch_to(ServiceMenu.select_service)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_result_service: {e}")
 

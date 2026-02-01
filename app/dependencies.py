@@ -147,11 +147,8 @@ dp = Dispatcher(storage=storage)
 
 # Сопоставление сервисов для SMSFast: название сервиса -> код для SMSFast
 SMSFAST_SERVICE_MAP = {
-    "telegram": "tg",
-    "vkcom":    "vk",
-    "google":   "go",
+    "paypal":   "ts",
     "tiktok":   "lf",
     "amazon":   "am",
-    "claude":   "acz",
     "ot":       "ot",   # "Любой другой"
 }

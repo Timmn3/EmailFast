@@ -6,7 +6,7 @@ from tortoise.models import Model
 from tortoise import fields, timezone
 from loguru import logger
 from typing import Optional
-
+from tortoise.expressions import Q
 
 class StatusResponse(IntEnum):
     STATUS_WAIT_CODE = 1
@@ -1898,3 +1898,42 @@ async def map_smsfast_country_to_smsactivate(smsfast_country_id: int):
             return country
 
     return None
+
+
+class ServicesSmsFast(Model):
+    """
+    Справочник сервисов SMSFast (таблица services_smsfast).
+
+    Важно:
+    - В БД PK = service_code (text).
+    - Для совместимости с текущим кодом диалогов используем поле `code`,
+      которое маппится на колонку service_code.
+    """
+
+    class Meta:
+        table = "services_smsfast"
+        table_description = "Services for SMSFast"
+        ordering = ["service_code"]
+
+    # В БД колонка называется service_code
+    code: str = fields.CharField(pk=True, max_length=64, source_field="service_code")
+    name: str = fields.TextField(null=True)
+    is_enabled: bool = fields.BooleanField(null=False, default=True)
+    created_at: datetime = fields.DatetimeField(null=True)
+
+    @classmethod
+    async def search_service(cls, query: str):
+        """
+        Поиск сервиса по коду или названию (без регистра).
+
+        Пример:
+        - paypal -> найдёт name='PayPal'
+        - ts     -> найдёт code='ts'
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        return await cls.filter(
+            Q(code__iexact=q) | Q(name__icontains=q)
+        ).order_by("name")
