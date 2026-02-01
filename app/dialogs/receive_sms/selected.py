@@ -87,12 +87,10 @@ async def on_search_service(c: types.CallbackQuery, widget: Button, manager: Dia
 async def on_result_service(m: types.Message, widget: TextInput, manager: DialogManager, service_name: str):
     """
     Обрабатывает результат поиска сервиса по введенному названию.
-
-    Логика:
-    - Если глобально выбран SMSFast (sms_rental_service == "SMS_Fast") → ищем только в ServicesSmsFast.
-    - Иначе, если включён флаг smsfast_enabled → ищем в ServicesSmsFast + в основном провайдере (SMSActivate/OnlineSim),
-      затем объединяем результаты.
-    - Иначе — старое поведение (SMSActivate / OnlineSim).
+    :param m: Объект Message от aiogram.
+    :param widget: Виджет TextInput от aiogram_dialog.
+    :param manager: Менеджер диалогов от aiogram_dialog.
+    :param service_name: Название сервиса, введенное пользователем.
     """
     try:
         user_id = m.from_user.id
@@ -101,53 +99,14 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
             f"Поиск сервиса: {service_name}"
         )
 
-        query = (service_name or "").strip().lower()
-        if not query:
-            await manager.switch_to(ServiceMenu.enter_service_error)
-            return
-
-        smsfast_active = (await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Fast")
-
-        smsfast_enabled_val = await models.AdminSettings.get_setting_value("smsfast_enabled")
-        smsfast_enabled = str(smsfast_enabled_val or "").strip().lower() in (
-            "1", "true", "yes", "y", "on", "enable", "enabled"
-        )
-
-        services: list = []
-
-        if smsfast_active:
-            # ✅ Глобально выбран SMSFast — ищем только в справочнике SMSFast
-            services = await models.ServicesSmsFast.search_service(query)
+        if await service_is_smsactivate():
+            services = await models.ServicesSmsActivate.search_service(service_name.lower())
         else:
-            # Старый провайдер (SMSActivate / OnlineSim)
-            if await service_is_smsactivate():
-                base_services = await models.ServicesSmsActivate.search_service(query)
-            else:
-                base_services = await models.ServicesOnlinesim.search_service(query)
-
-            if smsfast_enabled:
-                # ✅ Частичный режим SMSFast — добавляем результаты из справочника SMSFast
-                smsfast_services = await models.ServicesSmsFast.search_service(query)
-
-                # Объединяем без дублей (по code + name)
-                seen = set()
-                merged = []
-                for s in (smsfast_services or []) + (base_services or []):
-                    code = (getattr(s, "code", None) or getattr(s, "service_code", None) or "").strip()
-                    name = (getattr(s, "name", None) or "").strip()
-                    key = (code.lower(), name.lower())
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    merged.append(s)
-
-                services = merged
-            else:
-                services = base_services
+            services = await models.ServicesOnlinesim.search_service(service_name.lower())
 
         # Убираем из поиска псевдо-сервис "Любой другой"
         services = [
-            s for s in (services or [])
+            s for s in services
             if (getattr(s, "name", None) or "").strip() != "Любой другой"
         ]
 
@@ -168,7 +127,6 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
             f"Найдено сервисов: {len(services)}"
         )
         await manager.switch_to(ServiceMenu.select_service)
-
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_result_service: {e}")
 
@@ -771,7 +729,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             f"Запрос информации о сервисе: {service_code}, провайдер: {provider}"
         )
 
-        if smsactivate_active:
+        if provider == "SMSActivate":
             # Ветка работы через SMSActivate (без изменений)
             if service_code in SERVICES_TRANSLATION:
                 code_onlinesim = SERVICES_TRANSLATION[service_code]
@@ -807,7 +765,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
                         item["country"] = country_name_mapping.get(int(raw_id), "Unknown Country")
                 sorted_countries_with_prices = sort_countries_by_dict(countries_with_prices)
 
-        elif smsfast_active or (smsfast_enabled and (service_code in SMSFAST_SERVICE_MAP)):
+        elif provider == "SMSFast":
             # Ветка работы через SMSFast (полностью или частично)
             smsfast_service_code = service_code
             if service_code in SMSFAST_SERVICE_MAP:
@@ -945,6 +903,7 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
             if str(item.get("country", "")).strip() not in excluded_countries
         ]
 
+        print(service_code)
         priority_list = COUNTRY_PRIORITY_LIST_BY_SERVICE.get(service_code)
         if priority_list:
             sorted_countries_with_prices = await sort_countries_tg(

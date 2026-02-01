@@ -130,7 +130,7 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
         else:
             services_db = await models.PriceOnlinesim.get_all_services()
             services_db["services"].extend([
-                {"code": "ts", "name": "PayPal"},
+                # {"code": "ts", "name": "PayPal"},
                 {"code": "ot", "name": "Любой другой"}
             ])
 
