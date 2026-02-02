@@ -264,6 +264,9 @@ signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
 from aiogram.types import ErrorEvent
 
 
+from aiogram.types import ErrorEvent
+
+
 async def error_handler(
     event: ErrorEvent,
     exception: Exception | None = None,
@@ -271,9 +274,12 @@ async def error_handler(
 ) -> None:
     """
     Глобальный обработчик ошибок.
+
     В разных версиях aiogram ошибка может приходить:
     - как ErrorEvent (event.exception)
     - или как второй аргумент exception/error
+
+    Важно: в проде НЕ пробрасываем исключение дальше, чтобы не “ронять” поллинг.
     """
     exc = getattr(event, "exception", None) or error or exception
 
@@ -282,7 +288,8 @@ async def error_handler(
         return  # пропускаем без ошибок
 
     if exc:
-        raise exc
+        logger.opt(exception=exc).error("Необработанное исключение при обработке апдейта")
+        return
 
 
 
