@@ -660,32 +660,24 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        # обработка ошибок остаётся без изменений
-        user_tg = None
-        user_pk = None
-        phone = None
-        act_id = None
-        status_name = None
-        svc_name = None
 
-        if 'activation' in locals():
-            user_tg = getattr(getattr(activation, "user", None), "telegram_id", None)
-            user_pk = getattr(activation, "user_id", None)
-            phone = getattr(activation, "phone_number", None)
-            act_id = getattr(activation, "activation_id", None)
-            status_obj = getattr(activation, "status", None)
-            status_name = getattr(status_obj, "name", None)
-        if 'name' in locals():
-            svc_name = name
-
-        user_label = user_tg or (f"Неизвестно (user_id={user_pk})" if user_pk else "Неизвестно")
+        phone = getattr(activation, "phone_number", None)
+        act_id = getattr(activation, "activation_id", None)
+        status_obj = getattr(activation, "status", None)
+        status_name = getattr(status_obj, "name", None)
+        provider = getattr(activation, "provider", None)
+        if provider == "onlinesim":
+            svc_name = activation.service_2.name
+        else:
+            svc_name = activation.service.name
 
         error_info = f"""
         ❌ Ошибка в check_sms
         ───────────────────
-        🔹 Пользователь: {user_label}
+        🔹 Пользователь: {activation.user.telegram_id}
         🔹 Номер: {phone or 'Неизвестно'}
         🔹 Сервис: {svc_name or 'Неизвестно'}
+        🔹 Провайдер: {provider or 'Неизвестно'}
         🔹 ID активации: {act_id or 'Неизвестно'}
         🔹 Статус: {status_name or 'Неизвестно'}
 
