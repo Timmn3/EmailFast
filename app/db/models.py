@@ -7,7 +7,6 @@ from tortoise import fields, timezone
 from loguru import logger
 from typing import Optional
 from tortoise.expressions import Q
-from tortoise.exceptions import IntegrityError
 
 class StatusResponse(IntEnum):
     STATUS_WAIT_CODE = 1
@@ -88,67 +87,30 @@ class User(Model):
 
     @classmethod
     async def add_user(
-            cls,
-            user: types.User,
-            refer: "User | None" = None,
-            referral_link_code: str | None = None
-    ) -> "User":
+        cls,
+        user: types.User,
+        refer: Optional["User"] = None,
+        referral_link_code: Optional[str] = None
+    ):
         """
-        Создаёт пользователя, если его ещё нет.
+        Добавляет нового пользователя в базу данных.
 
-        Важно: метод безопасен при гонках (двойной /start, параллельные апдейты,
-        вызов из middleware и handler одновременно) — не падает на unique telegram_id.
+        :param user: Объект пользователя из aiogram.
+        :param refer: Пользователь-реферер, пригласивший нового (опционально).
+        :param referral_link_code: Код персональной реферальной ссылки, если пришёл по ней.
+        :return: Созданный объект пользователя.
         """
-        current_time = datetime.now()
-
-        mention = f"@{user.username}" if user.username else (user.full_name or "")
-
-        defaults = {
-            "telegram_id": user.id,
-            "full_name": user.full_name,
-            "username": user.username,
-            "mention": mention,
-            "refer_id": refer.id if refer else None,
-            "referral_link_code": referral_link_code,
-            "last_request_time": current_time,
-        }
-
-        try:
-            obj, created = await cls.get_or_create(telegram_id=user.id, defaults=defaults)
-        except IntegrityError:
-            # Кто-то создал запись параллельно (гонка) — просто достаём существующую.
-            obj = await cls.get(telegram_id=user.id)
-            created = False
-
-        if not created:
-            # Аккуратно обновим базовые поля (без перетирания рефералки, если уже есть).
-            updates: dict[str, object] = {}
-
-            if obj.full_name != user.full_name:
-                updates["full_name"] = user.full_name
-
-            if obj.username != user.username:
-                updates["username"] = user.username
-
-            new_mention = f"@{user.username}" if user.username else (user.full_name or "")
-            if obj.mention != new_mention:
-                updates["mention"] = new_mention
-
-            # Обновляем “последнюю активность”
-            updates["last_request_time"] = current_time
-
-            # Рефералку/код — только если пусто, чтобы не ломать уже привязанное
-            if refer and not obj.refer_id:
-                updates["refer_id"] = refer.id
-
-            if referral_link_code and not obj.referral_link_code:
-                updates["referral_link_code"] = referral_link_code
-
-            if updates:
-                await cls.filter(id=obj.id).update(**updates)
-                obj = await cls.get(id=obj.id)
-
-        return obj
+        current_time = datetime.now()                      # Текущее время
+        new_user = await cls.create(
+            telegram_id=user.id,
+            full_name=user.full_name,
+            username=user.username,
+            mention=f'@{user.username}' if user.username else user.full_name,
+            refer_id=refer.id if refer else None,
+            referral_link_code=referral_link_code,         # ✨ сохраняем код
+            last_request_time=current_time
+        )
+        return new_user
 
     @classmethod
     async def get_user(cls, telegram_id: int):
