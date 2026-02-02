@@ -21,7 +21,7 @@ from app.services.periodic_tasks import (
     check_payment_freekassa, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
-    refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy
+    refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
@@ -199,6 +199,8 @@ def set_scheduled_jobs(scheduler):
         scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
 
         if ON_SCHEDULE:
+            # ✅ Авто-исправление расхождений баланса (как /users_with_discrepancy)
+            scheduler.add_job(auto_fix_users_balance_discrepancy, "interval", minutes=2, max_instances=1, coalesce=True, misfire_grace_time=30)
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
             # Проверка Email

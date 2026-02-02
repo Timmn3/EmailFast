@@ -1676,3 +1676,204 @@ async def check_fraud_balance_discrepancy() -> None:
     except Exception as e:
         logger.opt(exception=e).error("Ошибка в check_fraud_balance_discrepancy")
 
+async def auto_fix_users_balance_discrepancy() -> None:
+    """
+    Авто-исправление расхождения по аналогии с /users_with_discrepancy:
+    если (расходы + баланс) > пополнений (diff > 0) — уменьшаем баланс до корректного.
+
+    Корректный баланс: max(0, total_paid - total_spent)
+
+    Важно:
+    - учитываем только "доставленные" расходы (sms_text not null/empty) как в /users_with_discrepancy
+    - используем grace window, чтобы не трогать совсем свежие операции (по умолчанию 10 минут)
+    - уведомляем CODER по каждому исправлению
+    """
+    from datetime import timedelta
+    from tortoise import timezone
+    from tortoise.functions import Sum
+    from tortoise.transactions import in_transaction
+
+    GRACE_MINUTES = 5  # окно безопасности от "свежих" операций
+    EPS = 0.01          # чтобы не дёргать копейки из-за float
+    MAX_FIX_PER_RUN = 50  # защита от спама, если внезапно много пользователей
+
+    try:
+
+        cutoff_dt = timezone.now() - timedelta(minutes=GRACE_MINUTES)
+
+        # --- агрегируем пополнения (только успешные и до cutoff) ---
+        payments = await models.Payment.filter(
+            is_success=True,
+            created_at__lte=cutoff_dt,
+        ).group_by("user_id").annotate(
+            total_paid=Sum("amount")
+        ).values("user_id", "total_paid")
+
+        # --- агрегируем расходы (как в /users_with_discrepancy), тоже до cutoff ---
+        rents = await models.Rent.filter(
+            sms_text__isnull=False,
+            created_at__lte=cutoff_dt,
+        ).exclude(
+            sms_text=""
+        ).group_by("user_id").annotate(
+            total_rent_cost=Sum("cost")
+        ).values("user_id", "total_rent_cost")
+
+        activations = await models.Activation.filter(
+            sms_text__isnull=False,
+            created_at__lte=cutoff_dt,
+        ).exclude(
+            sms_text=""
+        ).group_by("user_id").annotate(
+            total_activation_cost=Sum("cost")
+        ).values("user_id", "total_activation_cost")
+
+        user_data: dict[int, dict[str, float]] = {}
+
+        def _get(uid: int) -> dict[str, float]:
+            if uid not in user_data:
+                user_data[uid] = {
+                    "total_paid": 0.0,
+                    "total_rent_cost": 0.0,
+                    "total_activation_cost": 0.0,
+                }
+            return user_data[uid]
+
+        for p in payments:
+            uid = int(p["user_id"])
+            _get(uid)["total_paid"] = float(p["total_paid"] or 0.0)
+
+        for r in rents:
+            uid = int(r["user_id"])
+            _get(uid)["total_rent_cost"] = float(r["total_rent_cost"] or 0.0)
+
+        for a in activations:
+            uid = int(a["user_id"])
+            _get(uid)["total_activation_cost"] = float(a["total_activation_cost"] or 0.0)
+
+        user_ids = list(user_data.keys())
+        if not user_ids:
+            logger.bind(action="auto_fix_users_balance_discrepancy").info("Нет данных для проверки (user_ids пуст)")
+            return
+
+        # берём пользователей (кроме админов) — fraud_banned не фильтруем специально:
+        # задача не про бан, а про выравнивание баланса
+        candidates = await models.User.filter(
+            id__in=user_ids,
+        ).exclude(
+            telegram_id__in=dependencies.ADMINS
+        )
+
+        fixed_count = 0
+        overspend_count = 0
+
+        for user in candidates:
+            if fixed_count >= MAX_FIX_PER_RUN:
+                break
+
+            d = user_data.get(int(user.id), {})
+            total_paid = float(d.get("total_paid", 0.0) or 0.0)
+            total_rent_cost = float(d.get("total_rent_cost", 0.0) or 0.0)
+            total_activation_cost = float(d.get("total_activation_cost", 0.0) or 0.0)
+
+            total_spent = total_rent_cost + total_activation_cost
+            balance_before = float(getattr(user, "balance", 0.0) or 0.0)
+
+            diff = (total_spent + balance_before) - total_paid
+            if diff <= EPS:
+                continue
+
+            # целевой баланс по формуле
+            target_balance = max(0.0, total_paid - total_spent)
+
+            # если баланс и так уже <= target_balance (или близко) — ничего не делаем
+            if abs(balance_before - target_balance) <= EPS or balance_before < target_balance:
+                # balance_before < target_balance — это уже другой тип проблемы (не хватает начислений),
+                # мы её тут не решаем.
+                continue
+
+            # --- фиксируем в транзакции и перепроверяем внутри (защита от гонок) ---
+            async with in_transaction() as conn:
+                locked_user = await models.User.select_for_update().using_db(conn).get_or_none(id=user.id)
+                if not locked_user:
+                    continue
+
+                # Пересчитываем внутри транзакции ещё раз (строго до cutoff)
+                paid_row = await models.Payment.filter(
+                    is_success=True,
+                    created_at__lte=cutoff_dt,
+                    user_id=locked_user.id,
+                ).using_db(conn).annotate(total=Sum("amount")).values("total")
+                total_paid_tx = float((paid_row[0]["total"] if paid_row else 0.0) or 0.0)
+
+                rent_row = await models.Rent.filter(
+                    sms_text__isnull=False,
+                    created_at__lte=cutoff_dt,
+                    user_id=locked_user.id,
+                ).exclude(sms_text="").using_db(conn).annotate(total=Sum("cost")).values("total")
+                total_rent_tx = float((rent_row[0]["total"] if rent_row else 0.0) or 0.0)
+
+                act_row = await models.Activation.filter(
+                    sms_text__isnull=False,
+                    created_at__lte=cutoff_dt,
+                    user_id=locked_user.id,
+                ).exclude(sms_text="").using_db(conn).annotate(total=Sum("cost")).values("total")
+                total_act_tx = float((act_row[0]["total"] if act_row else 0.0) or 0.0)
+
+                total_spent_tx = total_rent_tx + total_act_tx
+                balance_now = float(getattr(locked_user, "balance", 0.0) or 0.0)
+
+                diff_tx = (total_spent_tx + balance_now) - total_paid_tx
+                if diff_tx <= EPS:
+                    continue
+
+                target_balance_tx = max(0.0, total_paid_tx - total_spent_tx)
+
+                if balance_now <= target_balance_tx + EPS:
+                    # либо уже исправлено, либо проблема не “в лишнем балансе”
+                    continue
+
+                # Если target_balance_tx == 0, а diff_tx всё равно большой — это перерасход (балансом не лечится)
+                if target_balance_tx <= EPS and diff_tx > EPS:
+                    overspend_count += 1
+                    msg = (
+                        "⚠️ OVESPEND (балансом не исправить)\n"
+                        f"telegram_id: {locked_user.telegram_id}\n"
+                        f"оплаты: {total_paid_tx:.2f}\n"
+                        f"потрачено: {total_spent_tx:.2f} (rent={total_rent_tx:.2f} + act={total_act_tx:.2f})\n"
+                        f"баланс: {balance_now:.2f}\n"
+                        f"разница: {diff_tx:.2f}\n"
+                        f"cutoff: now-{GRACE_MINUTES}min\n"
+                    )
+                    await send_coder(msg)
+                    continue
+
+                locked_user.balance = float(target_balance_tx)
+                await locked_user.save(update_fields=["balance"])
+
+            fixed_count += 1
+
+            msg = (
+                "🛠️ AUTO-FIX BALANCE DISCREPANCY\n"
+                f"telegram_id: {user.telegram_id}\n"
+                f"оплаты: {total_paid:.2f}\n"
+                f"потрачено: {total_spent:.2f} (rent={total_rent_cost:.2f} + act={total_activation_cost:.2f})\n"
+                f"баланс: {balance_before:.2f} → {target_balance:.2f}\n"
+                f"разница: {diff:.2f}\n"
+                f"cutoff: now-{GRACE_MINUTES}min\n"
+            )
+            await send_coder(msg)
+
+            logger.bind(
+                user_id=user.telegram_id,
+                action="auto_fix_users_balance_discrepancy",
+            ).warning(
+                f"Исправлен баланс: {balance_before:.2f} -> {target_balance:.2f} (diff={diff:.2f})"
+            )
+
+        logger.bind(action="auto_fix_users_balance_discrepancy").info(
+            f"Готово. Исправлено: {fixed_count}, overspend: {overspend_count}"
+        )
+
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка в auto_fix_users_balance_discrepancy")
