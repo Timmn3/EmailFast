@@ -236,7 +236,6 @@ async def check_payment_lava():
             # Логируем любые исключения, возникшие в процессе обработки платежа.
             pass
 
-
 async def check_payment_freekassa():
     # Получаем список платежей, которые нужно проверить, из базы данных.
     payments = await models.Payment.get_freekassa_payments()
@@ -249,7 +248,9 @@ async def check_payment_freekassa():
     fk = Freekassa(shop_id=FK_SHOP_ID, api_key=FK_FK_API_KEY)
     # Получаем список оплаченных заказов (со статусом 1) за последние hours часов
     try:
-        orders = fk.get_orders(order_status=1, date_from=five_hours_ago)
+        # ⚠️ ВАЖНО: fk.get_orders() внутри использует requests -> нельзя вызывать напрямую в async,
+        # иначе блокируется event loop и бот "зависает".
+        orders = await asyncio.to_thread(fk.get_orders, order_status=1, date_from=five_hours_ago)
         merchant_order_ids = [order['merchant_order_id'] for order in orders['orders']]
     except Exception as e:
         merchant_order_ids = []
@@ -289,6 +290,7 @@ async def check_payment_freekassa():
                 # Логируем любые исключения, возникшие в процессе обработки платежа.
                 logger.warning(e)
                 await replenishment_error_message(payment, "freekassa")
+
 
 
 async def check_payment_yoomoney():
