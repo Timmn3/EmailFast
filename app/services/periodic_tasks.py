@@ -1693,7 +1693,7 @@ async def auto_fix_users_balance_discrepancy() -> None:
     from tortoise.functions import Sum
     from tortoise.transactions import in_transaction
 
-    GRACE_MINUTES = 5  # окно безопасности от "свежих" операций
+    GRACE_MINUTES = 15  # окно безопасности от "свежих" операций
     EPS = 0.01          # чтобы не дёргать копейки из-за float
     MAX_FIX_PER_RUN = 50  # защита от спама, если внезапно много пользователей
 
