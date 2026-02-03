@@ -200,7 +200,7 @@ def set_scheduled_jobs(scheduler):
 
         if ON_SCHEDULE:
             # ✅ Авто-исправление расхождений баланса (как /users_with_discrepancy)
-            scheduler.add_job(auto_fix_users_balance_discrepancy, "interval", minutes=2, max_instances=1, coalesce=True, misfire_grace_time=30)
+            # scheduler.add_job(auto_fix_users_balance_discrepancy, "interval", minutes=2, max_instances=1, coalesce=True, misfire_grace_time=30)
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
             # Проверка Email
