@@ -56,6 +56,7 @@ SERVICE_INFO_TELEGRAM = """
 
 <i>- Срок жизни номера 15 минут.
 - Если СМС не поступит, деньги вернутся на баланс в боте</i>
+<b>- Если аккаунт защищен облачным паролем - обязательно отправляйте скриншот в <a href="https://t.me/emailfastsupport_bot">@emailfastsupport_bot</a></b>
 """
 
 NUMBER_INFO = """
