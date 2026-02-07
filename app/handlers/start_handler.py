@@ -10,6 +10,7 @@ from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info
 from app.services import bot_texts as bt
 from app.services.keyboards import start_kb
+from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from loguru import logger
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -263,6 +264,9 @@ async def mail_info(call: types.CallbackQuery):
                     types.InlineKeyboardButton(text=bt.EXTEND_EMAIL_BTN, callback_data=f'extend_email:{mail.id}')
                 ],
                 [
+                    types.InlineKeyboardButton(text=bt.CHANGE_EMAIL_BTN, callback_data=f'change_email:{mail.id}')
+                ],
+                [
                     types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data='my_rent_emails')
                 ]
             ]
@@ -274,6 +278,128 @@ async def mail_info(call: types.CallbackQuery):
         await call.message.edit_text(text=msg_text, reply_markup=mk)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере mail_info: {e}")
+
+
+@router.callback_query(F.data.startswith("change_email:"))
+async def change_email(call: types.CallbackQuery):
+    """
+    Меняет арендованный почтовый ящик на новый:
+    - старый ящик деактивируется (is_active=False)
+    - создаётся новый email через mail.tm (create_mail)
+    - новый ящик сохраняет статус арендованного (is_paid_mail=True)
+    - срок аренды переносится со старого ящика (expire_at не меняем)
+
+    Важно:
+    - Проверяем владельца почты (mail.user == текущий user), чтобы нельзя было подставить чужой mail_id.
+    - Внешний вызов create_mail() делаем ДО транзакции, чтобы не держать блокировки БД.
+    """
+    from tortoise.transactions import in_transaction
+
+    try:
+        user_id = call.from_user.id
+        mail_id = int(call.data.split(":", 1)[1])
+
+        logger.bind(user_id=user_id, action="change_email").log(
+            "USER_ACTION",
+            f"Запрос смены почты: mail_id={mail_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        # Берём текущую почту пользователя (обязательно проверяем владельца!)
+        old_mail = await models.Mail.get_or_none(id=mail_id, user=user, is_paid_mail=True, is_active=True)
+        if not old_mail:
+            logger.bind(user_id=user_id, action="change_email").log(
+                "USER_ACTION",
+                f"Почта не найдена или не принадлежит пользователю: mail_id={mail_id}"
+            )
+            await call.answer("Почта не найдена.", show_alert=True)
+            return
+
+        old_expire_at = old_mail.expire_at
+
+        # Лёгкий фидбек пользователю
+        await call.answer("Создаю новый почтовый ящик…", show_alert=False)
+
+        # Создаём новый email (внешний сервис) — НЕ внутри транзакции
+        try:
+            email, token = await create_mail()
+        except Exception as e:
+            logger.opt(exception=e).error(f"Ошибка create_mail() в change_email: {e}")
+            await call.answer("Сервис временно недоступен, попробуйте позже🙎‍♂️", show_alert=True)
+            return
+
+        # Фиксируем смену в БД атомарно
+        async with in_transaction() as conn:
+            # Перепроверка и блокировка старого ящика
+            old_mail_locked = await models.Mail.select_for_update().using_db(conn).get_or_none(
+                id=mail_id, user=user, is_paid_mail=True
+            )
+            if not old_mail_locked or not old_mail_locked.is_active:
+                await call.answer("Почта уже неактивна. Обновите список.", show_alert=True)
+                return
+
+            old_mail_locked.is_active = False
+            await old_mail_locked.save(using_db=conn, update_fields=["is_active"])
+
+            # Создаём новый арендованный ящик с тем же сроком аренды
+            new_mail = await models.Mail.create(
+                using_db=conn,
+                user=user,
+                email=email,
+                token=token,
+                is_paid_mail=True,
+                is_active=True,
+                expire_at=old_expire_at,
+            )
+
+        logger.bind(user_id=user_id, action="change_email").log(
+            "USER_ACTION",
+            f"Почта изменена: old_mail_id={mail_id} -> new_mail_id={new_mail.id}, email={new_mail.email}"
+        )
+
+        msg_text = bt.PAID_EMAIL_INFO.format(
+            email=new_mail.email,
+            expire_at=new_mail.expire_at.strftime("%d.%m.%Y")
+        )
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.RECEIVE_MY_EMAIL_BTN,
+                        callback_data=f"receive_my_mail:{new_mail.id}",
+                    ),
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.EXTEND_EMAIL_BTN,
+                        callback_data=f"extend_email:{new_mail.id}",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.CHANGE_EMAIL_BTN,
+                        callback_data=f"change_email:{new_mail.id}",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data="my_rent_emails")
+                ],
+            ]
+        )
+
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+        await call.answer("✅ Почта успешно изменена", show_alert=False)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_email: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith('continue_payment:'))
