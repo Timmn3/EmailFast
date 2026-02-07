@@ -1809,6 +1809,200 @@ async def sms_service_stat(message: types.Message) -> None:
         parse_mode="HTML",
     )
 
+@router.message(Command("sms_service_stat_from_date"))
+async def sms_service_stat_from_date(message: types.Message) -> None:
+    """
+    Админ-команда: статистика доставляемости SMS по сервису в разрезе провайдеров
+    за период: с указанной даты по текущий день.
+
+    Использование:
+        /sms_service_stat_from_date tiktok 01.01.2026
+        /sms_service_stat_from_date tg 01.01.2026
+
+    Формат даты:
+        dd.mm.yyyy (например 01.01.2026)
+
+    Важно:
+    - Для smsactivate/smsfast сервис хранится в activations.service (FK на ServicesSmsActivate)
+    - Для onlinesim сервис хранится в activations.service_2 (FK на ServicesOnlinesim)
+    - Коды сервисов могут отличаться между провайдерами, поэтому резолвим сервис
+      по code / name / search_names в соответствующей таблице сервисов.
+    """
+    logger.bind(user_id=message.from_user.id, action="sms_service_stat_from_date").log(
+        "USER_ACTION", "Команда /sms_service_stat_from_date вызвана"
+    )
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = (message.text or "").split()
+    if len(args) < 3:
+        await message.answer(
+            "Использование: /sms_service_stat_from_date [service_code] [dd.mm.yyyy]\n"
+            "Пример: /sms_service_stat_from_date tiktok 01.01.2026"
+        )
+        return
+
+    import html as _html
+    from datetime import datetime
+    import pytz
+    from tortoise.expressions import Q
+
+    raw_service = args[1].strip()
+    raw_date = args[2].strip()
+
+    # ✅ парсим дату
+    try:
+        start_naive = datetime.strptime(raw_date, "%d.%m.%Y")
+    except ValueError:
+        await message.answer(
+            "❌ Некорректная дата.\n"
+            "Ожидаю формат: dd.mm.yyyy (например 01.01.2026)"
+        )
+        return
+
+    tz = pytz.timezone("Europe/Moscow")
+    start_dt = tz.localize(start_naive).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_dt = datetime.now(tz)
+
+    if start_dt > end_dt:
+        await message.answer("❌ Дата 'с' не может быть больше сегодняшней.")
+        return
+
+    service_key = raw_service.lower()
+
+    providers = [
+        ("smsactivate", "SMSActivate"),
+        ("onlinesim", "OnlineSim"),
+        ("smsfast", "SMSFast"),
+    ]
+
+    async def _resolve_smsactivate_service_ids() -> tuple[list[int], list[str]]:
+        """
+        Ищем сервис в ServicesSmsActivate по:
+        - code (точно, без регистра)
+        - name (точно, без регистра)
+        - search_names (подстрока, без регистра)
+        """
+        qs = models.ServicesSmsActivate.filter(
+            Q(code__iexact=service_key)
+            | Q(name__iexact=raw_service)
+            | Q(search_names__icontains=service_key)
+        )
+        ids = list(await qs.values_list("id", flat=True))
+        codes = list(await qs.values_list("code", flat=True))
+        return ids, codes
+
+    async def _resolve_onlinesim_service_ids() -> tuple[list[int], list[str]]:
+        """
+        Ищем сервис в ServicesOnlinesim по:
+        - code (точно, без регистра)
+        - name (точно, без регистра)
+        - search_names (подстрока, без регистра)
+        """
+        qs = models.ServicesOnlinesim.filter(
+            Q(code__iexact=service_key)
+            | Q(name__iexact=raw_service)
+            | Q(search_names__icontains=service_key)
+        )
+        ids = list(await qs.values_list("id", flat=True))
+        codes = list(await qs.values_list("code", flat=True))
+        return ids, codes
+
+    # Резолвим заранее (дешевле, чем по кругу)
+    smsactivate_ids, smsactivate_codes = await _resolve_smsactivate_service_ids()
+    onlinesim_ids, onlinesim_codes = await _resolve_onlinesim_service_ids()
+
+    rows: list[list[object]] = []
+    total_all = 0
+    delivered_all = 0
+
+    # Для наглядности покажем, что именно сматчилось в справочниках
+    resolved_lines: list[str] = []
+    resolved_lines.append(
+        f"SMSActivate/SMSFast: {', '.join(smsactivate_codes) if smsactivate_codes else 'не найдено'}"
+    )
+    resolved_lines.append(
+        f"OnlineSim: {', '.join(onlinesim_codes) if onlinesim_codes else 'не найдено'}"
+    )
+
+    for provider, title in providers:
+        if provider == "onlinesim":
+            ids = onlinesim_ids
+            if not ids:
+                total = 0
+                delivered = 0
+            else:
+                total = await models.Activation.filter(
+                    provider=provider,
+                    service_2_id__in=ids,
+                    created_at__gte=start_dt,
+                    created_at__lte=end_dt,
+                ).count()
+
+                delivered = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_2_id__in=ids,
+                        created_at__gte=start_dt,
+                        created_at__lte=end_dt,
+                        sms_text__isnull=False,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
+        else:
+            ids = smsactivate_ids
+            if not ids:
+                total = 0
+                delivered = 0
+            else:
+                total = await models.Activation.filter(
+                    provider=provider,
+                    service_id__in=ids,
+                    created_at__gte=start_dt,
+                    created_at__lte=end_dt,
+                ).count()
+
+                delivered = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_id__in=ids,
+                        created_at__gte=start_dt,
+                        created_at__lte=end_dt,
+                        sms_text__isnull=False,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
+
+        pct = (delivered / total * 100.0) if total else 0.0
+        total_all += int(total)
+        delivered_all += int(delivered)
+        rows.append([title, int(total), int(delivered), f"{pct:.1f}%"])
+
+    pct_all = (delivered_all / total_all * 100.0) if total_all else 0.0
+    rows.append(["ИТОГО", int(total_all), int(delivered_all), f"{pct_all:.1f}%"])
+
+    table = tabulate(
+        rows,
+        headers=["Провайдер", "Запрошено", "Доставлено", "Доставляемость"],
+        tablefmt="github",
+    )
+
+    period_line = f"📅 <b>Период:</b> {start_dt.strftime('%d.%m.%Y')} — {end_dt.strftime('%d.%m.%Y')}"
+    resolved_block = "\n".join(resolved_lines)
+
+    await message.answer(
+        text=(
+            f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(raw_service)}</code>\n"
+            f"{period_line}\n"
+            f"<i>{_html.escape(resolved_block)}</i>\n"
+            f"<pre>{_html.escape(table)}</pre>"
+        ),
+        parse_mode="HTML",
+    )
+
 
 @router.message(Command('help_admin'))
 async def help_admin(message: types.Message):
@@ -1840,6 +2034,8 @@ async def help_admin(message: types.Message):
     /update_price_smsfast - Вручную обновить сервисы SMSFast
     /smsfast [on|off|status] - Включить/выключить SMSFast (без аргументов — просто переключение Включить/выключить)
     /sms_service_stat [service_code] - Доставляемость SMS по сервису
+    /sms_service_stat_from_date [service_code] [dd.mm.yyyy] - Доставляемость SMS по сервису с даты по сегодня
+
 
     """
 
