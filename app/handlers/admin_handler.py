@@ -735,7 +735,7 @@ async def reset_ref_balance(message: types.Message):
 
         await conn.execute_query(
             f'UPDATE "{user_table}" '
-            f'SET ref_balance = 0, total_ref_earnings = 0 '
+            f'SET ref_balance = 0, total_ref_earnings = 0 ' 
             f'WHERE telegram_id = {p1}',
             [telegram_id],
         )
@@ -748,6 +748,87 @@ async def reset_ref_balance(message: types.Message):
 
     await message.answer(f"✅ Реферальный баланс обнулён для telegram_id={telegram_id}.")
     await send_coder(f"Админ обнулил ref_balance/total_ref_earnings для telegram_id={telegram_id}.")
+
+@router.message(Command('subtract_ref_balance'))
+async def subtract_ref_balance(message: types.Message):
+    """
+    /subtract_ref_balance [telegram_id] [сумма] - Вычесть ref_balance у пользователя
+
+    Пример:
+    /subtract_ref_balance 123456789 150
+
+    Важно:
+    - сумма должна быть > 0
+    - ref_balance не уходит в минус (минимум 0)
+    - total_ref_earnings НЕ трогаем
+    """
+    logger.bind(user_id=message.from_user.id, action='subtract_ref_balance').log(
+        "USER_ACTION", "Команда /subtract_ref_balance вызвана"
+    )
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = message.text.split()
+    if len(args) != 3:
+        await message.answer("Использование: /subtract_ref_balance [telegram_id] [сумма]")
+        return
+
+    try:
+        telegram_id = int(args[1])
+        amount = float(args[2])
+    except ValueError:
+        await message.answer("Некорректный Telegram ID или сумма. Пожалуйста, введите числовые значения.")
+        return
+
+    if amount <= 0:
+        await message.answer("Сумма должна быть больше 0.")
+        return
+
+    user = await models.User.get_or_none(telegram_id=telegram_id).only("ref_balance")
+    if not user:
+        await message.answer("Пользователь с таким Telegram ID не найден.")
+        return
+
+    old_balance = float(user.ref_balance or 0)
+    new_balance = old_balance - amount
+    capped = False
+    if new_balance < 0:
+        new_balance = 0.0
+        capped = True
+
+    try:
+        from tortoise.transactions import in_transaction
+
+        user_table = models.User._meta.db_table
+
+        async with in_transaction() as conn:
+            dialect = getattr(conn.capabilities, "dialect", "")
+            p1 = "$1" if dialect == "postgres" else "?"
+            p2 = "$2" if dialect == "postgres" else "?"
+
+            # порядок параметров важен: сначала ref_balance, потом telegram_id
+            await conn.execute_query(
+                f'UPDATE "{user_table}" SET ref_balance = {p1} WHERE telegram_id = {p2}',
+                [new_balance, telegram_id],
+            )
+    except Exception:
+        logger.bind(user_id=message.from_user.id, action='subtract_ref_balance').exception(
+            "Ошибка при вычитании ref_balance"
+        )
+        await message.answer("Ошибка при обновлении данных. См. логи.")
+        return
+
+    note = " (упёрлись в 0)" if capped else ""
+    await message.answer(
+        f"✅ ref_balance изменён для telegram_id={telegram_id}:\n"
+        f"{old_balance:.2f} ₽ → {new_balance:.2f} ₽{note}"
+    )
+    await send_coder(
+        f"Админ вычел ref_balance у telegram_id={telegram_id}: "
+        f"{old_balance:.2f} -> {new_balance:.2f} (минус {amount:.2f})."
+        + (" capped_to_zero" if capped else "")
+    )
 
 
 @router.message(Command('reset_ref_stats'))
@@ -2016,6 +2097,7 @@ async def help_admin(message: types.Message):
     /sending_status [номер рассылки] - Проверка рассылки сообщений
     /add_balance [telegram_id] [сумма] - Пополнение баланса пользователя
     /reset_ref_balance [telegram_id] - Обнулить ref_balance 
+    /subtract_ref_balance [telegram_id] [сумма] - Вычесть ref_balance у пользователя
     /reset_ref_stats [telegram_id] - Обнулить всю реф статистику
     /info_id [telegram_id] - Информация о пользователе
     /user_report [telegram_id] - HTML-отчёт по пользователю
