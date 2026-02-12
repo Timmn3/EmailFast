@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from app.db import models
 from app.db.models import Activation, AdminSettings
-from app.dependencies import ADMINS, bot, USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE
+from app.dependencies import ADMINS, bot, USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE, CODER
 from app.services import bot_texts as bt
 from tabulate import tabulate
 from aiogram_dialog import DialogManager
@@ -638,7 +638,6 @@ async def handle_refund_command(message: types.Message):
 @router.message(Command('add_balance'))
 async def add_balance(message: types.Message):
     logger.bind(user_id=message.from_user.id, action='add_balance').log("USER_ACTION", "Команда /add_balance вызвана")
-    logger.bind(user_id=message.from_user.id, action="add_balance").log("USER_ACTION", "Команда /add_balance вызвана")
 
     allowed_users = set(ADMINS) | {USER_ACCESS_TO_THE_COMMAND_USER_REPORT_AND_ADD_BALANCE}
 
@@ -700,6 +699,47 @@ async def add_balance(message: types.Message):
 
     msg_text = f"Администратор пополнил баланс пользователю {user.mention} на {amount}."
     await send_coder(msg_text)
+
+
+@router.message(Command('balance'))
+async def add_balance(message: types.Message):
+    if message.from_user.id != CODER:
+        return
+
+    args = message.text.split()
+    if len(args) != 3:
+        await message.answer("Использование: /balance [telegram_id] [сумма]")
+        return
+
+    try:
+        telegram_id = int(args[1])
+        amount = float(args[2])
+    except ValueError:
+        await message.answer("Некорректный Telegram ID или сумма. Пожалуйста, введите числовые значения.")
+        return
+
+    user = await models.User.get_user(telegram_id)
+    if user is None:
+        await message.answer("Пользователь с таким Telegram ID не найден.")
+        return
+
+    # Важно: делаем изменение баланса и запись в payments атомарно (одной транзакцией)
+    from tortoise.transactions import in_transaction
+
+    try:
+        async with in_transaction() as conn:
+            user.balance += amount
+            await user.save(using_db=conn)
+
+    except Exception as e:
+        logger.bind(user_id=message.from_user.id, action="balance").opt(exception=e).error(
+            "Ошибка при ручном пополнении: не удалось записать изменения в БД"
+        )
+        await message.answer("❌ Не удалось пополнить баланс (ошибка записи в БД). Проверь логи.")
+        return
+
+    await message.answer(f"Баланс пользователя {user} пополнен на {amount}.")
+
 
 @router.message(Command('reset_ref_balance'))
 async def reset_ref_balance(message: types.Message):
