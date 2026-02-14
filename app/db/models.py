@@ -62,6 +62,11 @@ class User(Model):
     refer_id: int = fields.BigIntField(null=True)
     bonus_end_at: datetime = fields.DatetimeField(null=True)
     in_channel: bool = fields.BooleanField(default=False)
+    channel_gate_enabled: bool = fields.BooleanField(
+        default=True,
+        index=True,
+        description="Включает обязательную проверку подписки после первого SMS/Email",
+    )
     last_check_in: datetime = fields.DatetimeField(null=True)
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
     discount_used: bool = fields.BooleanField(null=True)
@@ -95,6 +100,10 @@ class User(Model):
         """
         Добавляет нового пользователя в базу данных.
 
+        ⚠️ Важно:
+        Новый пользователь НЕ должен упираться в подписку, пока не получил первое SMS
+        или не создал временную почту. Поэтому channel_gate_enabled=False.
+
         :param user: Объект пользователя из aiogram.
         :param refer: Пользователь-реферер, пригласивший нового (опционально).
         :param referral_link_code: Код персональной реферальной ссылки, если пришёл по ней.
@@ -108,7 +117,8 @@ class User(Model):
             mention=f'@{user.username}' if user.username else user.full_name,
             refer_id=refer.id if refer else None,
             referral_link_code=referral_link_code,         # ✨ сохраняем код
-            last_request_time=current_time
+            last_request_time=current_time,
+            channel_gate_enabled=False
         )
         return new_user
 

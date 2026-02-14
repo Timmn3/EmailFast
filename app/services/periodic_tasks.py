@@ -628,6 +628,11 @@ async def check_sms():
                     safe_name = html.escape(str(name)) if name else None
                     safe_code = html.escape(str(activation.sms_text))
 
+                    # ✅ После первого полученного SMS включаем обязательную проверку подписки
+                    if not getattr(activation.user, "channel_gate_enabled", True):
+                        activation.user.channel_gate_enabled = True
+                        await activation.user.save(update_fields=["channel_gate_enabled"])
+
                     if safe_name:
                         msg_text = (
                             f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
@@ -1087,6 +1092,11 @@ async def check_rent_sms():
                             msg_text = f"""
                             💬 <b>Новое SMS</b> на номер: +{activation.phone_number}\nВаш код активации для сервиса <b>{service}</b>: <code>{text}</code>
                             """
+
+                            # ✅ После первого полученного SMS включаем обязательную проверку подписки
+                            if not getattr(activation.user, "channel_gate_enabled", True):
+                                activation.user.channel_gate_enabled = True
+                                await activation.user.save(update_fields=["channel_gate_enabled"])
 
                             # Отправляем сообщение пользователю в Telegram
                             await bot.send_message(

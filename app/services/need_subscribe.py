@@ -10,8 +10,19 @@ from app.services import bot_texts as bt
 
 
 async def check_subscribe(user: models.User):
+    """
+    Проверяет подписку на канал (если CHECK_CHANNEL=True).
+
+    ⚠️ Важно: для новых пользователей (пока они не получили первое SMS или не создали временную почту)
+    проверка подписки отключена, чтобы не ломать онбординг.
+    """
     if not CHECK_CHANNEL:
         return True
+
+    # ✅ Не требуем подписку до первого фактического использования сервиса
+    if not getattr(user, "channel_gate_enabled", True):
+        return True
+
     if user.in_channel:
         return True
 

@@ -28,14 +28,11 @@ async def receive_email(message: Union[types.Message, types.CallbackQuery], dial
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", "Пользователь запросил получение email")
 
-        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
 
         if not user:
             return
 
-        # logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", "Проверка подписки")
         sub = await check_subscribe(user)
 
         if not sub:
@@ -67,12 +64,19 @@ async def receive_email(message: Union[types.Message, types.CallbackQuery], dial
             mail = await models.Mail.add_mail(user, email, token)
             logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Новый email создан: {email}")
 
+            # ✅ После первого созданного email включаем обязательную проверку подписки
+            if not getattr(user, "channel_gate_enabled", True):
+                user.channel_gate_enabled = True
+                await user.save(update_fields=["channel_gate_enabled"])
+
             await temp_mail.delete()
 
         logger.bind(user_id=user_id, action="receive_email").log("USER_ACTION", f"Запуск диалога с mail_id={mail.id}")
-        await dialog_manager.start(ReceiveEmailMenu.receive_email,
-                                   data={"mail_id": mail.id},
-                                   mode=StartMode.RESET_STACK)
+        await dialog_manager.start(
+            ReceiveEmailMenu.receive_email,
+            data={"mail_id": mail.id},
+            mode=StartMode.RESET_STACK
+        )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_email: {e}")
 

@@ -225,6 +225,13 @@ async def _request_code_worker(user_id: int, activation_pk: int) -> None:
                     f"Ваш код активации:\n"
                     f"<code>{safe_sms}</code>"
                 )
+
+                # ✅ После первого полученного SMS включаем обязательную проверку подписки
+                if getattr(activation, "user", None) is not None and not getattr(activation.user,
+                                                                                 "channel_gate_enabled", True):
+                    activation.user.channel_gate_enabled = True
+                    await activation.user.save(update_fields=["channel_gate_enabled"])
+
                 await bot.send_message(chat_id=user_id, text=msg_text, parse_mode="HTML")
                 await notice_of_arraignment("Получение смс", activation, sms_clean)
 
