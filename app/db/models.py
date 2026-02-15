@@ -1179,7 +1179,7 @@ class Payment(Model):
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
 
     @classmethod
-    async def get_ckassa_payments(cls) -> list[Self]:
+    async def get_ckassa_payments(cls):
         return await cls.filter(
             method=PaymentMethod.CKASSA,
             is_success=False,

@@ -1,3 +1,5 @@
+from contextlib import suppress
+from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router, types, F
 
 from app.db import models
@@ -15,21 +17,37 @@ router = Router()
 
 @router.callback_query(F.data == "terms_accept")
 async def terms_accept(call: types.CallbackQuery):
+    """
+    Принимаем пользовательское соглашение.
+
+    Почему так:
+    - Telegram ждёт answerCallbackQuery ограниченное время.
+    - При нагрузке/задержках callback может "протухнуть" -> TelegramBadRequest.
+    - Поэтому подтверждаем callback сразу, а повторные/поздние answer глушим.
+    """
+    # ✅ Сразу убираем "часики" (и не падаем, если callback уже протух)
+    with suppress(TelegramBadRequest):
+        await call.answer(cache_time=0)
+
     user_tg = call.from_user
     user = await models.User.get_user(user_tg.id)
     if not user:
         user = await models.User.add_user(user_tg)
 
     user.terms_accepted = True
-    await user.save()
+    await user.save(update_fields=["terms_accepted"])
 
     # убираем сообщение с соглашением (если возможно)
     try:
-        await call.message.delete()
+        if call.message:
+            await call.message.delete()
     except Exception:
         pass
 
-    await call.answer("✅ Принято")
+    # ✅ Пытаемся показать тост "Принято", но не падаем на протухшем callback
+    with suppress(TelegramBadRequest):
+        await call.answer("✅ Принято", cache_time=0)
 
     # пускаем в меню
-    await call.message.answer(text=MAIN_MENU, reply_markup=start_kb())
+    if call.message:
+        await call.message.answer(text=MAIN_MENU, reply_markup=start_kb())
