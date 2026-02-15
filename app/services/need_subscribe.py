@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from aiogram import types
 from tortoise import timezone
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from loguru import logger
 
 from app import dependencies
 from app.db import models
@@ -32,7 +34,30 @@ async def check_subscribe(user: models.User):
         return False
 
     if user.last_check_in < timezone.now() - timedelta(minutes=30):
-        member = await bot.get_chat_member(chat_id=dependencies.CHANNEL_ID, user_id=user.telegram_id)
+        # Приводим CHANNEL_ID к корректному виду:
+        # - "@channel" оставляем строкой
+        # - "-100..." (строка) превращаем в int
+        chat_id = dependencies.CHANNEL_ID
+        if isinstance(chat_id, str):
+            chat_id = chat_id.strip()
+            if not chat_id.startswith("@") and chat_id.lstrip("-").isdigit():
+                chat_id = int(chat_id)
+
+        try:
+            member = await bot.get_chat_member(chat_id=chat_id, user_id=user.telegram_id)
+        except (TelegramBadRequest, TelegramForbiddenError) as e:
+            # Чтобы бот не падал из-за неверной конфигурации/прав канала
+            logger.bind(user_id=user.telegram_id, action="check_subscribe").error(
+                f"Не удалось проверить подписку: chat_id={chat_id!r}. Ошибка: {e}"
+            )
+            # Fail-open: сервис не ложится, но в логах будет точная причина
+            return True
+        except Exception as e:
+            logger.bind(user_id=user.telegram_id, action="check_subscribe").error(
+                f"Неожиданная ошибка проверки подписки: chat_id={chat_id!r}. Ошибка: {e}"
+            )
+            return True
+
         if member.status in ("creator", "administrator", "member"):
             user.in_channel = True
             user.last_check_in = timezone.now()
