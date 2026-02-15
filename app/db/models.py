@@ -1068,6 +1068,7 @@ class Payment(Model):
                                        null=True)  # Идентификатор счета (уникальный)
     continue_data: dict = fields.JSONField(null=True)  # Дополнительные данные для продолжения платежа (JSON)
     is_success: bool = fields.BooleanField(default=False)  # Флаг успешности платежа
+    processed: bool = fields.BooleanField(default=False)
     created_at: datetime = fields.DatetimeField(
         auto_now_add=True)  # Дата и время создания записи (автоматически устанавливается при создании)
 
@@ -1178,14 +1179,14 @@ class Payment(Model):
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
 
     @classmethod
-    async def get_ckassa_payments(cls):
-        """
-        Получает все платежи, выполненные через метод CKASSA, которые не были успешными и были созданы в последние 5 часов
-
-        :return: Список объектов платежей.
-        """
-        return await cls.filter(method=PaymentMethod.CKASSA, is_success=False,
-                                created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
+    async def get_ckassa_payments(cls) -> list[Self]:
+        return await cls.filter(
+            method=PaymentMethod.CKASSA,
+            is_success=False,
+            processed=False,
+            invoice_id__isnull=False,
+            created_at__gte=timezone.now() - timedelta(days=2)
+        ).prefetch_related("user").order_by("-created_at")
 
 
 class Withdraw(Model):
