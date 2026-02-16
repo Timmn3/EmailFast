@@ -412,103 +412,136 @@ async def check_payment_streampay():
             logger.warning(e)
             await replenishment_error_message(payment, "streampay")
 
+import time
+from datetime import timedelta
 
 async def check_payment_ckassa():
     """
-    Асинхронная функция для проверки статуса платежей CKassa.
+    Проверка оплат CKassa с claim-механизмом через SELECT ... FOR UPDATE SKIP LOCKED.
+
+    Идея:
+    - несколько параллельных запусков (max_instances>1) делят работу без дублей:
+      каждая транзакция "забирает" следующую свободную строку платежа.
+    - держим транзакцию короткой: 1 платеж = 1 транзакция.
     """
-    payments = await models.Payment.get_ckassa_payments()
+    start = time.monotonic()
 
-    for payment in payments:
+    LOOKBACK_HOURS = 24      # окно, чтобы не ковырять 2 дня (можно 6/12/24)
+    MAX_PER_RUN = 200        # ограничение на количество обработок за 1 запуск
+
+    paid_count = 0
+    checked_count = 0
+
+    for _ in range(MAX_PER_RUN):
+        payment_id = None
+        amount_for_notify = None
+
         try:
-            payment_data = await get_ckassa_payments(payment.invoice_id)
-
-            # Если платёж ещё не оплачен — пропускаем
-            if not (payment_data and payment_data.get("state") == "PAYED"):
-                continue
-
-            # === Критично: анти-дубль через транзакцию + SELECT FOR UPDATE ===
+            # 1) CLAIM одного платежа (если он уже залочен другим инстансом — пропускаем)
             async with in_transaction() as conn:
-                # 1) Лочим строку платежа
-                locked_payment = (
-                    await models.Payment.filter(id=payment.id)
+                payment = (
+                    await models.Payment.filter(
+                        method=models.PaymentMethod.CKASSA,
+                        is_success=False,
+                        processed=False,
+                        invoice_id__isnull=False,
+                        created_at__gte=timezone.now() - timedelta(hours=LOOKBACK_HOURS),
+                    )
                     .using_db(conn)
-                    .select_for_update()
-                    .prefetch_related("user")
+                    .select_for_update(skip_locked=True)   # <-- ключ
+                    .order_by("-created_at")
                     .first()
                 )
 
-                if not locked_payment:
+                if not payment:
+                    # больше нечего забирать в этом запуске
+                    break
+
+                checked_count += 1
+                payment_id = payment.id
+
+                # safety: если уже обработан (на всякий)
+                if payment.is_success or payment.processed:
                     continue
 
-                # Уже обработан другим воркером/инстансом
-                if locked_payment.is_success or locked_payment.processed:
+                # 2) Запрос в CKassa (да, он внутри транзакции; зато строка уже "занята")
+                payment_data = await get_ckassa_payments(payment.invoice_id)
+                if not (payment_data and payment_data.get("state") == "PAYED"):
                     continue
 
-                # 2) Лочим пользователя (чтобы не было гонок по balance)
+                # 3) Лочим пользователя и начисляем (как у тебя)
                 user = (
-                    await models.User.filter(id=locked_payment.user.id)
+                    await models.User.filter(id=payment.user_id)
                     .using_db(conn)
                     .select_for_update()
                     .first()
                 )
                 if not user:
-                    raise RuntimeError(f"User not found for payment_id={locked_payment.id}")
+                    raise RuntimeError(f"User not found for payment_id={payment.id}")
 
-                # 3) Считаем сумму к начислению (учитывая бонус)
                 if user.bonus_end_at is not None and user.bonus_end_at > timezone.now():
-                    amount = floor(locked_payment.amount * 1.1)
+                    amount = floor(payment.amount * 1.1)
                     user.bonus_end_at = None
                 else:
-                    amount = locked_payment.amount
+                    amount = payment.amount
 
-                bonus_amount = int(amount - locked_payment.amount)
+                bonus_amount = int(amount - payment.amount)
 
-                # 4) Помечаем платёж обработанным (idem-potency флаг)
-                locked_payment.is_success = True
-                locked_payment.processed = True
-                await locked_payment.save(using_db=conn, update_fields=["is_success", "processed"])
+                payment.is_success = True
+                payment.processed = True
+                await payment.save(using_db=conn, update_fields=["is_success", "processed"])
 
-                # 5) Пишем бонус отдельной строкой (если применился)
                 if bonus_amount > 0:
                     await models.Payment.create(
                         user=user,
                         method=models.PaymentMethod.BONUS10,
                         amount=bonus_amount,
                         continue_data={
-                            "source_payment_id": locked_payment.id,
-                            "source_method": locked_payment.method.value,
-                            "source_invoice_id": locked_payment.invoice_id,
+                            "source_payment_id": payment.id,
+                            "source_method": payment.method.value,
+                            "source_invoice_id": payment.invoice_id,
                         },
                         is_success=True,
                         processed=True,
                         using_db=conn,
                     )
 
-                # 6) Начисляем баланс
                 user.balance += amount
                 await user.save(using_db=conn, update_fields=["balance", "bonus_end_at"])
 
-            # === Всё, что ниже — вне транзакции (без блокировок) ===
-            # Перечитываем платёж+пользователя для уведомлений (чтобы были актуальные данные)
-            fresh_payment = await models.Payment.get(id=payment.id).prefetch_related("user")
+                amount_for_notify = amount
+                paid_count += 1
 
-            await balance_replenishment_notification(fresh_payment, "ckassa")
+            # 4) Всё, что связано с Telegram — вне транзакции
+            if payment_id and amount_for_notify is not None:
+                fresh_payment = await models.Payment.get(id=payment_id).prefetch_related("user")
 
-            await bot.send_message(
-                fresh_payment.user.telegram_id,
-                f"✅ Баланс успешно пополнен на {amount}₽ через CKassa.\n"
-                f"💰 Ваш баланс: {fresh_payment.user.balance}₽"
-            )
+                await balance_replenishment_notification(fresh_payment, "ckassa")
 
-            await process_referral_bonus(fresh_payment)
+                await bot.send_message(
+                    fresh_payment.user.telegram_id,
+                    f"✅ Баланс успешно пополнен на {amount_for_notify}₽ через CKassa.\n"
+                    f"💰 Ваш баланс: {fresh_payment.user.balance}₽"
+                )
+
+                await process_referral_bonus(fresh_payment)
 
         except TelegramBadRequest:
             pass
         except Exception as e:
-            await replenishment_error_message(payment, "CKassa")
+            if payment_id:
+                try:
+                    payment_obj = await models.Payment.get(id=payment_id)
+                    await replenishment_error_message(payment_obj, "CKassa")
+                except Exception:
+                    pass
             logger.exception(f"Ошибка при проверке оплаты CKassa: {e}")
 
+    elapsed = time.monotonic() - start
+    logger.info(
+        f"CKASSA: checked={checked_count} paid={paid_count} "
+        f"max_per_run={MAX_PER_RUN} lookback_h={LOOKBACK_HOURS} finished in {elapsed:.1f}s"
+    )
 
 async def check_payment_cryptomus():
     # Получаем список платежей, которые нужно проверить, из базы данных.

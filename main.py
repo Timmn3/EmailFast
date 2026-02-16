@@ -206,7 +206,7 @@ def set_scheduled_jobs(scheduler):
             # Проверка Email
             scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
             # Проверка платежей через CKassa
-            scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=1)
+            scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=5, coalesce=True)
             # Проверка платежей через Streampay
             scheduler.add_job(check_payment_streampay, "interval", seconds=48, max_instances=10)
             # Проверка платежей через FreeKassa
