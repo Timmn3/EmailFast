@@ -501,11 +501,13 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                 else:
                     provider_resp = f"skip: unknown provider '{provider_to_cancel}'"
 
-                logger.bind(user_id=user_id, action="cancel_service").log(
+                logger.bind(user_id=user_id, action="cancel_service").opt(raw=True).log(
                     "USER_ACTION",
                     f"Provider action: action={provider_action}, provider={provider_to_cancel}, "
-                    f"provider_activation_id={provider_activation_id}, response={provider_resp}"
+                    f"provider_activation_id={provider_activation_id}, response={provider_resp!r}"
                 )
+
+
 
             except Exception as e:
                 logger.opt(exception=e).error(
