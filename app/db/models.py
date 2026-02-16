@@ -1180,13 +1180,33 @@ class Payment(Model):
 
     @classmethod
     async def get_ckassa_payments(cls):
-        return await cls.filter(
-            method=PaymentMethod.CKASSA,
-            is_success=False,
-            processed=False,
-            invoice_id__isnull=False,
-            created_at__gte=timezone.now() - timedelta(days=2)
-        ).prefetch_related("user").order_by("-created_at")
+        """
+        Возвращает кандидатов на проверку оплаты CKassa.
+
+        Почему так:
+        - Проверка оплаты делает сетевой запрос на каждый invoice_id.
+          Если выбирать платежи за 2 дня без лимита, один проход может
+          занимать десятки минут, и новые оплаты будут зачисляться с задержкой.
+
+        Стратегия:
+        - ограничиваем окно по времени (обычно достаточно для жизни ссылки)
+        - ограничиваем размер батча, чтобы проход всегда был быстрым
+        """
+        LOOKBACK_HOURS = 1  # при необходимости можно поднять до 12/24
+        BATCH_LIMIT = 300  # подстрой под свою скорость/лимиты CKassa
+
+        return await (
+            cls.filter(
+                method=PaymentMethod.CKASSA,
+                is_success=False,
+                processed=False,
+                invoice_id__isnull=False,
+                created_at__gte=timezone.now() - timedelta(hours=LOOKBACK_HOURS),
+            )
+            .order_by("-created_at")
+            .limit(BATCH_LIMIT)
+            .prefetch_related("user")
+        )
 
 
 class Withdraw(Model):

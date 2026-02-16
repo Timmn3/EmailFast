@@ -423,48 +423,91 @@ async def check_payment_ckassa():
         try:
             payment_data = await get_ckassa_payments(payment.invoice_id)
 
-            if payment_data and payment_data.get('state') == 'PAYED':
-                payment.is_success = True
-                await payment.save()
+            # Если платёж ещё не оплачен — пропускаем
+            if not (payment_data and payment_data.get("state") == "PAYED"):
+                continue
 
-                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
-                    amount = floor(payment.amount * 1.1)
-                    payment.user.bonus_end_at = None
+            # === Критично: анти-дубль через транзакцию + SELECT FOR UPDATE ===
+            async with in_transaction() as conn:
+                # 1) Лочим строку платежа
+                locked_payment = (
+                    await models.Payment.filter(id=payment.id)
+                    .using_db(conn)
+                    .select_for_update()
+                    .prefetch_related("user")
+                    .first()
+                )
+
+                if not locked_payment:
+                    continue
+
+                # Уже обработан другим воркером/инстансом
+                if locked_payment.is_success or locked_payment.processed:
+                    continue
+
+                # 2) Лочим пользователя (чтобы не было гонок по balance)
+                user = (
+                    await models.User.filter(id=locked_payment.user.id)
+                    .using_db(conn)
+                    .select_for_update()
+                    .first()
+                )
+                if not user:
+                    raise RuntimeError(f"User not found for payment_id={locked_payment.id}")
+
+                # 3) Считаем сумму к начислению (учитывая бонус)
+                if user.bonus_end_at is not None and user.bonus_end_at > timezone.now():
+                    amount = floor(locked_payment.amount * 1.1)
+                    user.bonus_end_at = None
                 else:
-                    amount = payment.amount
+                    amount = locked_payment.amount
 
-                # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
-                bonus_amount = int(amount - payment.amount)
+                bonus_amount = int(amount - locked_payment.amount)
+
+                # 4) Помечаем платёж обработанным (idem-potency флаг)
+                locked_payment.is_success = True
+                locked_payment.processed = True
+                await locked_payment.save(using_db=conn, update_fields=["is_success", "processed"])
+
+                # 5) Пишем бонус отдельной строкой (если применился)
                 if bonus_amount > 0:
-                    bonus_payment = await models.Payment.create_payment(
-                        user=payment.user,
+                    await models.Payment.create(
+                        user=user,
                         method=models.PaymentMethod.BONUS10,
                         amount=bonus_amount,
                         continue_data={
-                            "source_payment_id": payment.id,
-                            "source_method": payment.method.value,
-                            "source_invoice_id": payment.invoice_id,
-                        }
+                            "source_payment_id": locked_payment.id,
+                            "source_method": locked_payment.method.value,
+                            "source_invoice_id": locked_payment.invoice_id,
+                        },
+                        is_success=True,
+                        processed=True,
+                        using_db=conn,
                     )
-                    bonus_payment.is_success = True
-                    await bonus_payment.save()
 
-                payment.user.balance += amount
-                await payment.user.save()
+                # 6) Начисляем баланс
+                user.balance += amount
+                await user.save(using_db=conn, update_fields=["balance", "bonus_end_at"])
 
-                await balance_replenishment_notification(payment, "ckassa")
-                await bot.send_message(
-                    chat_id=payment.user.telegram_id,
-                    text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
-                )
+            # === Всё, что ниже — вне транзакции (без блокировок) ===
+            # Перечитываем платёж+пользователя для уведомлений (чтобы были актуальные данные)
+            fresh_payment = await models.Payment.get(id=payment.id).prefetch_related("user")
 
-                await process_referral_bonus(payment)
+            await balance_replenishment_notification(fresh_payment, "ckassa")
+
+            await bot.send_message(
+                fresh_payment.user.telegram_id,
+                f"✅ Баланс успешно пополнен на {amount}₽ через CKassa.\n"
+                f"💰 Ваш баланс: {fresh_payment.user.balance}₽"
+            )
+
+            await process_referral_bonus(fresh_payment)
 
         except TelegramBadRequest:
             pass
         except Exception as e:
-            logger.warning(e)
             await replenishment_error_message(payment, "CKassa")
+            logger.exception(f"Ошибка при проверке оплаты CKassa: {e}")
 
 
 async def check_payment_cryptomus():
@@ -549,8 +592,15 @@ async def check_sms():
                         get_full_message=True
                     )
                 except Exception as e:
+                    # ✅ pyonlinesim может отвечать "error_no_operations" — операция недоступна/не существует.
+                    # Для планировщика это не критично: просто пропускаем и идём дальше.
+                    if "error_no_operations" in str(e):
+                        continue
+
+                    # Временная ошибка/лимиты — тоже пропускаем
                     if e.__class__.__name__ == "TryAgainLater":
                         continue
+
                     raise
                 try:
                     name = await activation.get_service_2_name()
@@ -667,21 +717,38 @@ async def check_sms():
     except asyncio.CancelledError:
         pass
     except Exception as e:
+        # ⚠️ Не полагаемся на activation.user (может быть не загружен и быть QuerySet)
+        user_tg_id = None
+        try:
+            u = getattr(activation, "user", None)
+            user_tg_id = getattr(u, "telegram_id", None)
+
+            # если relation не загружен — достанем через FK
+            if not user_tg_id and getattr(activation, "user_id", None):
+                user_tg_id = await models.User.filter(id=activation.user_id).values_list("telegram_id", flat=True).first()
+        except Exception:
+            pass
 
         phone = getattr(activation, "phone_number", None)
         act_id = getattr(activation, "activation_id", None)
         status_obj = getattr(activation, "status", None)
         status_name = getattr(status_obj, "name", None)
         provider = getattr(activation, "provider", None)
-        if provider == "onlinesim":
-            svc_name = activation.service_2.name
-        else:
-            svc_name = activation.service.name
+
+        # service/service_2 тоже могут быть не подгружены — берём безопасно
+        svc_name = None
+        try:
+            if provider == "onlinesim":
+                svc_name = getattr(getattr(activation, "service_2", None), "name", None)
+            else:
+                svc_name = getattr(getattr(activation, "service", None), "name", None)
+        except Exception:
+            svc_name = None
 
         error_info = f"""
         ❌ Ошибка в check_sms
         ───────────────────
-        🔹 Пользователь: {activation.user.telegram_id}
+        🔹 Пользователь: {user_tg_id or 'Неизвестно'}
         🔹 Номер: {phone or 'Неизвестно'}
         🔹 Сервис: {svc_name or 'Неизвестно'}
         🔹 Провайдер: {provider or 'Неизвестно'}
@@ -691,6 +758,7 @@ async def check_sms():
         ⚠️ Ошибка: {e}
         """
         await send_coder(error_info)
+
 
 
 import asyncio
