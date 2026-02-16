@@ -17,6 +17,8 @@ logger.remove()
 
 # === Кастомные уровни логгирования ===
 logger.level("USER_ACTION", no=38, color="<yellow>")
+logger.level("REFERRAL_BONUS", no=39, color="<cyan>")
+
 
 
 # === Форматтеры ===
