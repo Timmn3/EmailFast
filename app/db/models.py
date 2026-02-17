@@ -1060,6 +1060,7 @@ class Payment(Model):
     # Поля модели Payment
     id: int = fields.BigIntField(pk=True)  # Уникальный идентификатор платежа (первичный ключ)
     user: User = fields.ForeignKeyField('models.User', related_name='payments')  # Связь с моделью User (внешний ключ)
+    user_id: int
     method: PaymentMethod = fields.CharEnumField(PaymentMethod, max_length=16)  # Метод оплаты (перечисление)
     amount: float = fields.FloatField()  # Сумма платежа
     order_id: str = fields.CharField(max_length=128, unique=True, index=True,

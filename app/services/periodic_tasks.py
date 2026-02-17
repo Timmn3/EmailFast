@@ -426,8 +426,9 @@ async def check_payment_ckassa():
     """
     start = time.monotonic()
 
-    LOOKBACK_HOURS = 24      # окно, чтобы не ковырять 2 дня (можно 6/12/24)
-    MAX_PER_RUN = 200        # ограничение на количество обработок за 1 запуск
+    # ⬇️ Временно расширяем окно, чтобы догнать платежи, которые могли выпасть из-за очередности.
+    LOOKBACK_HOURS = 24
+    MAX_PER_RUN = 200
 
     paid_count = 0
     checked_count = 0
@@ -449,12 +450,12 @@ async def check_payment_ckassa():
                     )
                     .using_db(conn)
                     .select_for_update(skip_locked=True)   # <-- ключ
-                    .order_by("-created_at")
+                    # ✅ ВАЖНО: берём самый старый первым, иначе при постоянном потоке новые будут "вытеснять" старые
+                    .order_by("created_at")
                     .first()
                 )
 
                 if not payment:
-                    # больше нечего забирать в этом запуске
                     break
 
                 checked_count += 1
@@ -466,6 +467,8 @@ async def check_payment_ckassa():
 
                 # 2) Запрос в CKassa (да, он внутри транзакции; зато строка уже "занята")
                 payment_data = await get_ckassa_payments(payment.invoice_id)
+
+                # Если провайдер вернул ошибку/не PAYED — просто оставляем на повторную проверку
                 if not (payment_data and payment_data.get("state") == "PAYED"):
                     continue
 

@@ -18,7 +18,7 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
 
     Возвращает:
     tuple:
-        - invoice_id (str): Уникальный идентификатор инвойса (<= 40 символов, т.к. это реквизит "Логин" в properties).
+        - invoice_id (str|None): Уникальный идентификатор инвойса (<= 40 символов) или None, если инвойс не создан.
         - invoice_url (str|None): Ссылка на оплату или None, если провайдер вернул ошибку.
     """
     # Конвертируем сумму из рублей в копейки
@@ -65,16 +65,17 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(url, headers=headers, data=json.dumps(data))
     except Exception as e:
+        # ВАЖНО: если запрос не ушёл/упал — инвойса у провайдера НЕТ, значит invoice_id нельзя считать валидным
         logger.opt(exception=e).error(f"CKassa create2: ошибка запроса (invoice_id={invoice_id})")
-        return invoice_id, None
+        return None, None
 
     if response.status_code == 200:
         invoice_url = response.text
         return invoice_id, invoice_url
 
-    # ❗️Важно: НЕ возвращаем длинную строку ошибки как invoice_id (иначе снова упадём при сохранении в БД)
     logger.error(f"CKassa create2: status={response.status_code}, body={response.text[:500]}")
-    return invoice_id, None
+    # ВАЖНО: инвойс не создан — не возвращаем invoice_id, чтобы не плодить 'Invoice not found' в проверке
+    return None, None
 
 
 async def get_ckassa_payments(invoice: str):
