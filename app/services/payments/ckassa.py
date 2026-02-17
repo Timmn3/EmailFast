@@ -26,8 +26,7 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
 
     # Получаем текущую дату и прибавляем +0300 (оставляю как у тебя, чтобы не менять поведение)
     tz_moscow = pytz.timezone('Europe/Moscow')
-    moscow_time = datetime.now(tz_moscow) + timedelta(hours=2)
-    best_before = moscow_time.strftime("%d-%m-%Y %H:%M:%S +0300")
+    best_before = (datetime.now(tz_moscow) + timedelta(hours=1)).strftime("%d-%m-%Y %H:%M:%S %z")
 
     payer_id = str(payer_id)
 

@@ -427,7 +427,7 @@ async def check_payment_ckassa():
     start = time.monotonic()
 
     # ⬇️ Временно расширяем окно, чтобы догнать платежи, которые могли выпасть из-за очередности.
-    LOOKBACK_HOURS = 24
+    LOOKBACK_HOURS = 2
     MAX_PER_RUN = 200
 
     paid_count = 0
