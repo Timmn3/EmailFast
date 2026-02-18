@@ -1194,7 +1194,6 @@ class Payment(Model):
         - ограничиваем размер батча, чтобы проход всегда был быстрым
         """
         LOOKBACK_HOURS = 2  # при необходимости можно поднять до 12/24
-        BATCH_LIMIT = 300  # подстрой под свою скорость/лимиты CKassa
 
         return await (
             cls.filter(
@@ -1205,7 +1204,6 @@ class Payment(Model):
                 created_at__gte=timezone.now() - timedelta(hours=LOOKBACK_HOURS),
             )
             .order_by("-created_at")
-            .limit(BATCH_LIMIT)
             .prefetch_related("user")
         )
 
