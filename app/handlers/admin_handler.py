@@ -113,15 +113,17 @@ async def stat(message: types.Message):
         created_at__gte=today_start
     ).count()
 
+    first_day_of_month = utc_now.replace(day=1, hour=0, minute=0, second=0)
+
     sms_count_month = await models.Activation.filter(
         sms_text__isnull=False,
         sms_text__not="",
-        created_at__gte=utc_now - timedelta(days=30)
+        created_at__gte=first_day_of_month
     ).count()
 
     # --- SMS rented ---
     rented_sms_total = await models.Activation.all().count()
-    rented_sms_month = await models.Activation.filter(created_at__gte=utc_now - timedelta(days=30)).count()
+    rented_sms_month = await models.Activation.filter(created_at__gte=first_day_of_month).count()
     rented_sms_today = await models.Activation.filter(created_at__gte=today_start).count()
 
     # --- Payments (КЛЮЧЕВОЕ УСКОРЕНИЕ) ---
@@ -168,7 +170,7 @@ async def stat(message: types.Message):
     rented_number_total = rented_number_total[0]["total"] or 0
 
     rented_number_month = await models.Rent.filter(
-        created_at__gte=utc_now - timedelta(days=30)
+        created_at__gte=utc_now.replace(day=1, hour=0, minute=0, second=0)
     ).annotate(total=Sum("purchase_count")).values("total")
     rented_number_month = rented_number_month[0]["total"] or 0
 
@@ -186,7 +188,7 @@ async def stat(message: types.Message):
     )
 
     # --- Month boundaries ---
-    first_day_of_month = utc_now.replace(day=1, hour=0, minute=0, second=0)
+
     last_month = utc_now.month - 1 if utc_now.month > 1 else 12
     last_year = utc_now.year if utc_now.month > 1 else utc_now.year - 1
     first_day_of_last_month = datetime(last_year, last_month, 1, tzinfo=pytz.timezone("Europe/Moscow"))
