@@ -1058,7 +1058,7 @@ async def send_coder(msg_text: str, reply_markup: types.InlineKeyboardMarkup | N
         await bot.send_message(
             chat_id=CODER,
             text=str(msg_text),
-            parse_mode=None,
+            parse_mode='HTML',
             disable_web_page_preview=True,
             reply_markup=reply_markup,
         )
