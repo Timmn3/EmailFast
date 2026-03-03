@@ -1002,6 +1002,15 @@ async def check_mail_expiration_and_notify():
 
 
 async def notify_week_expiration():
+    """
+    Отправляет уведомление пользователям, у которых бесплатная неделя
+    аренды почты заканчивается примерно через 24 часа.
+
+    Важно:
+    - НЕ сбрасываем is_free_week после истечения срока.
+    - Этот флаг теперь используется как исторический признак того,
+      что бесплатная неделя уже была использована.
+    """
     tz = pytz.timezone('Europe/Moscow')
     now = datetime.datetime.now(pytz.utc).astimezone(tz)
     notify_start = now + datetime.timedelta(hours=23, minutes=50)
@@ -1018,7 +1027,8 @@ async def notify_week_expiration():
     for mail in mails:
         try:
             mail.notification_sent = True
-            await mail.save()
+            await mail.save(update_fields=["notification_sent"])
+
             await bot.send_message(
                 chat_id=mail.user.telegram_id,
                 text="⏰ Бесплатная неделя аренды почты заканчивается через 24 часа!\n"
@@ -1028,18 +1038,6 @@ async def notify_week_expiration():
         except Exception as e:
             logger.opt(exception=e).error("Ошибка уведомления о завершении недели")
             continue
-
-    # отключение флага is_free_week, если неделя уже истекла
-    expired = await models.Mail.filter(
-        is_active=False,
-        is_free_week=True,
-        expire_at__lt=now
-    )
-
-    for mail in expired:
-        mail.is_free_week = False
-        await mail.save()
-
 
 from aiogram import types
 from aiogram.exceptions import TelegramBadRequest

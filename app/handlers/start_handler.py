@@ -292,6 +292,7 @@ async def change_email(call: types.CallbackQuery):
     Важно:
     - Проверяем владельца почты (mail.user == текущий user), чтобы нельзя было подставить чужой mail_id.
     - Внешний вызов create_mail() делаем ДО транзакции, чтобы не держать блокировки БД.
+    - Сохраняем флаг is_free_week, чтобы история использования бесплатной недели не терялась.
     """
     from tortoise.transactions import in_transaction
 
@@ -346,6 +347,7 @@ async def change_email(call: types.CallbackQuery):
             await old_mail_locked.save(using_db=conn, update_fields=["is_active"])
 
             # Создаём новый арендованный ящик с тем же сроком аренды
+            # и переносим признаки бесплатной недели/уведомления.
             new_mail = await models.Mail.create(
                 using_db=conn,
                 user=user,
@@ -353,7 +355,10 @@ async def change_email(call: types.CallbackQuery):
                 token=token,
                 is_paid_mail=True,
                 is_active=True,
-                expire_at=old_expire_at,
+                expire_at=old_mail_locked.expire_at,
+                is_free_week=old_mail_locked.is_free_week,
+                days=old_mail_locked.days,
+                notification_sent=old_mail_locked.notification_sent,
             )
 
         logger.bind(user_id=user_id, action="change_email").log(
@@ -400,7 +405,6 @@ async def change_email(call: types.CallbackQuery):
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
-
 
 @router.callback_query(F.data.startswith('continue_payment:'))
 async def continue_payment(call: types.CallbackQuery, dialog_manager: DialogManager):

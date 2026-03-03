@@ -9,15 +9,29 @@ from loguru import logger
 
 
 async def get_email_info(dialog_manager: DialogManager, **middleware_data):
+    """
+    Получает информацию о текущем почтовом ящике пользователя.
+
+    Важно:
+    - Флаг бесплатной недели больше НЕ сбрасываем после истечения срока.
+    - Доступность кнопки "Неделя, 0₽" определяем по факту того,
+      использовал ли пользователь бесплатную неделю ранее.
+    """
     try:
         user_id = dialog_manager.event.from_user.id
         user = await models.User.get_user(user_id)
-        mail = await models.Mail.filter(user=user).order_by('-id').first()
 
         logger.bind(user_id=user_id, action='get_email_info').log(
             "USER_ACTION",
             "Запрос информации о почтовом ящике"
         )
+
+        if not user:
+            logger.bind(user_id=user_id, action='get_email_info').log(
+                "USER_ACTION",
+                "Пользователь не найден"
+            )
+            return {}
 
         ctx = dialog_manager.current_context()
         mail_id = ctx.start_data.get('mail_id')
@@ -39,33 +53,26 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
 
         paid_mails_count = await models.Mail.filter(is_active=True, is_paid_mail=True).count()
 
-        tz = pytz.timezone('Europe/Moscow')
-        now = datetime.now(pytz.utc).astimezone(tz)
-
-        if mail and mail.is_free_week and mail.expire_at <= now:
-            mail.is_free_week = False
-            await mail.save(update_fields=["is_free_week"])
-
-        is_free_week = not mail.is_free_week if mail else True
-
-        rent_keyboard = rent_email_kb(on_rent_email_item, is_free_week)
+        # Проверяем историю использования бесплатной недели на уровне пользователя.
+        # Если хотя бы одна почта пользователя когда-либо была с is_free_week=True,
+        # кнопку бесплатной недели больше не показываем.
+        free_week_used = await models.Mail.has_used_free_week(user)
 
         logger.bind(user_id=user_id, action='get_email_info').log(
             "USER_ACTION",
-            f"Информация о почте '{mail.email}' успешно получена"
+            f"Информация о почте '{mail.email}' успешно получена | free_week_used={free_week_used}"
         )
 
         return {
             "email": mail.email,
-            "is_free_week": not mail.is_free_week,
-            "rent_keyboard": rent_email_kb(on_rent_email_item, not mail.is_free_week),
+            "is_free_week": free_week_used,
+            "rent_keyboard": rent_email_kb(on_rent_email_item, free_week_used),
             "paid_mails_count": paid_mails_count
         }
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в get_email_info: {e}")
         return {}
-
 
 
 async def get_balance(dialog_manager: DialogManager, **middleware_data):
