@@ -139,7 +139,7 @@ async def refund_and_cleanup_expired_sms() -> None:
                 await bot.send_message(
                     chat_id=user_tg_id,
                     text=(
-                        "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс.</b>\n\n"
+                        "⚡️<b>SMS не поступило, деньги уже вернулись на ваш баланс в боте.</b>\n\n"
                         "🔄Попробуйте новый номер или выберите другую страну.\n"
                     ),
                     parse_mode="HTML",
