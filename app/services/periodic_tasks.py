@@ -1674,17 +1674,16 @@ async def check_fraud_balance_discrepancy() -> None:
 
             await send_coder(msg, reply_markup=kb.as_markup())
 
-            if PROJECT_MANAGER:
-                try:
-                    await bot.send_message(
-                        chat_id=PROJECT_MANAGER,
-                        text=str(msg),
-                        parse_mode=None,
-                        disable_web_page_preview=True,
-                        reply_markup=kb.as_markup(),
-                    )
-                except Exception as e:
-                    logger.warning(f"Не удалось отправить AUTO-FRAUD BAN PM={PROJECT_MANAGER}: {e}")
+            try:
+                await bot.send_message(
+                    chat_id=PROJECT_MANAGER,
+                    text=str(msg),
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=kb.as_markup(),
+                )
+            except Exception as e:
+                logger.warning(f"Не удалось отправить AUTO-FRAUD BAN PM={PROJECT_MANAGER}: {e}")
 
             # опционально: уведомим пользователя (мягко)
             try:
