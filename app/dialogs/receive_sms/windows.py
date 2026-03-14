@@ -91,10 +91,13 @@ def select_country_window():
     """
     Создает окно выбора страны с прокручиваемым списком стран и кнопкой поиска.
 
+    Для сервиса Telegram текст заголовка подменяется на предупреждение с кликабельной ссылкой.
+    Для остальных сервисов остается стандартный текст.
+
     :return: Объект Window от aiogram_dialog.
     """
     return Window(
-        Const(bt.SELECT_COUNTRY),
+        Format("{select_country_text}"),
         ScrollingGroup(
             Select(
                 Format("{item[country]} {item[price]} ₽"),
@@ -112,7 +115,6 @@ def select_country_window():
         state=states.CountryMenu.select_country,
         getter=get_countries_service
     )
-
 
 # Окно ввода страны
 def enter_country_window():

@@ -1,5 +1,6 @@
 from aiogram_dialog import DialogManager
 from app.db import models
+from app.services import bot_texts as bt
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 
@@ -13,30 +14,47 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
     **middleware_data: Дополнительные данные middleware.
 
     Возвращает:
-    dict: Словарь с отфильтрованными странами и кодом услуги.
+    dict: Словарь с отфильтрованными странами, кодом услуги
+    и текстом заголовка окна выбора страны.
     """
     try:
         ctx = dialog_manager.current_context()
 
         # Проверяем, существует ли start_data и является ли она словарем
         if not ctx.start_data or not isinstance(ctx.start_data, dict):
-            return {"countries": [], "service_code": None}
+            return {
+                "countries": [],
+                "service_code": None,
+                "select_country_text": bt.SELECT_COUNTRY,
+            }
 
         countries_with_prices = ctx.start_data.get("countries_with_prices")
         service_code = ctx.start_data.get("service_code")
-        search_name = ctx.dialog_data.get('search_name') if ctx.dialog_data else None
+        search_name = ctx.dialog_data.get("search_name") if ctx.dialog_data else None
 
-        # Фильтровать страны по поисковому имени, если оно существует.
+        # Текст предупреждения показываем только для Telegram
+        if service_code == "telegram":
+            select_country_text = (
+                "‼️Антифрод системы телеграма могут опознать подозрительную активность, "
+                "не принять код после ввода, заморозить аккаунт или наложить временный бан.\n\n"
+                "Указанные ограничения не являются основанием для возврата.\n\n"
+                'Изучите <a href="https://telegra.ph/Rekomendacii-dlya-registracii-Telegram-03-14">рекомендации</a>, '
+                "как минимизировать риски и выберите страну⤵️"
+            )
+        else:
+            select_country_text = bt.SELECT_COUNTRY
+
+        # Фильтровать страны по поисковому имени, если оно существует
         if countries_with_prices is not None:
             if search_name:
                 filtered_countries = [
-                    {"id": idx, "country": item['country'], "price": item['price']}
+                    {"id": idx, "country": item["country"], "price": item["price"]}
                     for idx, item in enumerate(countries_with_prices)
-                    if item['country'] == search_name
+                    if item["country"] == search_name
                 ]
             else:
                 filtered_countries = [
-                    {"id": idx, "country": item['country'], "price": item['price']}
+                    {"id": idx, "country": item["country"], "price": item["price"]}
                     for idx, item in enumerate(countries_with_prices)
                 ]
         else:
@@ -44,13 +62,13 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
 
         data = {
             "countries": filtered_countries,
-            "service_code": service_code
+            "service_code": service_code,
+            "select_country_text": select_country_text,
         }
         return data
 
     except Exception as e:
         logger.error(e)
-
 
 async def get_services(dialog_manager: DialogManager, **middleware_data):
     """
