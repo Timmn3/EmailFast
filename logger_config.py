@@ -20,7 +20,6 @@ logger.level("USER_ACTION", no=38, color="<yellow>")
 logger.level("REFERRAL_BONUS", no=39, color="<cyan>")
 
 
-
 # === Форматтеры ===
 
 def formatter(record):
@@ -89,6 +88,9 @@ logger.add(
     "logs/users/user_actions_{time:DD-MM-YYYY HH:mm}.log",
     level="USER_ACTION",
     rotation="10 MB",
+    retention="14 days",
+    compression="zip",
+    encoding="utf-8",
     format=user_action_formatter,
     enqueue=False
 )
@@ -98,10 +100,12 @@ logger.add(
     "logs/errors/error_{time:DD-MM-YYYY HH:mm}.log",
     level="ERROR",
     rotation="20 MB",
+    retention="30 days",
     format=error_formatter,
     backtrace=True,
     diagnose=True,
     compression="zip",
+    encoding="utf-8",
     enqueue=False
 )
 
@@ -110,6 +114,9 @@ logger.add(
     "logs/general/all_logs_{time:DD-MM-YYYY HH:mm}.log",
     level="INFO",
     rotation="50 MB",
+    retention="14 days",
+    compression="zip",
+    encoding="utf-8",
     format=lambda r: (
         f"{r['time']:YYYY-MM-DD HH:mm:ss} | {r['level']} | "
         f"{os.path.relpath(r['file'].path, os.getcwd())}:{r['line']} | "
