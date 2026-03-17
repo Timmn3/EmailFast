@@ -204,7 +204,7 @@ def set_scheduled_jobs(scheduler):
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
             # Проверка Email
-            scheduler.add_job(check_email, "interval", seconds=30, max_instances=3)
+            scheduler.add_job(check_email, "interval", seconds=60, max_instances=3)
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=1)
             # Проверка платежей через Streampay
