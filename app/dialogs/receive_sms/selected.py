@@ -562,19 +562,35 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
             except Exception as e:
                 await _reply(text=NOT_NUMBERS_ALERT)
                 error_message = str(e)
+                error_message_lower = error_message.lower()
+
                 logger.bind(user_id=user_id, action='send_service_on_country').log(
                     "USER_ACTION", f"Ошибка при получении номера OnlineSim: {error_message}"
                 )
 
-                if "Not enough funds" in error_message:
+                if "not enough funds" in error_message_lower:
                     # Оповещение администраторов о нехватке средств на OnlineSim
                     for admin_id in ADMINS:
                         await bot.send_message(
                             chat_id=admin_id,
                             text=(
-                                "🚨 *Внимание, администратор!*\\n"
-                                "❌ На сервисе *OnlineSim* недостаточно средств для выполнения операции.\\n"
-                                f"💬 *Описание ошибки*: {error_message}"
+                                "🚨 *Внимание, администратор!*\n"
+                                "❌ На сервисе *OnlineSim* недостаточно средств для выполнения операции.\n"
+                                f"💬 *Ошибка*: `{error_message}`\n"
+                            ),
+                            parse_mode="Markdown"
+                        )
+
+                elif "exceeded concurrent operations for your account" in error_message_lower:
+                    # Оповещение администраторов о достижении лимита одновременных операций на OnlineSim
+                    for admin_id in ADMINS:
+                        await bot.send_message(
+                            chat_id=admin_id,
+                            text=(
+                                "🚨 *Внимание, администратор!*\n"
+                                "⚠️ На сервисе *OnlineSim* достигнут лимит операций по аккаунту.\n"
+                                "ℹ️ Провайдер временно ограничил новые выдачи номеров.\n"
+                                f"💬 *Ошибка*: `{error_message}`\n"
                             ),
                             parse_mode="Markdown"
                         )
