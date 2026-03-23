@@ -794,6 +794,167 @@ class Mail(Model):
     async def has_used_free_week(cls, user: User) -> bool:
         return await cls.filter(user=user, is_free_week=True).exists()
 
+class RentalEmailAccount(Model):
+    """
+    Пул заранее закупленных почтовых аккаунтов для аренды.
+
+    Один аккаунт можно выдавать многократно разным пользователям,
+    но одновременно он должен быть закреплён только за одной активной арендой.
+    """
+
+    class Meta:
+        table = "rental_email_accounts"
+        table_description = "Pool of rental email accounts"
+        ordering = ["queue_order", "id"]
+
+    id: int = fields.BigIntField(pk=True)
+
+    # Данные аккаунта
+    email: str = fields.CharField(max_length=128, unique=True, index=True)
+    password: str = fields.CharField(max_length=255)
+    account_type: str = fields.CharField(
+        max_length=32,
+        default="limited",
+        index=True,
+        description='Тип аккаунта, например "limited" или "timeless"',
+    )
+
+    # Состояние аккаунта в пуле
+    is_enabled: bool = fields.BooleanField(
+        default=True,
+        index=True,
+        description="Можно ли использовать аккаунт для новых аренд",
+    )
+    is_reserved: bool = fields.BooleanField(
+        default=False,
+        index=True,
+        description="Аккаунт сейчас закреплён за активной арендой",
+    )
+
+    # Очередь повторной выдачи:
+    # чем меньше queue_order, тем раньше аккаунт будет выдан снова
+    queue_order: int = fields.BigIntField(default=0, index=True)
+
+    # Служебные даты
+    last_assigned_at: datetime = fields.DatetimeField(null=True)
+    released_at: datetime = fields.DatetimeField(null=True)
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
+
+    @classmethod
+    async def get_next_available(cls):
+        """
+        Возвращает следующий доступный аккаунт из пула.
+
+        Важно:
+        Это только чтение. Атомарное резервирование сделаем
+        отдельным сервисом через транзакцию.
+        """
+        return await cls.filter(
+            is_enabled=True,
+            is_reserved=False,
+        ).order_by("queue_order", "id").first()
+
+    @classmethod
+    async def get_max_queue_order(cls) -> int:
+        """
+        Возвращает максимальный queue_order в пуле.
+        Нужен, чтобы после завершения аренды ставить аккаунт
+        в конец очереди.
+        """
+        account = await cls.all().order_by("-queue_order", "-id").first()
+        return account.queue_order if account else 0
+
+    def __str__(self):
+        return self.email
+
+
+class RentalEmailLease(Model):
+    """
+    Конкретная аренда почтового ящика пользователем.
+
+    Эта модель отделена от Mail:
+    - Mail остаётся для текущей временной / mail.tm логики;
+    - RentalEmailLease используется только для аренды FirstMail-ящиков из пула.
+    """
+
+    class Meta:
+        table = "rental_email_leases"
+        table_description = "Rental email leases"
+        ordering = ["-id"]
+
+    id: int = fields.BigIntField(pk=True)
+
+    # Кто арендовал
+    user: User = fields.ForeignKeyField(
+        "models.User",
+        related_name="rental_email_leases",
+    )
+
+    # Какой аккаунт из пула был выдан
+    account: RentalEmailAccount = fields.ForeignKeyField(
+        "models.RentalEmailAccount",
+        related_name="leases",
+    )
+
+    # Снимок email на момент аренды — удобно для истории и выборок
+    email: str = fields.CharField(max_length=128, index=True)
+
+    # Уже обработанные письма/UID, чтобы не слать дубли
+    old_messages_id: list = fields.JSONField(default=list)
+
+    # Состояние аренды
+    is_active: bool = fields.BooleanField(default=True, index=True)
+    notification_sent: bool = fields.BooleanField(default=False)
+
+    # Параметры аренды
+    is_free_week: bool = fields.BooleanField(default=False)
+    days: int = fields.IntField(default=0)
+    expire_at: datetime = fields.DatetimeField()
+
+    # Служебные даты
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
+
+    @classmethod
+    async def get_lease(cls, lease_id: int):
+        """
+        Получает аренду по её ID.
+        """
+        return await cls.get_or_none(id=lease_id)
+
+    @classmethod
+    async def get_user_active_leases(cls, user: User):
+        """
+        Возвращает все активные аренды пользователя.
+        """
+        return await cls.filter(
+            user=user,
+            is_active=True,
+        ).prefetch_related("account").all()
+
+    @classmethod
+    async def get_expired_leases(cls):
+        """
+        Возвращает все активные аренды, у которых истёк срок.
+        """
+        return (
+            await cls.filter(
+                expire_at__lte=timezone.now(),
+                is_active=True,
+            )
+            .prefetch_related("user", "account")
+            .all()
+        )
+
+    @classmethod
+    async def has_used_free_week(cls, user: User) -> bool:
+        """
+        Проверяет, использовал ли пользователь бесплатную неделю аренды.
+        """
+        return await cls.filter(user=user, is_free_week=True).exists()
+
+    def __str__(self):
+        return self.email
+
 
 class Letter(Model):
     class Meta:
