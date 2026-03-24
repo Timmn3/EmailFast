@@ -35,7 +35,7 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
         # Текст предупреждения показываем только для Telegram
         if service_code == "telegram":
             select_country_text = (
-                "‼️Антифрод системы телеграма могут опознать подозрительную активность, "
+                "Алгоритмы сервисов могут опознать подозрительную активность, "
                 "не принять код после ввода, заморозить аккаунт или наложить временный бан.\n\n"
                 "Указанные ограничения не являются основанием для возврата.\n\n"
                 'Изучите <a href="https://telegra.ph/Rekomendacii-dlya-registracii-Telegram-03-14">рекомендации</a>, '
