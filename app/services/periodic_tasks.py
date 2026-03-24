@@ -967,6 +967,153 @@ async def check_rental_email():
         logger.error(f"Необработанная ошибка в check_rental_email(): {type(e).__name__}: {e}")
 
 
+def get_rental_email_notice_kb(lease_id: int) -> types.InlineKeyboardMarkup:
+    """
+    Клавиатура для уведомлений по арендованному FirstMail-ящику.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text=bt.EXTEND_EMAIL_BTN, callback_data=f"extend_rental_email:{lease_id}")
+    builder.button(text="Открыть ящик", callback_data=f"mail:{lease_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def notify_rental_free_week_expiration():
+    """
+    Отправляет уведомление о завершении бесплатной недели FirstMail примерно за 24 часа.
+
+    Важно:
+    - используем отдельную дату free_week_expires_at;
+    - после успешной отправки помечаем и free_week_notified, и expiration_notified,
+      чтобы не было второго общего уведомления об истечении аренды на тот же момент;
+    - старую ветку Mail/mail.tm не затрагиваем.
+    """
+    try:
+        now = timezone.now()
+        notify_start = now + datetime.timedelta(hours=23, minutes=50)
+        notify_end = now + datetime.timedelta(hours=24, minutes=10)
+
+        leases = await models.RentalEmailLease.filter(
+            is_active=True,
+            is_free_week=True,
+            free_week_notified=False,
+            free_week_expires_at__gte=notify_start,
+            free_week_expires_at__lte=notify_end,
+        ).prefetch_related("user", "account")
+
+        for lease in leases:
+            try:
+                await bot.send_message(
+                    chat_id=lease.user.telegram_id,
+                    text=(
+                        f"⏰ Бесплатная неделя аренды почтового ящика "
+                        f"<b>{html.escape(lease.email)}</b> заканчивается примерно через 24 часа.\n"
+                        f"Чтобы сохранить ящик и продолжить приём писем, продлите аренду:"
+                    ),
+                    reply_markup=get_rental_email_notice_kb(lease.id),
+                )
+
+                lease.free_week_notified = True
+                lease.expiration_notified = True
+                await lease.save(update_fields=["free_week_notified", "expiration_notified"])
+
+                logger.bind(
+                    user_id=lease.user.telegram_id,
+                    action="notify_rental_free_week_expiration",
+                ).log(
+                    "USER_ACTION",
+                    f"Отправлено уведомление о завершении бесплатной недели FirstMail: lease_id={lease.id} email={lease.email}"
+                )
+
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка уведомления о завершении бесплатной недели FirstMail "
+                    f"lease_id={lease.id} email={lease.email}: {e}"
+                )
+                continue
+
+            await asyncio.sleep(0)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.opt(exception=e).error(
+            f"Необработанная ошибка в notify_rental_free_week_expiration(): {e}"
+        )
+
+
+async def notify_rental_email_expiration():
+    """
+    Отправляет общее уведомление об истечении аренды FirstMail примерно за 24 часа.
+
+    Важно:
+    - это уведомление идёт только для текущего срока expire_at;
+    - если в этот же момент у аренды заканчивается именно бесплатная неделя,
+      общий алерт пропускаем, чтобы не было дубля;
+    - старую ветку Mail/mail.tm не затрагиваем.
+    """
+    try:
+        now = timezone.now()
+        notify_start = now + datetime.timedelta(hours=23, minutes=50)
+        notify_end = now + datetime.timedelta(hours=24, minutes=10)
+
+        leases = await models.RentalEmailLease.filter(
+            is_active=True,
+            expiration_notified=False,
+            expire_at__gte=notify_start,
+            expire_at__lte=notify_end,
+        ).prefetch_related("user", "account")
+
+        for lease in leases:
+            try:
+                free_week_due_now = (
+                    lease.free_week_expires_at is not None
+                    and not lease.free_week_notified
+                    and notify_start <= lease.free_week_expires_at <= notify_end
+                )
+
+                if free_week_due_now:
+                    await asyncio.sleep(0)
+                    continue
+
+                await bot.send_message(
+                    chat_id=lease.user.telegram_id,
+                    text=(
+                        f"⏰ У вас истекает срок аренды почтового ящика "
+                        f"<b>{html.escape(lease.email)}</b>.\n"
+                        f"До окончания осталось примерно 24 часа.\n\n"
+                        f"Чтобы сохранить ящик и продолжить приём писем, продлите аренду:"
+                    ),
+                    reply_markup=get_rental_email_notice_kb(lease.id),
+                )
+
+                lease.expiration_notified = True
+                await lease.save(update_fields=["expiration_notified"])
+
+                logger.bind(
+                    user_id=lease.user.telegram_id,
+                    action="notify_rental_email_expiration",
+                ).log(
+                    "USER_ACTION",
+                    f"Отправлено уведомление об истечении FirstMail-аренды: lease_id={lease.id} email={lease.email}"
+                )
+
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка уведомления об истечении FirstMail-аренды "
+                    f"lease_id={lease.id} email={lease.email}: {e}"
+                )
+                continue
+
+            await asyncio.sleep(0)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.opt(exception=e).error(
+            f"Необработанная ошибка в notify_rental_email_expiration(): {e}"
+        )
+
 async def close_expired_rental_email_leases():
     """
     Автоматически завершает просроченные аренды FirstMail-ящиков.

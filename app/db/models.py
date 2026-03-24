@@ -905,12 +905,23 @@ class RentalEmailLease(Model):
 
     # Состояние аренды
     is_active: bool = fields.BooleanField(default=True, index=True)
+
+    # Legacy-флаг старой логики. Для FirstMail больше не используем как единственный флаг.
     notification_sent: bool = fields.BooleanField(default=False)
+
+    # Новые отдельные флаги уведомлений для FirstMail
+    expiration_notified: bool = fields.BooleanField(default=False, index=True)
+    free_week_notified: bool = fields.BooleanField(default=False, index=True)
 
     # Параметры аренды
     is_free_week: bool = fields.BooleanField(default=False)
     days: int = fields.IntField(default=0)
     expire_at: datetime = fields.DatetimeField()
+
+    # Отдельная дата конца бесплатной недели.
+    # Нужна, потому что is_free_week — исторический признак,
+    # а expire_at может меняться при продлении.
+    free_week_expires_at: datetime = fields.DatetimeField(null=True, index=True)
 
     # Служебные даты
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
@@ -955,7 +966,6 @@ class RentalEmailLease(Model):
 
     def __str__(self):
         return self.email
-
 
 class Letter(Model):
     class Meta:

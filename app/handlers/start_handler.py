@@ -470,6 +470,11 @@ async def extend_rental_email_confirm(call: types.CallbackQuery, state: FSMConte
 async def confirm_extend_rental_email(call: types.CallbackQuery):
     """
     Финально продлевает аренду FirstMail-ящика.
+
+    Важно:
+    - сбрасываем флаг уведомления об истечении аренды, потому что срок изменился;
+    - если пользователь вручную продлил бесплатную неделю раньше её окончания,
+      дополнительное уведомление о завершении бесплатной недели больше не нужно.
     """
     try:
         user_id = call.from_user.id
@@ -519,7 +524,17 @@ async def confirm_extend_rental_email(call: types.CallbackQuery):
             return
 
         lease.expire_at += timedelta(days=days)
-        await lease.save(update_fields=['expire_at'])
+        lease.expiration_notified = False
+
+        update_fields = ['expire_at', 'expiration_notified']
+
+        # Если пользователь вручную продлил ящик,
+        # отдельное напоминание о завершении бесплатной недели больше не нужно.
+        if lease.free_week_expires_at and not lease.free_week_notified:
+            lease.free_week_notified = True
+            update_fields.append('free_week_notified')
+
+        await lease.save(update_fields=update_fields)
 
         low_balance = await check_low_balance(user, price)
         user.balance -= price
@@ -544,7 +559,6 @@ async def confirm_extend_rental_email(call: types.CallbackQuery):
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /confirm_extend_rental_email: {e}")
         await call.answer("Произошла ошибка.", show_alert=True)
-
 
 @router.callback_query(F.data.startswith("change_rental_email:"))
 async def change_rental_email(call: types.CallbackQuery):

@@ -201,6 +201,7 @@ async def import_rental_accounts_from_text(
         "total": len(pairs),
     }
 
+
 async def issue_rental_email(
     user: models.User,
     days: int,
@@ -222,6 +223,7 @@ async def issue_rental_email(
     old_messages = list(initial_old_messages_id or [])
     now = timezone.now()
     expire_at = now + timedelta(days=days)
+    free_week_expires_at = expire_at if is_free_week else None
 
     async with in_transaction() as conn:
         account = (
@@ -249,9 +251,12 @@ async def issue_rental_email(
             is_initialized=False,
             is_active=True,
             notification_sent=False,
+            expiration_notified=False,
+            free_week_notified=False,
             is_free_week=is_free_week,
             days=days,
             expire_at=expire_at,
+            free_week_expires_at=free_week_expires_at,
         )
 
     await lease.fetch_related("account", "user")
@@ -453,6 +458,7 @@ async def _rollback_rental_email_change(old_lease_id: int, new_lease_id: int) ->
             old_account.is_reserved = True
             await old_account.save(using_db=conn, update_fields=["is_reserved"])
 
+
 async def change_rental_email_lease(
     lease_id: int,
     user: models.User,
@@ -465,7 +471,8 @@ async def change_rental_email_lease(
     - старая аренда временно деактивируется до инициализации нового ящика,
       чтобы защититься от двойных нажатий и гонок;
     - если новый ящик не удалось подготовить, выполняется откат на старую аренду;
-    - expire_at, days, владелец и признак бесплатной недели сохраняются.
+    - expire_at, days, владелец и признак бесплатной недели сохраняются;
+    - новые флаги уведомлений и дата конца бесплатной недели тоже сохраняются.
     """
     now = timezone.now()
 
@@ -522,9 +529,12 @@ async def change_rental_email_lease(
             is_initialized=False,
             is_active=True,
             notification_sent=old_lease.notification_sent,
+            expiration_notified=old_lease.expiration_notified,
+            free_week_notified=old_lease.free_week_notified,
             is_free_week=old_lease.is_free_week,
             days=old_lease.days,
             expire_at=old_lease.expire_at,
+            free_week_expires_at=old_lease.free_week_expires_at,
         )
 
     init_ok = await initialize_rental_email_lease(new_lease.id)
@@ -540,7 +550,7 @@ async def change_rental_email_lease(
         action="change_rental_email_lease",
     ).log(
         "USER_ACTION",
-        f"Смена арендного ящика завершена: old_lease_id={old_lease.id} new_lease_id={new_lease.id} email={new_lease.email}",
+        f"Смена арендного ящика завершена: old_lease_id={old_lease.id} new_lease_id={new_lease.id} email={new_lease.email}"
     )
 
     return new_lease
