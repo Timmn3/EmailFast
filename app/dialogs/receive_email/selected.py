@@ -373,25 +373,34 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_confirm_rent_email: {e}")
 
+
 async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Мои арендованные почтовые ящики".
-    Отображает список арендованных почтовых ящиков пользователя.
 
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    Новая логика:
+    - список берём из RentalEmailLease;
+    - показываем только активные аренды текущего пользователя;
+    - в callback_data передаём lease_id, но сохраняем старый префикс `mail:`,
+      чтобы минимально вмешиваться в существующую навигацию.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_my_rent_emails').log("USER_ACTION", "Запрос списка арендованных почт")
+        logger.bind(user_id=user_id, action='on_my_rent_emails').log(
+            "USER_ACTION",
+            "Запрос списка арендованных почт"
+        )
 
         user = await models.User.get_user(user_id)
         if not user:
             return
 
-        mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
-        if len(mails) == 0:
+        leases = await models.RentalEmailLease.filter(
+            user=user,
+            is_active=True
+        ).order_by("-id").all()
+
+        if len(leases) == 0:
             logger.bind(user_id=user_id, action='on_my_rent_emails').log(
                 "USER_ACTION",
                 "Нет арендованных почт"
@@ -400,18 +409,27 @@ async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: Dia
             return
 
         builder = InlineKeyboardBuilder()
-        for mail in mails:
-            builder.add(types.InlineKeyboardButton(text=mail.email, callback_data=f'mail:{mail.id}'))
+        for lease in leases:
+            builder.add(
+                types.InlineKeyboardButton(
+                    text=lease.email,
+                    callback_data=f'mail:{lease.id}'
+                )
+            )
 
         builder.button(text=bt.BACK_BTN, callback_data='receive_email')
         builder.adjust(1)
 
         logger.bind(user_id=user_id, action='on_my_rent_emails').log(
             "USER_ACTION",
-            f"Отображено {len(mails)} арендованных почт"
+            f"Отображено {len(leases)} арендованных почт"
         )
 
-        await c.message.edit_text(text='Выберите почтовый ящик', reply_markup=builder.as_markup())
+        await c.message.edit_text(
+            text='Выберите почтовый ящик',
+            reply_markup=builder.as_markup()
+        )
         await manager.reset_stack(remove_keyboard=False)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_my_rent_emails: {e}")

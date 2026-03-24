@@ -352,7 +352,7 @@ SUPPORT_BTN = '🙋‍♂️Поддержка'
 # Receive email
 CHANGE_EMAIL_BTN = '🔄Сменить почтовый ящик'
 RENT_EMAIL_BTN = '📬Арендовать почтовый ящик'
-MY_RENT_EMAILS_BTN = '📨Мои ящики'
+MY_RENT_EMAILS_BTN = '📨Мои арендованные ящики'
 EXTEND_THE_LEASE = 'Продлить аренду'
 
 GET_FULL_MESSAGE = "Получить полный текст сообщения"

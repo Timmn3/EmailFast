@@ -237,48 +237,74 @@ async def personal_cabinet(message: types.Message, dialog_manager: DialogManager
 
 @router.callback_query(F.data.startswith('mail:'))
 async def mail_info(call: types.CallbackQuery):
+    """
+    Показывает карточку арендованного почтового ящика из новой модели RentalEmailLease.
+
+    Важно:
+    - здесь `mail_id` фактически является lease_id;
+    - проверяем, что аренда принадлежит текущему пользователю;
+    - кнопки "Продлить" и "Сменить" временно НЕ показываем,
+      потому что их обработчики ещё сидят на старой модели Mail.
+    """
     try:
         user_id = call.from_user.id
-        mail_id = int(call.data.split(':')[1])
+        lease_id = int(call.data.split(':')[1])
+
         logger.bind(user_id=user_id, action='mail_info').log(
             "USER_ACTION",
-            f"Пользователь запросил информацию о почте с ID={mail_id}"
+            f"Пользователь запросил информацию об арендованной почте lease_id={lease_id}"
         )
 
-        mail = await models.Mail.get_or_none(id=mail_id)
-        if not mail:
-            logger.bind(user_id=user_id, action='mail_info').log(
-                "USER_ACTION",
-                f"Почта с ID={mail_id} не найдена"
-            )
+        user = await models.User.get_user(user_id)
+        if not user:
             await call.answer()
             return
 
-        msg_text = bt.PAID_EMAIL_INFO.format(email=mail.email, expire_at=mail.expire_at.strftime('%d.%m.%Y'))
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True
+        )
+
+        if not lease:
+            logger.bind(user_id=user_id, action='mail_info').log(
+                "USER_ACTION",
+                f"Аренда с lease_id={lease_id} не найдена"
+            )
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        msg_text = bt.PAID_EMAIL_INFO.format(
+            email=lease.email,
+            expire_at=lease.expire_at.strftime('%d.%m.%Y')
+        )
+
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    types.InlineKeyboardButton(text=bt.RECEIVE_MY_EMAIL_BTN, callback_data=f'receive_my_mail:{mail.id}'),
+                    types.InlineKeyboardButton(
+                        text=bt.RECEIVE_MY_EMAIL_BTN,
+                        callback_data=f'receive_my_mail:{lease.id}'
+                    ),
                 ],
                 [
-                    types.InlineKeyboardButton(text=bt.EXTEND_EMAIL_BTN, callback_data=f'extend_email:{mail.id}')
-                ],
-                [
-                    types.InlineKeyboardButton(text=bt.CHANGE_EMAIL_BTN, callback_data=f'change_email:{mail.id}')
-                ],
-                [
-                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data='my_rent_emails')
+                    types.InlineKeyboardButton(
+                        text=bt.BACK_BTN,
+                        callback_data='my_rent_emails'
+                    )
                 ]
             ]
         )
+
         logger.bind(user_id=user_id, action='mail_info').log(
             "USER_ACTION",
-            f"Отображение информации о почте '{mail.email}'"
+            f"Отображение информации об арендованной почте '{lease.email}'"
         )
+
         await call.message.edit_text(text=msg_text, reply_markup=mk)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере mail_info: {e}")
-
 
 @router.callback_query(F.data.startswith("change_email:"))
 async def change_email(call: types.CallbackQuery):

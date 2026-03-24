@@ -83,37 +83,122 @@ async def receive_email(message: Union[types.Message, types.CallbackQuery], dial
 
 @router.callback_query(F.data == 'my_rent_emails')
 async def my_rent_emails(call: types.CallbackQuery):
+    """
+    Показывает список активных арендованных FirstMail-ящиков пользователя.
+
+    Важно:
+    - используем новую модель RentalEmailLease;
+    - callback_data оставляем в формате `mail:{lease_id}`,
+      чтобы не ломать существующую навигацию.
+    """
     try:
         user_id = call.from_user.id
-        logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", "Пользователь открыл список арендованных почт")
+        logger.bind(user_id=user_id, action="my_rent_emails").log(
+            "USER_ACTION",
+            "Пользователь открыл список арендованных почт"
+        )
 
-        # logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Запрос к БД: получение пользователя {user_id}")
         user = await models.User.get_user(user_id)
-        # logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Результат из БД: пользователь найден={user is not None}")
-
         if not user:
             return
 
-        logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Запрос к БД: получение арендованных почт для {user_id}")
-        mails = await models.Mail.filter(user=user, is_paid_mail=True, is_active=True).all()
-        logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", f"Результат из БД: найдено почт={len(mails)}")
+        leases = await models.RentalEmailLease.filter(
+            user=user,
+            is_active=True
+        ).order_by("-id").all()
 
-        if len(mails) == 0:
-            logger.bind(user_id=user_id, action="my_rent_emails").log("USER_ACTION", "Нет арендованных почт")
+        logger.bind(user_id=user_id, action="my_rent_emails").log(
+            "USER_ACTION",
+            f"Результат из БД: найдено арендованных почт={len(leases)}"
+        )
+
+        if len(leases) == 0:
+            logger.bind(user_id=user_id, action="my_rent_emails").log(
+                "USER_ACTION",
+                "Нет арендованных почт"
+            )
             await call.answer(text='У вас нет арендованных почтовых ящиков', show_alert=True)
             return
 
         builder = InlineKeyboardBuilder()
-        for mail in mails:
-            builder.add(types.InlineKeyboardButton(text=mail.email, callback_data=f'mail:{mail.id}'))
+        for lease in leases:
+            builder.add(
+                types.InlineKeyboardButton(
+                    text=lease.email,
+                    callback_data=f'mail:{lease.id}'
+                )
+            )
 
         builder.button(text=bt.BACK_BTN, callback_data='receive_email')
         builder.adjust(1)
 
-        await call.message.edit_text(text='Выберите почтовый ящик', reply_markup=builder.as_markup())
+        await call.message.edit_text(
+            text='Выберите почтовый ящик',
+            reply_markup=builder.as_markup()
+        )
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /my_rent_emails: {e}")
 
+
+@router.callback_query(F.data.startswith('receive_my_mail:'))
+async def receive_my_mail(call: types.CallbackQuery):
+    """
+    Открывает экран конкретного арендованного ящика из новой модели RentalEmailLease.
+
+    Важно:
+    - параметр в callback_data теперь трактуем как lease_id;
+    - обязательно проверяем владельца аренды.
+    """
+    try:
+        user_id = call.from_user.id
+        lease_id = int(call.data.split(':')[1])
+
+        logger.bind(user_id=user_id, action="receive_my_mail").log(
+            "USER_ACTION",
+            f"Пользователь открыл арендованную почту lease_id={lease_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True
+        )
+
+        logger.bind(user_id=user_id, action="receive_my_mail").log(
+            "USER_ACTION",
+            f"Результат из БД: аренда найдена={lease is not None}"
+        )
+
+        if not lease:
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.BACK_BTN,
+                        callback_data=f'mail:{lease.id}'
+                    )
+                ]
+            ]
+        )
+
+        msg_text = bt.MY_RENT_EMAIL.format(
+            email=lease.email,
+            expire_at=lease.expire_at.strftime('%d.%m.%Y')
+        )
+
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_my_mail: {e}")
 
 @router.callback_query(F.data.startswith('receive_my_mail:'))
 async def receive_my_mail(call: types.CallbackQuery):
