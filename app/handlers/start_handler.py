@@ -1,15 +1,22 @@
+from datetime import timedelta
 from typing import Union
 import logging
 from aiogram import types, F, Router
 from aiogram.filters import Command, CommandObject
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram_dialog import DialogManager, StartMode
+from sqlalchemy.util import asyncio
+
 from app.db import models
 from app.dependencies import bot, REFERRAL_PREFIX
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info
 from app.services import bot_texts as bt
+from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_SIX_MONTHS, RENT_EMAIL_YEAR
 from app.services.keyboards import start_kb
+from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from loguru import logger
@@ -17,6 +24,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.db.models import ReferralLink
 
 from app.services.periodic_tasks import balance_replenishment_notification
+from app.services.rental_email_pool import change_rental_email_lease
 
 router = Router()
 
@@ -238,13 +246,12 @@ async def personal_cabinet(message: types.Message, dialog_manager: DialogManager
 @router.callback_query(F.data.startswith('mail:'))
 async def mail_info(call: types.CallbackQuery):
     """
-    Показывает карточку арендованного почтового ящика из новой модели RentalEmailLease.
+    Показывает карточку арендованного FirstMail-ящика.
 
     Важно:
     - здесь `mail_id` фактически является lease_id;
-    - проверяем, что аренда принадлежит текущему пользователю;
-    - кнопки "Продлить" и "Сменить" временно НЕ показываем,
-      потому что их обработчики ещё сидят на старой модели Mail.
+    - для FirstMail используем отдельные callback-префиксы,
+      чтобы не задевать старую mail.tm-ветку.
     """
     try:
         user_id = call.from_user.id
@@ -289,6 +296,18 @@ async def mail_info(call: types.CallbackQuery):
                 ],
                 [
                     types.InlineKeyboardButton(
+                        text=bt.EXTEND_EMAIL_BTN,
+                        callback_data=f'extend_rental_email:{lease.id}'
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.CHANGE_EMAIL_BTN,
+                        callback_data=f'change_rental_email:{lease.id}'
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
                         text=bt.BACK_BTN,
                         callback_data='my_rent_emails'
                     )
@@ -305,6 +324,317 @@ async def mail_info(call: types.CallbackQuery):
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере mail_info: {e}")
+
+
+def get_extend_rental_email_kb(lease_id: int, is_free_week: bool):
+    """
+    Клавиатура продления для FirstMail-аренды.
+
+    Отдельный префикс callback_data нужен, чтобы не смешивать
+    новую логику RentalEmailLease со старой Mail/mail.tm веткой.
+    """
+    builder = InlineKeyboardBuilder()
+
+    if is_free_week:
+        builder.button(text=bt.RENT_EMAIL_WEEK_BTN, callback_data=f'extend_rental_email_week:{lease_id}')
+    builder.button(text=bt.RENT_EMAIL_MONTH_BTN, callback_data=f'extend_rental_email_month:{lease_id}')
+    builder.button(text=bt.RENT_EMAIL_SIX_MONTHS_BTN, callback_data=f'extend_rental_email_six_months:{lease_id}')
+    builder.button(text=bt.RENT_EMAIL_YEAR_BTN, callback_data=f'extend_rental_email_year:{lease_id}')
+    builder.button(text=bt.BACK_BTN, callback_data=f'mail:{lease_id}')
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+@router.callback_query(F.data.startswith('extend_rental_email:'))
+async def extend_rental_email(call: types.CallbackQuery):
+    """
+    Показывает варианты продления именно для арендованного FirstMail-ящика.
+    """
+    try:
+        user_id = call.from_user.id
+        lease_id = int(call.data.split(':')[1])
+
+        logger.bind(user_id=user_id, action="extend_rental_email").log(
+            "USER_ACTION",
+            f"Пользователь начал продление FirstMail lease_id={lease_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True,
+        )
+
+        if not lease:
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        keyboard = get_extend_rental_email_kb(lease.id, False)
+        await call.message.edit_reply_markup(reply_markup=keyboard)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /extend_rental_email: {e}")
+
+
+@router.callback_query(F.data.startswith('extend_rental_email_'))
+async def extend_rental_email_confirm(call: types.CallbackQuery, state: FSMContext):
+    """
+    Подтверждение выбора срока продления для FirstMail-аренды.
+    """
+    try:
+        user_id = call.from_user.id
+        callback_data = call.data.split(':')  # ['extend_rental_email_month', '123']
+        data_key = callback_data[0]
+
+        rent_data = {
+            'extend_rental_email_week': RENT_EMAIL_WEEK,
+            'extend_rental_email_month': RENT_EMAIL_MONTH,
+            'extend_rental_email_six_months': RENT_EMAIL_SIX_MONTHS,
+            'extend_rental_email_year': RENT_EMAIL_YEAR,
+        }
+
+        if data_key not in rent_data:
+            logger.bind(user_id=user_id, action="extend_rental_email_confirm").log(
+                "USER_ACTION",
+                f"Ошибка: неизвестный ключ срока аренды: {data_key}"
+            )
+            await call.answer("Неверный формат запроса.", show_alert=True)
+            return
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer("Пользователь не найден.", show_alert=True)
+            return
+
+        price, _, rent_text = rent_data[data_key]
+        if user.balance < price:
+            logger.bind(user_id=user_id, action="extend_rental_email_confirm").log(
+                "USER_ACTION",
+                "Ошибка: недостаточно средств"
+            )
+            await call.answer(text='Недостаточно средств', show_alert=True)
+            return
+
+        lease_id = int(callback_data[1])
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True,
+        )
+
+        if not lease:
+            logger.bind(user_id=user_id, action="extend_rental_email_confirm").log(
+                "USER_ACTION",
+                f"Ошибка: аренда с lease_id={lease_id} не найдена"
+            )
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        msg_text = bt.CONFIRM_EXTEND_EMAIL.format(
+            email=lease.email,
+            rent_text=rent_text,
+            cost=price
+        )
+
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.CONFIRM_BTN,
+                        callback_data=f'confirm_{data_key}:{lease_id}'
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.BACK_BTN,
+                        callback_data=f'mail:{lease_id}'
+                    )
+                ]
+            ]
+        )
+
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /extend_rental_email_confirm: {e}")
+        await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith('confirm_extend_rental_email_'))
+async def confirm_extend_rental_email(call: types.CallbackQuery):
+    """
+    Финально продлевает аренду FirstMail-ящика.
+    """
+    try:
+        user_id = call.from_user.id
+        lease_id = int(call.data.split(':')[1])
+
+        logger.bind(user_id=user_id, action="confirm_extend_rental_email").log(
+            "USER_ACTION",
+            f"Подтверждение продления FirstMail lease_id={lease_id}"
+        )
+
+        lease = await models.RentalEmailLease.get_or_none(id=lease_id, is_active=True)
+        if not lease:
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer("Пользователь не найден.", show_alert=True)
+            return
+
+        raw_key = call.data.split(':')[0]  # confirm_extend_rental_email_month
+        data_key = raw_key.replace('confirm_extend_rental_', 'rent_')
+
+        rent_data = {
+            'rent_email_week': RENT_EMAIL_WEEK,
+            'rent_email_month': RENT_EMAIL_MONTH,
+            'rent_email_six_months': RENT_EMAIL_SIX_MONTHS,
+            'rent_email_year': RENT_EMAIL_YEAR,
+        }
+
+        if data_key not in rent_data:
+            logger.bind(user_id=user_id, action="confirm_extend_rental_email").log(
+                "USER_ACTION",
+                f"Ошибка: неизвестный ключ срока аренды: {data_key}"
+            )
+            await call.answer("Неверный срок аренды.", show_alert=True)
+            return
+
+        price, days, rent_text = rent_data[data_key]
+
+        if user.balance < price:
+            logger.bind(user_id=user_id, action="confirm_extend_rental_email").log(
+                "USER_ACTION",
+                "Ошибка: недостаточно средств"
+            )
+            await call.answer(text='Недостаточно средств', show_alert=True)
+            return
+
+        lease.expire_at += timedelta(days=days)
+        await lease.save(update_fields=['expire_at'])
+
+        low_balance = await check_low_balance(user, price)
+        user.balance -= price
+        await user.save(update_fields=['balance'])
+
+        logger.bind(user_id=user_id, action="confirm_extend_rental_email").log(
+            "USER_ACTION",
+            f"FirstMail lease_id={lease_id} продлён на {days} дней"
+        )
+
+        msg_text = bt.EXTEND_EMAIL_SUCCESS.format(
+            email=lease.email,
+            rent_text=rent_text
+        )
+        await call.message.edit_text(text=msg_text)
+        await call.answer()
+        await asyncio.sleep(2)
+
+        if low_balance:
+            await send_low_balance_alert(user)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /confirm_extend_rental_email: {e}")
+        await call.answer("Произошла ошибка.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("change_rental_email:"))
+async def change_rental_email(call: types.CallbackQuery):
+    """
+    Меняет именно арендованный FirstMail-ящик на новый аккаунт из пула.
+
+    Важно:
+    - mail.tm здесь не используется;
+    - новый аккаунт сразу инициализируется;
+    - если инициализация не удалась, старая аренда восстанавливается.
+    """
+    try:
+        user_id = call.from_user.id
+        lease_id = int(call.data.split(":", 1)[1])
+
+        logger.bind(user_id=user_id, action="change_rental_email").log(
+            "USER_ACTION",
+            f"Запрос смены FirstMail lease_id={lease_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True,
+        )
+
+        if not lease:
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        await call.answer("Подбираю новый почтовый ящик…", show_alert=False)
+
+        new_lease = await change_rental_email_lease(
+            lease_id=lease.id,
+            user=user,
+        )
+
+        msg_text = bt.PAID_EMAIL_INFO.format(
+            email=new_lease.email,
+            expire_at=new_lease.expire_at.strftime("%d.%m.%Y")
+        )
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.RECEIVE_MY_EMAIL_BTN,
+                        callback_data=f"receive_my_mail:{new_lease.id}",
+                    ),
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.EXTEND_EMAIL_BTN,
+                        callback_data=f"extend_rental_email:{new_lease.id}",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.CHANGE_EMAIL_BTN,
+                        callback_data=f"change_rental_email:{new_lease.id}",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text=bt.BACK_BTN,
+                        callback_data="my_rent_emails"
+                    )
+                ],
+            ]
+        )
+
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+        await call.answer("✅ Почта успешно изменена", show_alert=False)
+
+    except ValueError as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        await call.answer(str(e), show_alert=True)
+    except RuntimeError as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        await call.answer(str(e), show_alert=True)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
 
 @router.callback_query(F.data.startswith("change_email:"))
 async def change_email(call: types.CallbackQuery):

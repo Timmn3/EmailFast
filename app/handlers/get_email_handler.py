@@ -12,6 +12,7 @@ from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_SIX_MONTHS, \
     RENT_EMAIL_YEAR
+from app.services.rental_email_pool import change_rental_email_lease
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
