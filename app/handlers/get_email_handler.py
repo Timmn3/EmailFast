@@ -148,12 +148,10 @@ async def receive_my_mail(call: types.CallbackQuery):
     Ручное получение новых писем для арендованного FirstMail-ящика.
 
     Важно:
-    - работаем только с новой моделью RentalEmailLease;
-    - читаем письма через IMAP;
-    - old_messages_id хранит UID уже обработанных писем;
-    - при первом запуске безопасно инициализируем old_messages_id
-      и не показываем старые письма, которые могли остаться
-      от предыдущего арендатора этого ящика.
+    - если ящик уже инициализирован при аренде, первое письмо после аренды
+      будет считаться новым и будет выдано пользователю;
+    - если по старым записям is_initialized=False, произойдёт тихая
+      инициализация без показа служебного текста пользователю.
     """
     try:
         user_id = call.from_user.id
@@ -186,15 +184,25 @@ async def receive_my_mail(call: types.CallbackQuery):
             password=lease.account.password,
             known_uids=lease.old_messages_id or [],
             limit=5,
+            is_initialized=lease.is_initialized,
         )
 
         updated_old_uids = result.get("updated_old_uids", lease.old_messages_id or [])
-        initialized = result.get("initialized", False)
+        initialized = result.get("initialized", lease.is_initialized)
         messages = result.get("messages", [])
+
+        update_fields = []
 
         if updated_old_uids != (lease.old_messages_id or []):
             lease.old_messages_id = updated_old_uids
-            await lease.save(update_fields=["old_messages_id"])
+            update_fields.append("old_messages_id")
+
+        if initialized != lease.is_initialized:
+            lease.is_initialized = initialized
+            update_fields.append("is_initialized")
+
+        if update_fields:
+            await lease.save(update_fields=update_fields)
 
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
@@ -212,12 +220,7 @@ async def receive_my_mail(call: types.CallbackQuery):
             expire_at=lease.expire_at.strftime('%d.%m.%Y')
         )
 
-        if initialized:
-            base_text += (
-                "\n\n"
-                "<i>Ящик инициализирован.</i>"
-            )
-        elif not messages:
+        if not messages:
             base_text += (
                 "\n\n"
                 "<i>Новых писем пока нет.</i>"

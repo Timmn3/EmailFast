@@ -200,24 +200,21 @@ class FirstMailImapClient:
         )
 
     def get_new_messages(
-        self,
-        known_uids: Optional[list] = None,
-        limit: int = 5,
+            self,
+            known_uids: Optional[list] = None,
+            limit: int = 5,
+            is_initialized: bool = False,
     ) -> dict:
         """
         Возвращает новые письма относительно known_uids.
 
-        Безопасное поведение:
-        - если known_uids пустой, считаем это первой инициализацией;
-        - текущие письма помечаем как старые и НЕ отправляем пользователю.
-
-        :param known_uids: уже обработанные UID писем
-        :param limit: максимум новых писем за один запрос
-        :return: {
-            "initialized": bool,
-            "messages": list[FirstMailMessage],
-            "updated_old_uids": list[str],
-        }
+        Логика:
+        - если is_initialized=False, это стартовая инициализация ящика:
+          текущие письма считаем "старыми" и не отдаём пользователю;
+        - если is_initialized=True, все письма, которых нет в known_uids,
+          считаются новыми;
+        - это решает проблему, когда inbox был пуст на момент инициализации:
+          old_messages_id остаётся пустым, но ящик уже считается подготовленным.
         """
         known_uids = [str(uid) for uid in (known_uids or [])]
 
@@ -227,14 +224,14 @@ class FirstMailImapClient:
             all_uids = self._get_all_uids()
             if not all_uids:
                 return {
-                    "initialized": False,
+                    "initialized": is_initialized,
                     "messages": [],
                     "updated_old_uids": known_uids,
                 }
 
-            # Первый запуск для аренды — безопасно инициализируем,
-            # чтобы не показывать старые письма от предыдущего арендатора.
-            if not known_uids:
+            # Стартовая инициализация при аренде:
+            # все текущие письма считаем уже существовавшими.
+            if not is_initialized:
                 logger.info(
                     "Инициализация old_messages_id для %s | писем=%s",
                     self.email_addr,
@@ -251,12 +248,11 @@ class FirstMailImapClient:
 
             if not new_uids:
                 return {
-                    "initialized": False,
+                    "initialized": True,
                     "messages": [],
                     "updated_old_uids": known_uids,
                 }
 
-            # Берём только последние limit новых писем
             selected_uids = new_uids[-limit:]
             messages: list[FirstMailMessage] = []
 
@@ -268,7 +264,7 @@ class FirstMailImapClient:
             updated_old_uids = known_uids + [uid for uid in selected_uids if uid not in known_set]
 
             return {
-                "initialized": False,
+                "initialized": True,
                 "messages": messages,
                 "updated_old_uids": updated_old_uids,
             }
@@ -284,12 +280,12 @@ class FirstMailImapClient:
             except Exception:
                 pass
 
-
 async def fetch_firstmail_messages_async(
     email_addr: str,
     password: str,
     known_uids: Optional[list] = None,
     limit: int = 5,
+    is_initialized: bool = False,
 ) -> dict:
     """
     Асинхронная обёртка над FirstMailImapClient.get_new_messages().
@@ -303,6 +299,7 @@ async def fetch_firstmail_messages_async(
         return client.get_new_messages(
             known_uids=known_uids,
             limit=limit,
+            is_initialized=is_initialized,
         )
 
     return await asyncio.to_thread(_worker)

@@ -901,6 +901,7 @@ class RentalEmailLease(Model):
 
     # Уже обработанные письма/UID, чтобы не слать дубли
     old_messages_id: list = fields.JSONField(default=list)
+    is_initialized: bool = fields.BooleanField(default=False, index=True)
 
     # Состояние аренды
     is_active: bool = fields.BooleanField(default=True, index=True)

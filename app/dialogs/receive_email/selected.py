@@ -14,7 +14,11 @@ from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.temp_mail import TempMail
 from app.services import bot_texts as bt
-from app.services.rental_email_pool import issue_rental_email
+from app.services.rental_email_pool import (
+    issue_rental_email,
+    initialize_rental_email_lease,
+    release_rental_email_lease,
+)
 
 
 async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -297,9 +301,9 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
     Подтверждает аренду почтового ящика из нового пула FirstMail.
 
     Новая логика:
-    - НЕ переводим старый временный Mail в is_paid_mail=True;
-    - создаём отдельную аренду в rental_email_leases через сервис issue_rental_email();
-    - списываем деньги только после успешной выдачи ящика из пула.
+    - создаём аренду;
+    - сразу инициализируем ящик через IMAP;
+    - только после успешной инициализации показываем успех и списываем деньги.
     """
     try:
         user_id = c.from_user.id
@@ -332,7 +336,6 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             await manager.switch_to(ReceiveEmailMenu.not_enough_balance)
             return
 
-        # Бесплатная неделя — это только сценарий 7 дней за 0 ₽
         is_free_week = rent_days == 7 and cost == 0
 
         try:
@@ -349,16 +352,29 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             await c.answer("Свободные почтовые ящики временно закончились", show_alert=True)
             return
 
+        init_ok = await initialize_rental_email_lease(lease.id)
+        if not init_ok:
+            await release_rental_email_lease(lease.id)
+
+            logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
+                "USER_ACTION",
+                f"Инициализация ящика не удалась, аренда отменена: lease_id={lease.id}"
+            )
+            await c.answer(
+                "Не удалось подготовить почтовый ящик. Попробуйте ещё раз.",
+                show_alert=True
+            )
+            return
+
         low_balance = await check_low_balance(user, cost)
 
-        # Деньги списываем только если аренда платная
         if cost > 0:
             user.balance -= cost
             await user.save(update_fields=['balance'])
 
         logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
             "USER_ACTION",
-            f"Успешная аренда почты '{lease.email}' на {rent_days} дней"
+            f"Успешная аренда и инициализация почты '{lease.email}' на {rent_days} дней"
         )
 
         ctx.dialog_data['lease_id'] = lease.id
@@ -372,7 +388,6 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_confirm_rent_email: {e}")
-
 
 async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """

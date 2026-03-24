@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import Optional
-
+from app.services.mail.firstmail_imap import fetch_firstmail_messages_async
 from loguru import logger
 from tortoise import timezone
 from tortoise.transactions import in_transaction
@@ -120,7 +120,6 @@ async def import_rental_accounts_from_text(
         "total": len(pairs),
     }
 
-
 async def issue_rental_email(
     user: models.User,
     days: int,
@@ -131,16 +130,10 @@ async def issue_rental_email(
     Выдаёт пользователю следующий свободный почтовый ящик из пула.
 
     Важно:
-    - функция делает атомарное резервирование через транзакцию
-    - один аккаунт не может быть выдан двум пользователям одновременно
-    - old_messages_id можно передать сразу, если на этапе выдачи
-      уже известны UID/ID писем, которые нужно считать "старыми"
-
-    :param user: пользователь, которому выдаётся почта
-    :param days: срок аренды в днях
-    :param is_free_week: признак бесплатной недели
-    :param initial_old_messages_id: уже существующие письма, которые надо пропустить
-    :return: созданная аренда RentalEmailLease
+    - функция делает атомарное резервирование через транзакцию;
+    - один аккаунт не может быть выдан двум пользователям одновременно;
+    - сама инициализация IMAP здесь НЕ делается, а выполняется
+      отдельным шагом сразу после создания аренды.
     """
     if days <= 0:
         raise ValueError("Срок аренды должен быть больше 0 дней.")
@@ -172,6 +165,7 @@ async def issue_rental_email(
             account=account,
             email=account.email,
             old_messages_id=old_messages,
+            is_initialized=False,
             is_active=True,
             notification_sent=False,
             is_free_week=is_free_week,
@@ -191,6 +185,60 @@ async def issue_rental_email(
 
     return lease
 
+async def initialize_rental_email_lease(lease_id: int) -> bool:
+    """
+    Инициализирует арендованный FirstMail-ящик сразу после аренды.
+
+    Логика:
+    - подключаемся к IMAP;
+    - текущий снимок писем сохраняем в old_messages_id;
+    - даже если писем нет, всё равно помечаем аренду как инициализированную.
+
+    :param lease_id: ID аренды
+    :return: True если инициализация выполнена успешно, иначе False
+    """
+    try:
+        lease = (
+            await models.RentalEmailLease
+            .filter(id=lease_id, is_active=True)
+            .prefetch_related("account", "user")
+            .first()
+        )
+
+        if not lease:
+            logger.warning("initialize_rental_email_lease: аренда не найдена lease_id={}", lease_id)
+            return False
+
+        if lease.is_initialized:
+            return True
+
+        result = await fetch_firstmail_messages_async(
+            email_addr=lease.account.email,
+            password=lease.account.password,
+            known_uids=[],
+            limit=1,
+            is_initialized=False,
+        )
+
+        lease.old_messages_id = result.get("updated_old_uids", []) or []
+        lease.is_initialized = True
+        await lease.save(update_fields=["old_messages_id", "is_initialized"])
+
+        logger.bind(
+            user_id=getattr(lease.user, "telegram_id", None),
+            action="initialize_rental_email_lease",
+        ).log(
+            "USER_ACTION",
+            f"Инициализирован арендный ящик: lease_id={lease.id} email={lease.email} old_uids={len(lease.old_messages_id)}"
+        )
+
+        return True
+
+    except Exception as e:
+        logger.opt(exception=e).error(
+            f"Ошибка инициализации арендного ящика lease_id={lease_id}: {e}"
+        )
+        return False
 
 async def release_rental_email_lease(lease_id: int) -> bool:
     """
