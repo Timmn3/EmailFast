@@ -18,6 +18,8 @@ from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.mail.firstmail_imap import fetch_firstmail_messages_async
 from loguru import logger
+from app.services.rental_email_pool import pull_rental_email_messages
+
 
 router = Router()
 
@@ -149,10 +151,10 @@ async def receive_my_mail(call: types.CallbackQuery):
     Ручное получение новых писем для арендованного FirstMail-ящика.
 
     Важно:
-    - если ящик уже инициализирован при аренде, первое письмо после аренды
-      будет считаться новым и будет выдано пользователю;
-    - если по старым записям is_initialized=False, произойдёт тихая
-      инициализация без показа служебного текста пользователю.
+    - используем общий helper, чтобы ручная проверка и scheduler
+      не дублировали письма внутри одного процесса;
+    - если ящик ещё не был инициализирован, helper выполнит
+      тихую инициализацию через old_messages_id / is_initialized.
     """
     try:
         user_id = call.from_user.id
@@ -178,32 +180,10 @@ async def receive_my_mail(call: types.CallbackQuery):
             await call.answer("Арендованный ящик не найден.", show_alert=True)
             return
 
-        await lease.fetch_related("account")
-
-        result = await fetch_firstmail_messages_async(
-            email_addr=lease.account.email,
-            password=lease.account.password,
-            known_uids=lease.old_messages_id or [],
+        lease, messages = await pull_rental_email_messages(
+            lease_id=lease.id,
             limit=5,
-            is_initialized=lease.is_initialized,
         )
-
-        updated_old_uids = result.get("updated_old_uids", lease.old_messages_id or [])
-        initialized = result.get("initialized", lease.is_initialized)
-        messages = result.get("messages", [])
-
-        update_fields = []
-
-        if updated_old_uids != (lease.old_messages_id or []):
-            lease.old_messages_id = updated_old_uids
-            update_fields.append("old_messages_id")
-
-        if initialized != lease.is_initialized:
-            lease.is_initialized = initialized
-            update_fields.append("is_initialized")
-
-        if update_fields:
-            await lease.save(update_fields=update_fields)
 
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
@@ -256,13 +236,15 @@ async def receive_my_mail(call: types.CallbackQuery):
 
         logger.bind(user_id=user_id, action="receive_my_mail").log(
             "USER_ACTION",
-            f"Проверка FirstMail завершена | lease_id={lease_id} initialized={initialized} new_messages={len(messages)}"
+            f"Проверка FirstMail завершена | lease_id={lease_id} new_messages={len(messages)}"
         )
 
+    except ValueError as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_my_mail: {e}")
+        await call.answer(str(e), show_alert=True)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_my_mail: {e}")
         await call.answer("Не удалось получить письма. Попробуйте ещё раз позже.", show_alert=True)
-
 
 @router.callback_query(F.data.startswith('extend_email:'))
 async def extend_email(call: types.CallbackQuery):

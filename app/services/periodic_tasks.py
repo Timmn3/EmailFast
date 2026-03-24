@@ -5,7 +5,7 @@ from aiogram import types
 from aiohttp import ClientSession
 from app.services.onlinesim.sms_client import OnlineSMS
 from tortoise.functions import Sum
-
+import html
 from tortoise import timezone
 from loguru import logger
 from app import dependencies
@@ -19,6 +19,7 @@ from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
+from app.services.rental_email_pool import pull_rental_email_messages
 from app.services.payments.cryptomus import get_paid_order_ids
 from app.services.payments.freekassa import Freekassa
 from app.services.payments.lava import LavaApi
@@ -874,6 +875,96 @@ async def check_email():
     except Exception as e:
         logger.error(f"Необработанная ошибка в check_email(): {type(e).__name__}: {e}")
 
+
+async def check_rental_email():
+    """
+    Периодически проверяет активные арендованные FirstMail-ящики на новые письма.
+
+    Логика:
+    1. Берём только активные и ещё не истёкшие RentalEmailLease.
+    2. Через общий helper читаем новые письма по IMAP.
+    3. Используем old_messages_id / is_initialized, чтобы не слать дубли.
+    4. Новые письма отправляем пользователю напрямую в Telegram.
+
+    Важно:
+    - старая логика Mail/mail.tm не затрагивается;
+    - защита от дублей внутри одного процесса достигается общим lock
+      в pull_rental_email_messages().
+    """
+    try:
+        now = timezone.now()
+
+        lease_ids = await models.RentalEmailLease.filter(
+            is_active=True,
+            expire_at__gt=now,
+        ).values_list("id", flat=True)
+
+        for lease_id in lease_ids:
+            try:
+                lease, messages = await pull_rental_email_messages(
+                    lease_id=lease_id,
+                    limit=5,
+                )
+
+                if not messages:
+                    await asyncio.sleep(0)
+                    continue
+
+                for message_obj in messages:
+                    from_text = html.escape(message_obj.from_header or "-")
+                    subject_text = html.escape(message_obj.subject or "(без темы)")
+                    content_text = html.escape((message_obj.content or "").strip() or "Нет текста в сообщении.")
+
+                    if len(content_text) > 3500:
+                        content_text = content_text[:3500] + "\n\n...[обрезано]"
+
+                    msg_text = (
+                        f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n"
+                        f"<b>От кого:</b> {from_text}\n"
+                        f"<b>Тема:</b> {subject_text}\n\n"
+                        f"{content_text}"
+                    )
+
+                    try:
+                        await bot.send_message(
+                            chat_id=lease.user.telegram_id,
+                            text=msg_text,
+                        )
+
+                        logger.bind(
+                            user_id=lease.user.telegram_id,
+                            action="check_rental_email",
+                        ).log(
+                            "USER_ACTION",
+                            f"Новое FirstMail сообщение отправлено пользователю | lease_id={lease.id} email={lease.email} subject={message_obj.subject or '(без темы)'}"
+                        )
+
+                    except TelegramBadRequest as e:
+                        logger.warning(
+                            f"Ошибка при отправке FirstMail сообщения пользователю {lease.user.telegram_id}: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Неожиданная ошибка отправки FirstMail сообщения: "
+                            f"user_id={lease.user.telegram_id} lease_id={lease.id} email={lease.email} "
+                            f"err={type(e).__name__}: {e}"
+                        )
+
+            except ValueError:
+                # аренда уже могла завершиться между выборкой lease_ids и обработкой
+                continue
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка при обработке FirstMail lease_id={lease_id}: {type(e).__name__}: {e}"
+                )
+                continue
+
+            await asyncio.sleep(0)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.error(f"Необработанная ошибка в check_rental_email(): {type(e).__name__}: {e}")
 
 async def get_services_names():
     try:

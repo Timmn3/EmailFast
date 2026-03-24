@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import asyncio
 from datetime import timedelta
 from typing import Optional
 from app.services.mail.firstmail_imap import fetch_firstmail_messages_async
@@ -53,6 +53,87 @@ def parse_rental_accounts_text(raw_text: str) -> list[tuple[str, str]]:
 
     return result
 
+_RENTAL_EMAIL_LEASE_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def _get_rental_email_lease_lock(lease_id: int) -> asyncio.Lock:
+    """
+    Возвращает in-memory lock для конкретной аренды FirstMail-ящика.
+
+    Нужен, чтобы ручная проверка и scheduler внутри одного процесса
+    не обрабатывали один и тот же lease одновременно и не слали дубли.
+    """
+    lock = _RENTAL_EMAIL_LEASE_LOCKS.get(lease_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _RENTAL_EMAIL_LEASE_LOCKS[lease_id] = lock
+    return lock
+
+
+async def pull_rental_email_messages(
+    lease_id: int,
+    limit: int = 5,
+) -> tuple[models.RentalEmailLease, list]:
+    """
+    Унифицированно получает новые письма для арендованного FirstMail-ящика.
+
+    Важно:
+    - используется и ручной проверкой, и scheduler;
+    - защищает от дублей внутри одного процесса через lock по lease_id;
+    - использует old_messages_id / is_initialized;
+    - при первом неинициализированном чтении тихо инициализирует ящик.
+
+    :param lease_id: ID аренды
+    :param limit: максимум писем за один проход
+    :return: (lease, messages)
+    """
+    lease_lock = _get_rental_email_lease_lock(lease_id)
+
+    async with lease_lock:
+        lease = (
+            await models.RentalEmailLease
+            .filter(id=lease_id, is_active=True)
+            .prefetch_related("account", "user")
+            .first()
+        )
+
+        if not lease:
+            raise ValueError("Арендованный ящик не найден.")
+
+        result = await fetch_firstmail_messages_async(
+            email_addr=lease.account.email,
+            password=lease.account.password,
+            known_uids=lease.old_messages_id or [],
+            limit=limit,
+            is_initialized=lease.is_initialized,
+        )
+
+        updated_old_uids = result.get("updated_old_uids", lease.old_messages_id or [])
+        initialized = result.get("initialized", lease.is_initialized)
+        messages = result.get("messages", [])
+
+        update_fields = []
+
+        if updated_old_uids != (lease.old_messages_id or []):
+            lease.old_messages_id = updated_old_uids
+            update_fields.append("old_messages_id")
+
+        if initialized != lease.is_initialized:
+            lease.is_initialized = initialized
+            update_fields.append("is_initialized")
+
+        if update_fields:
+            await lease.save(update_fields=update_fields)
+
+        logger.bind(
+            user_id=getattr(getattr(lease, "user", None), "telegram_id", None),
+            action="pull_rental_email_messages",
+        ).log(
+            "USER_ACTION",
+            f"FirstMail pull | lease_id={lease.id} initialized={lease.is_initialized} new_messages={len(messages)}"
+        )
+
+        return lease, messages
 
 async def import_rental_accounts_from_text(
     raw_text: str,
