@@ -30,7 +30,7 @@ from app.services.temp_mail import TempMail
 from app.services import bot_texts as bt
 import pytz
 import datetime
-
+from app.services.rental_email_pool import release_rental_email_lease
 from app.services.payments.yoomoney import check_payment_status
 
 from tortoise import timezone
@@ -965,6 +965,66 @@ async def check_rental_email():
         raise
     except Exception as e:
         logger.error(f"Необработанная ошибка в check_rental_email(): {type(e).__name__}: {e}")
+
+
+async def close_expired_rental_email_leases():
+    """
+    Автоматически завершает просроченные аренды FirstMail-ящиков.
+
+    Логика:
+    - берём только активные аренды RentalEmailLease, у которых expire_at уже наступил;
+    - для каждой аренды вызываем release_rental_email_lease();
+    - почтовый ящик освобождается и возвращается в конец очереди;
+    - старая mail.tm-ветка здесь не затрагивается.
+    """
+    try:
+        now = timezone.now()
+
+        expired_leases = await models.RentalEmailLease.filter(
+            is_active=True,
+            expire_at__lte=now,
+        ).prefetch_related("user", "account")
+
+        for lease in expired_leases:
+            try:
+                released = await release_rental_email_lease(lease.id)
+
+                if not released:
+                    logger.bind(
+                        user_id=getattr(getattr(lease, "user", None), "telegram_id", None),
+                        action="close_expired_rental_email_leases",
+                    ).warning(
+                        f"Просроченная FirstMail-аренда не была освобождена: "
+                        f"lease_id={lease.id} email={lease.email}"
+                    )
+                    await asyncio.sleep(0)
+                    continue
+
+                logger.bind(
+                    user_id=getattr(getattr(lease, "user", None), "telegram_id", None),
+                    action="close_expired_rental_email_leases",
+                ).log(
+                    "USER_ACTION",
+                    f"Просроченная FirstMail-аренда автоматически завершена: "
+                    f"lease_id={lease.id} email={lease.email}"
+                )
+
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка при автоосвобождении просроченной FirstMail-аренды "
+                    f"lease_id={lease.id} email={lease.email}: {e}"
+                )
+                continue
+
+            await asyncio.sleep(0)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.opt(exception=e).error(
+            f"Необработанная ошибка в close_expired_rental_email_leases(): {e}"
+        )
+
 
 async def get_services_names():
     try:

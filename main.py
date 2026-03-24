@@ -17,7 +17,7 @@ from app.services.keyboards import start_kb
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import (
-    check_sms, check_email, check_rental_email, check_mail_expiration_and_notify,
+    check_sms, check_email, check_rental_email, close_expired_rental_email_leases, check_mail_expiration_and_notify,
     check_payment_freekassa, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
@@ -214,6 +214,15 @@ def set_scheduled_jobs(scheduler):
                 coalesce=True,
                 misfire_grace_time=30,
             )
+            # Автоосвобождение просроченных FirstMail-аренд
+            scheduler.add_job(
+                close_expired_rental_email_leases,
+                "interval",
+                minutes=10,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=30,
+            )
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=1)
             # Проверка платежей через Streampay
@@ -247,6 +256,7 @@ def set_scheduled_jobs(scheduler):
             logger.info(f'ON_SCHEDULE выключен ({ON_SCHEDULE})')
     except Exception as e:
         logger.opt(exception=e).error("Ошибка при добавлении задач в планировщик")
+
 
 # === Фильтры для подавления лишних логов apscheduler ===
 class SkipSpecificLogFilter(logging.Filter):
