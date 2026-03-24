@@ -14,6 +14,7 @@ from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.temp_mail import TempMail
 from app.services import bot_texts as bt
+from app.services.rental_email_pool import issue_rental_email
 
 
 async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogManager):
@@ -89,78 +90,74 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Арендовать почтовый ящик".
-    Переключает состояние диалога на меню аренды почтового ящика,
-    выбирая нужное окно в зависимости от доступности бесплатной недели.
 
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    Для нового пула FirstMail:
+    - больше НЕ требуем существующий временный Mail;
+    - просто проверяем, использовал ли пользователь бесплатную неделю ранее;
+    - открываем нужное окно выбора срока аренды.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_rent_email').log("USER_ACTION", "Переход к аренде почты")
+        logger.bind(user_id=user_id, action='on_rent_email').log(
+            "USER_ACTION",
+            "Переход к аренде почты из пула FirstMail"
+        )
 
         user = await models.User.get_user(user_id)
-        mail = await models.Mail.filter(user=user).order_by('-id').first()
-
-        if not mail:
-            logger.bind(user_id=user_id, action='on_rent_email').log(
-                "USER_ACTION", "Не найдена почта, связанная с пользователем"
-            )
-            await c.answer("Не удалось найти почтовый ящик", show_alert=True)
+        if not user:
+            await c.answer("Пользователь не найден", show_alert=True)
             return
 
-        # Проверка флага бесплатной недели
-        if await Mail.has_used_free_week(user):
+        # Проверка флага бесплатной недели в новой модели аренд
+        if await models.RentalEmailLease.has_used_free_week(user):
             await manager.switch_to(ReceiveEmailMenu.rent_email_no_free_week)
             logger.bind(user_id=user_id, action='on_rent_email').log(
-                "USER_ACTION", "Открыто окно аренды без бесплатной недели"
+                "USER_ACTION",
+                "Открыто окно аренды без бесплатной недели"
             )
         else:
             await manager.switch_to(ReceiveEmailMenu.rent_email)
             logger.bind(user_id=user_id, action='on_rent_email').log(
-                "USER_ACTION", "Открыто окно аренды с бесплатной неделей"
+                "USER_ACTION",
+                "Открыто окно аренды с бесплатной неделей"
             )
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email: {e}")
 
 
-
 async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
-    Обработчик для выбора периода аренды почтового ящика.
-    Проверяет баланс пользователя и переключает состояние диалога на подтверждение аренды
-    или уведомление о недостаточном балансе.
+    Обработчик выбора периода аренды почтового ящика.
 
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    Для нового пула FirstMail:
+    - больше НЕ ищем временный Mail пользователя;
+    - email заранее не показываем, он будет выдан автоматически из пула
+      только в момент подтверждения аренды;
+    - сохраняем в dialog_data только срок и стоимость.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_rent_email_item').log("USER_ACTION", "Выбран период аренды")
+        logger.bind(user_id=user_id, action='on_rent_email_item').log(
+            "USER_ACTION",
+            "Выбран период аренды"
+        )
 
         from app.dialogs.personal_cabinet.selected import on_deposit_state
         widget_id = widget.widget_id
 
         user = await models.User.get_user(user_id)
+        if not user:
+            await c.answer("Пользователь не найден", show_alert=True)
+            return
 
         ctx = manager.current_context()
         ctx.dialog_data['cost'] = RENT_DATA[widget_id][0]
         ctx.dialog_data['rent_days'] = RENT_DATA[widget_id][1]
         ctx.dialog_data['rent_text'] = RENT_DATA[widget_id][2]
 
-        mail = await models.Mail.get_mail(mail_id=ctx.dialog_data['mail_id'])
-        if not mail:
-            logger.bind(user_id=user_id, action='on_rent_email_item').log(
-                "USER_ACTION",
-                "Почта не найдена по mail_id"
-            )
-            return
-
         # Проверка: если пользователь пытается повторно арендовать бесплатную неделю
-        if widget_id == "rent_email_week" and await Mail.has_used_free_week(user):
+        if widget_id == "rent_email_week" and await models.RentalEmailLease.has_used_free_week(user):
             logger.bind(user_id=user_id, action='on_rent_email_item').log(
                 "USER_ACTION",
                 "Попытка повторной аренды бесплатной недели"
@@ -168,7 +165,8 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
             await c.answer("Вы уже использовали бесплатную неделю", show_alert=True)
             return
 
-        ctx.dialog_data['email'] = mail.email
+        # Email ещё неизвестен — он будет назначен из пула только после подтверждения
+        ctx.dialog_data['email'] = "будет выдан автоматически из пула"
 
         if user.balance < ctx.dialog_data['cost']:
             logger.bind(user_id=user_id, action='on_rent_email_item').log(
@@ -180,7 +178,7 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
 
         logger.bind(user_id=user_id, action='on_rent_email_item').log(
             "USER_ACTION",
-            f"Аренда почты '{ctx.dialog_data['email']}' на {ctx.dialog_data['rent_text']}"
+            f"Выбран срок аренды на {ctx.dialog_data['rent_text']}"
         )
 
         await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
@@ -189,28 +187,34 @@ async def on_rent_email_item(c: types.CallbackQuery, widget: Button, manager: Di
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_item: {e}")
 
 
-
 async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
-    Обработчик для выбора периода аренды почтового ящика со скидкой.
-    Проверяет баланс пользователя и переключает состояние диалога на подтверждение аренды или уведомление о недостаточном балансе.
+    Обработчик выбора периода аренды почтового ящика со скидкой.
 
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    Для нового пула FirstMail:
+    - больше НЕ ищем временный Mail пользователя;
+    - email назначается автоматически из пула только после подтверждения;
+    - сохраняем только срок, стоимость и текст срока.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_rent_email_item_discount').log("USER_ACTION", "Выбор аренды со скидкой")
+        logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
+            "USER_ACTION",
+            "Выбор аренды со скидкой"
+        )
 
         from app.dialogs.personal_cabinet.selected import on_deposit_state
         widget_id = widget.widget_id
 
         user = await models.User.get_user(user_id)
-        if user.discount_used is True:
-            rent_data = RENT_DATA  # Используем обычные данные аренды
-        else:
-            rent_data = RENT_DATA_DISCOUNT  # Используем данные аренды со скидкой
+        if not user:
+            await c.answer("Пользователь не найден", show_alert=True)
+            return
+
+        rent_data = RENT_DATA_DISCOUNT
+        if widget_id not in rent_data:
+            await c.answer("Неизвестный вариант аренды", show_alert=True)
+            return
 
         ctx = manager.current_context()
 
@@ -218,13 +222,12 @@ async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, ma
         days = rent_data[widget_id][1]
         text = rent_data[widget_id][2]
 
-        ctx.dialog_data.update({'cost': cost, 'rent_days': days, 'rent_text': text})
-
-        mail = await models.Mail.get_mail(mail_id=ctx.start_data['mail_id'])
-        if not mail:
-            return
-
-        ctx.dialog_data['email'] = mail.email
+        ctx.dialog_data.update({
+            'cost': cost,
+            'rent_days': days,
+            'rent_text': text,
+            'email': "будет выдан автоматически из пула",
+        })
 
         if user.balance < cost:
             logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
@@ -244,20 +247,22 @@ async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, ma
 
         logger.bind(user_id=user_id, action='on_rent_email_item_discount').log(
             "USER_ACTION",
-            f"Аренда почты '{ctx.dialog_data['email']}' на {text} по скидке"
+            f"Выбран срок аренды '{text}' по скидке"
         )
 
         await manager.switch_to(ReceiveEmailMenu.rent_email_confirm)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_item_discount: {e}")
 
-
 async def on_rent_email_check_discount(message: types.Message, manager: DialogManager):
     """
-    Проверяет, предлагалась ли пользователю скидка, и переключает на соответствующее окно.
+    Проверяет, предлагалась ли пользователю скидка, и переключает
+    на соответствующее окно аренды.
 
-    :param message: Объект Message.
-    :param manager: Объект DialogManager.
+    Для нового пула FirstMail:
+    - больше НЕ ищем последний Mail пользователя;
+    - запускаем окно аренды без привязки к временной почте.
     """
     try:
         user_id = message.from_user.id
@@ -268,49 +273,55 @@ async def on_rent_email_check_discount(message: types.Message, manager: DialogMa
 
         user = await models.User.get_or_none(telegram_id=user_id)
         if not user:
-            # можно отправить сообщение или return
             return
-        last_mail = await models.Mail.filter(user=user, notification_sent=True).order_by('-id').first()
 
         if user.discount_used is True:
             logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
                 "USER_ACTION",
                 "Скидка уже была использована"
             )
-            await manager.start(ReceiveEmailMenu.rent_email_no_discount, data={"mail_id": last_mail.id})
+            await manager.start(ReceiveEmailMenu.rent_email_no_discount, mode=StartMode.RESET_STACK)
         else:
             logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
                 "USER_ACTION",
                 "Скидка ещё не использована"
             )
-            await manager.start(ReceiveEmailMenu.rent_email_discount, data={"mail_id": last_mail.id})
+            await manager.start(ReceiveEmailMenu.rent_email_discount, mode=StartMode.RESET_STACK)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_check_discount: {e}")
 
 
 async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
-    Обработчик для подтверждения аренды почтового ящика.
-    Обновляет информацию о почтовом ящике и балансе пользователя в базе данных.
+    Подтверждает аренду почтового ящика из нового пула FirstMail.
 
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    Новая логика:
+    - НЕ переводим старый временный Mail в is_paid_mail=True;
+    - создаём отдельную аренду в rental_email_leases через сервис issue_rental_email();
+    - списываем деньги только после успешной выдачи ящика из пула.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_confirm_rent_email').log("USER_ACTION", "Подтверждение аренды почты")
+        logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
+            "USER_ACTION",
+            "Подтверждение аренды почты из пула FirstMail"
+        )
 
         ctx = manager.current_context()
         if 'email' in ctx.start_data:
             ctx.dialog_data = ctx.start_data
 
-        mail_id = ctx.dialog_data.get('mail_id')
         cost = ctx.dialog_data.get('cost')
-        rent_days = ctx.dialog_data.get('rent_days')  # Получаем длительность аренды
+        rent_days = ctx.dialog_data.get('rent_days')
+
+        if cost is None or rent_days is None:
+            await c.answer("Данные аренды не найдены. Откройте меню заново.", show_alert=True)
+            return
 
         user = await models.User.get_user(user_id)
         if not user:
+            await c.answer("Пользователь не найден", show_alert=True)
             return
 
         if user.balance < cost and cost > 0:
@@ -321,20 +332,22 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             await manager.switch_to(ReceiveEmailMenu.not_enough_balance)
             return
 
-        mail = await models.Mail.get_mail(mail_id)
-        if not mail:
+        # Бесплатная неделя — это только сценарий 7 дней за 0 ₽
+        is_free_week = rent_days == 7 and cost == 0
+
+        try:
+            lease = await issue_rental_email(
+                user=user,
+                days=rent_days,
+                is_free_week=is_free_week,
+            )
+        except RuntimeError:
+            logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
+                "USER_ACTION",
+                "Свободные почтовые ящики в пуле закончились"
+            )
+            await c.answer("Свободные почтовые ящики временно закончились", show_alert=True)
             return
-
-        # Устанавливаем флаг бесплатной недели и days только если арендована неделя
-        is_free_week = rent_days == 7
-
-        mail.is_paid_mail = True
-        mail.expire_at = timezone.now() + timedelta(days=rent_days)
-        mail.is_active = True
-        mail.days = rent_days  # Устанавливаем длительность аренды
-        mail.is_free_week = is_free_week  # Устанавливаем флаг бесплатной недели
-
-        await mail.save(update_fields=['is_paid_mail', 'expire_at', 'is_active', 'days', 'is_free_week'])
 
         low_balance = await check_low_balance(user, cost)
 
@@ -345,19 +358,20 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
 
         logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
             "USER_ACTION",
-            f"Успешная аренда почты '{mail.email}' на {ctx.dialog_data['rent_days']} дней"
+            f"Успешная аренда почты '{lease.email}' на {rent_days} дней"
         )
 
-        ctx.dialog_data['email'] = mail.email
+        ctx.dialog_data['lease_id'] = lease.id
+        ctx.dialog_data['email'] = lease.email
+
         await manager.switch_to(ReceiveEmailMenu.rent_email_success)
         await asyncio.sleep(2)
 
         if low_balance:
             await send_low_balance_alert(user)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_confirm_rent_email: {e}")
-
-
 
 async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """

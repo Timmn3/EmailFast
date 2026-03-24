@@ -134,10 +134,14 @@ MY_RENT_EMAIL = """
 
 CONFIRM_RENT_EMAIL = """
 <b>Вы собираетесь арендовать почтовый ящик ⤵️</b>
-{dialog_data[email]}
+
+Почтовый ящик будет выдан автоматически после подтверждения оплаты.
 
 Срок: <b>{dialog_data[rent_text]}</b>
 Стоимость: <b>{dialog_data[cost]}₽</b>
+
+<i>Арендованный ящик подходит для приёма писем для сервисов регистрации.
+В отличие от временной почты, вероятность приёма писем выше.</i>
 """
 
 CONFIRM_EXTEND_EMAIL = """
@@ -150,7 +154,9 @@ CONFIRM_EXTEND_EMAIL = """
 
 RENT_EMAIL_SUCCESS = """
 Почтовый ящик <b>{dialog_data[email]}</b> успешно арендован!
-Срок: {dialog_data[rent_text]}
+
+<b>Email:</b> <code>{dialog_data[email]}</code>
+<b>Срок:</b> {dialog_data[rent_text]}
 """
 
 EXTEND_EMAIL_SUCCESS = """
