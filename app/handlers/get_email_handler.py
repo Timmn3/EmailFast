@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Union
-
+import html
 import asyncio
 from aiogram import types, F, Router
 from aiogram.filters import Command
@@ -15,6 +15,7 @@ from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
+from app.services.mail.firstmail_imap import fetch_firstmail_messages_async
 from loguru import logger
 
 router = Router()
@@ -144,11 +145,15 @@ async def my_rent_emails(call: types.CallbackQuery):
 @router.callback_query(F.data.startswith('receive_my_mail:'))
 async def receive_my_mail(call: types.CallbackQuery):
     """
-    Открывает экран конкретного арендованного ящика из новой модели RentalEmailLease.
+    Ручное получение новых писем для арендованного FirstMail-ящика.
 
     Важно:
-    - параметр в callback_data теперь трактуем как lease_id;
-    - обязательно проверяем владельца аренды.
+    - работаем только с новой моделью RentalEmailLease;
+    - читаем письма через IMAP;
+    - old_messages_id хранит UID уже обработанных писем;
+    - при первом запуске безопасно инициализируем old_messages_id
+      и не показываем старые письма, которые могли остаться
+      от предыдущего арендатора этого ящика.
     """
     try:
         user_id = call.from_user.id
@@ -156,7 +161,7 @@ async def receive_my_mail(call: types.CallbackQuery):
 
         logger.bind(user_id=user_id, action="receive_my_mail").log(
             "USER_ACTION",
-            f"Пользователь открыл арендованную почту lease_id={lease_id}"
+            f"Ручная проверка FirstMail lease_id={lease_id}"
         )
 
         user = await models.User.get_user(user_id)
@@ -170,14 +175,26 @@ async def receive_my_mail(call: types.CallbackQuery):
             is_active=True
         )
 
-        logger.bind(user_id=user_id, action="receive_my_mail").log(
-            "USER_ACTION",
-            f"Результат из БД: аренда найдена={lease is not None}"
-        )
-
         if not lease:
             await call.answer("Арендованный ящик не найден.", show_alert=True)
             return
+
+        await lease.fetch_related("account")
+
+        result = await fetch_firstmail_messages_async(
+            email_addr=lease.account.email,
+            password=lease.account.password,
+            known_uids=lease.old_messages_id or [],
+            limit=5,
+        )
+
+        updated_old_uids = result.get("updated_old_uids", lease.old_messages_id or [])
+        initialized = result.get("initialized", False)
+        messages = result.get("messages", [])
+
+        if updated_old_uids != (lease.old_messages_id or []):
+            lease.old_messages_id = updated_old_uids
+            await lease.save(update_fields=["old_messages_id"])
 
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
@@ -190,42 +207,57 @@ async def receive_my_mail(call: types.CallbackQuery):
             ]
         )
 
-        msg_text = bt.MY_RENT_EMAIL.format(
+        base_text = bt.MY_RENT_EMAIL.format(
             email=lease.email,
             expire_at=lease.expire_at.strftime('%d.%m.%Y')
         )
 
-        await call.message.edit_text(text=msg_text, reply_markup=mk)
+        if initialized:
+            base_text += (
+                "\n\n"
+                "<i>Ящик инициализирован.</i>"
+            )
+        elif not messages:
+            base_text += (
+                "\n\n"
+                "<i>Новых писем пока нет.</i>"
+            )
+        else:
+            base_text += (
+                "\n\n"
+                f"<b>Найдено новых писем:</b> {len(messages)}"
+            )
 
-    except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_my_mail: {e}")
-
-@router.callback_query(F.data.startswith('receive_my_mail:'))
-async def receive_my_mail(call: types.CallbackQuery):
-    try:
-        user_id = call.from_user.id
-        mail_id = int(call.data.split(':')[1])
-        logger.bind(user_id=user_id, action="receive_my_mail").log("USER_ACTION", f"Пользователь открыл почту ID={mail_id}")
-
-        logger.bind(user_id=user_id, action="receive_my_mail").log("USER_ACTION", f"Запрос к БД: получение почты ID={mail_id}")
-        mail = await models.Mail.get_or_none(id=mail_id)
-        logger.bind(user_id=user_id, action="receive_my_mail").log("USER_ACTION", f"Результат из БД: почта найдена={mail is not None}")
-
-        if not mail:
-            await call.answer()
-            return
-
-        mk = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data=f'mail:{mail.id}')
-                ]
-            ]
+        await call.message.edit_text(
+            text=base_text,
+            reply_markup=mk
         )
-        msg_text = bt.MY_RENT_EMAIL.format(email=mail.email, expire_at=mail.expire_at.strftime('%d.%m.%Y'))
-        await call.message.edit_text(text=msg_text, reply_markup=mk)
+
+        for message_obj in messages:
+            from_text = html.escape(message_obj.from_header or "-")
+            subject_text = html.escape(message_obj.subject or "(без темы)")
+            content_text = html.escape((message_obj.content or "").strip() or "Нет текста в сообщении.")
+
+            if len(content_text) > 3500:
+                content_text = content_text[:3500] + "\n\n...[обрезано]"
+
+            msg_text = (
+                f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n"
+                f"<b>От кого:</b> {from_text}\n"
+                f"<b>Тема:</b> {subject_text}\n\n"
+                f"{content_text}"
+            )
+
+            await call.message.answer(msg_text)
+
+        logger.bind(user_id=user_id, action="receive_my_mail").log(
+            "USER_ACTION",
+            f"Проверка FirstMail завершена | lease_id={lease_id} initialized={initialized} new_messages={len(messages)}"
+        )
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_my_mail: {e}")
+        await call.answer("Не удалось получить письма. Попробуйте ещё раз позже.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith('extend_email:'))
