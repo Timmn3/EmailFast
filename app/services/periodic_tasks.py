@@ -1531,7 +1531,7 @@ async def process_referral_bonus(payment):
 
     await referral_bonus_notification(payment, refer, ref_sum)
 
-FRAUD_DIFF_THRESHOLD = 200.0
+FRAUD_DIFF_THRESHOLD = 1000.0
 
 
 async def check_fraud_balance_discrepancy() -> None:
