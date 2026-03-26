@@ -525,7 +525,12 @@ async def _finalize_rental_email_change(old_lease_id: int, user_id: int) -> None
     - если он не выбыл из ротации, он уходит в конец очереди;
     - если аккаунт уже выбыл из ротации, он просто освобождается и
       больше не участвует в выборе из пула;
-    - пользователю фиксируется новый cooldown на смену FirstMail-ящика.
+    - cooldown здесь НЕ меняется, потому что он уже записан
+      в новую аренду при её создании.
+
+    Важно:
+    - старая mail.tm-ветка здесь не участвует;
+    - reuse-лимит аккаунтов здесь не изменяется.
     """
     now = timezone.now()
 
@@ -566,13 +571,6 @@ async def _finalize_rental_email_change(old_lease_id: int, user_id: int) -> None
             .get_or_none(id=user_id)
         )
 
-        if not locked_user:
-            logger.warning(
-                "Финализация смены аренды: пользователь не найден user_id={}",
-                user_id,
-            )
-            return
-
         account_update_fields = ["is_reserved", "released_at"]
         old_account.is_reserved = False
         old_account.released_at = now
@@ -583,7 +581,7 @@ async def _finalize_rental_email_change(old_lease_id: int, user_id: int) -> None
             account_update_fields.append("queue_order")
         else:
             logger.bind(
-                user_id=getattr(locked_user, "telegram_id", None),
+                user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
                 action="_finalize_rental_email_change",
             ).info(
                 f"Освобождён FirstMail-аккаунт, уже выбывший из ротации: "
@@ -596,17 +594,11 @@ async def _finalize_rental_email_change(old_lease_id: int, user_id: int) -> None
             update_fields=account_update_fields,
         )
 
-        locked_user.firstmail_change_available_at = now + timedelta(hours=24)
-        await locked_user.save(
-            using_db=conn,
-            update_fields=["firstmail_change_available_at"],
-        )
 
 async def _rollback_rental_email_change(
     old_lease_id: int,
     new_lease_id: int,
     user_id: int,
-    restore_firstmail_change_available_at: Optional[datetime],
 ) -> None:
     """
     Откатывает смену аренды, если новый FirstMail-ящик не удалось инициализировать.
@@ -616,7 +608,8 @@ async def _rollback_rental_email_change(
     - новый аккаунт освобождается и уходит в конец очереди, если он не выбыл из ротации;
     - старая аренда возвращается в активное состояние;
     - старый аккаунт остаётся закреплённым за пользователем;
-    - временно зарезервированный cooldown на смену ящика откатывается назад.
+    - cooldown не расходуется, потому что источником бизнес-логики теперь
+      является активная аренда, а не пользователь.
 
     Важно:
     reuse-лимит здесь не уменьшается, потому что он вообще не увеличивается
@@ -690,27 +683,26 @@ async def _rollback_rental_email_change(
             old_account.is_reserved = True
             await old_account.save(using_db=conn, update_fields=["is_reserved"])
 
-        if locked_user:
-            locked_user.firstmail_change_available_at = restore_firstmail_change_available_at
-            await locked_user.save(
-                using_db=conn,
-                update_fields=["firstmail_change_available_at"],
-            )
+        logger.bind(
+            user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+            action="_rollback_rental_email_change",
+        ).info(
+            f"Откат смены FirstMail выполнен: old_lease_id={old_lease_id} new_lease_id={new_lease_id}"
+        )
 
-            logger.bind(
-                user_id=getattr(locked_user, "telegram_id", None),
-                action="_rollback_rental_email_change",
-            ).info(
-                "Cooldown смены FirstMail-ящика откатан назад после неуспешной смены."
-            )
+        logger.bind(
+            user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+            action="_rollback_rental_email_change",
+        ).info(
+            "Per-lease cooldown не изменялся, так как новая аренда не стала рабочей активной арендой."
+        )
 
-            logger.bind(
-                user_id=getattr(locked_user, "telegram_id", None),
-                action="_rollback_rental_email_change",
-            ).info(
-                "Reuse-лимит FirstMail не изменялся, так как новый ящик не был успешно инициализирован."
-            )
-
+        logger.bind(
+            user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+            action="_rollback_rental_email_change",
+        ).info(
+            "Reuse-лимит FirstMail не изменялся, так как новый ящик не был успешно инициализирован."
+        )
 
 async def change_rental_email_lease(
     lease_id: int,
@@ -721,17 +713,15 @@ async def change_rental_email_lease(
 
     Важно:
     - mail.tm здесь НЕ используется;
-    - cooldown на смену FirstMail хранится глобально на пользователе;
-    - чтобы защититься от гонок, cooldown резервируется внутри транзакции
-      ещё до инициализации нового ящика и откатывается назад при rollback;
+    - cooldown 24 часа хранится на конкретной аренде в RentalEmailLease.change_available_at;
+    - чтобы защититься от гонок, жёсткая проверка cooldown выполняется
+      внутри транзакции под блокировкой текущей active lease;
     - старая аренда временно деактивируется до инициализации нового ящика;
+    - новый lease создаётся уже с собственным cooldown now + 24h;
     - если новый ящик не удалось подготовить, выполняется откат на старую аренду;
     - expire_at, days, владелец и признак бесплатной недели сохраняются;
-    - новые флаги уведомлений и дата конца бесплатной недели тоже сохраняются.
+    - reuse-лимит аккаунтов НЕ трогаем.
     """
-    now = timezone.now()
-    previous_change_available_at: Optional[datetime] = None
-
     async with in_transaction() as conn:
         locked_user = (
             await models.User
@@ -743,23 +733,6 @@ async def change_rental_email_lease(
         if not locked_user:
             raise ValueError("Пользователь не найден.")
 
-        if (
-            locked_user.firstmail_change_available_at
-            and locked_user.firstmail_change_available_at > now
-        ):
-            remaining = locked_user.firstmail_change_available_at - now
-            raise RuntimeError(build_firstmail_change_cooldown_message(remaining))
-
-        previous_change_available_at = locked_user.firstmail_change_available_at
-
-        # Временная блокировка cooldown на время смены.
-        # Если смена не завершится успешно, значение будет откатано в rollback.
-        locked_user.firstmail_change_available_at = now + timedelta(hours=24)
-        await locked_user.save(
-            using_db=conn,
-            update_fields=["firstmail_change_available_at"],
-        )
-
         old_lease = (
             await models.RentalEmailLease
             .select_for_update()
@@ -769,6 +742,12 @@ async def change_rental_email_lease(
 
         if not old_lease:
             raise ValueError("Арендованный ящик не найден.")
+
+        now = timezone.now()
+
+        if old_lease.change_available_at and old_lease.change_available_at > now:
+            remaining = old_lease.change_available_at - now
+            raise RuntimeError(build_firstmail_change_cooldown_message(remaining))
 
         old_account = (
             await models.RentalEmailAccount
@@ -813,6 +792,7 @@ async def change_rental_email_lease(
             days=old_lease.days,
             expire_at=old_lease.expire_at,
             free_week_expires_at=old_lease.free_week_expires_at,
+            change_available_at=now + timedelta(hours=24),
         )
 
     init_ok = await initialize_rental_email_lease(new_lease.id)
@@ -821,7 +801,6 @@ async def change_rental_email_lease(
             old_lease_id=old_lease.id,
             new_lease_id=new_lease.id,
             user_id=user.id,
-            restore_firstmail_change_available_at=previous_change_available_at,
         )
         raise RuntimeError("Не удалось подготовить новый почтовый ящик. Попробуйте ещё раз.")
 
@@ -838,7 +817,6 @@ async def change_rental_email_lease(
     )
 
     return new_lease
-
 
 async def release_rental_email_lease(lease_id: int) -> bool:
     """

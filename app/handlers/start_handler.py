@@ -24,8 +24,11 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.db.models import ReferralLink
 
 from app.services.periodic_tasks import balance_replenishment_notification
-from app.services.rental_email_pool import change_rental_email_lease, get_firstmail_change_cooldown_remaining, \
-    build_firstmail_change_cooldown_message
+from app.services.rental_email_pool import (
+    change_rental_email_lease,
+    get_firstmail_change_cooldown_remaining_for_lease,
+    build_firstmail_change_cooldown_message,
+)
 
 router = Router()
 
@@ -568,8 +571,8 @@ async def change_rental_email(call: types.CallbackQuery):
 
     Важно:
     - mail.tm здесь не используется;
-    - cooldown 24 часа действует глобально на пользователя;
-    - если cooldown ещё не закончился, сразу показываем понятный alert;
+    - cooldown 24 часа действует отдельно для каждой активной аренды;
+    - если cooldown ещё не закончился у конкретной аренды, сразу показываем понятный alert;
     - новый аккаунт инициализируется внутри сервисного слоя;
     - если инициализация не удалась, старая аренда восстанавливается.
     """
@@ -599,9 +602,9 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer("Арендованный ящик не найден.", show_alert=True)
             return
 
-        # Сначала мягкая UX-проверка cooldown в хэндлере,
+        # Мягкая UX-проверка cooldown по конкретной active lease,
         # чтобы пользователь сразу получил понятное сообщение.
-        cooldown_remaining = await get_firstmail_change_cooldown_remaining(user)
+        cooldown_remaining = await get_firstmail_change_cooldown_remaining_for_lease(lease)
         if cooldown_remaining:
             cooldown_message = build_firstmail_change_cooldown_message(cooldown_remaining)
 
@@ -683,7 +686,6 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
-
 
 @router.callback_query(F.data.startswith("change_email:"))
 async def change_email(call: types.CallbackQuery):
