@@ -952,6 +952,14 @@ class RentalEmailLease(Model):
     # а expire_at может меняться при продлении.
     free_week_expires_at: datetime = fields.DatetimeField(null=True, index=True)
 
+    # Cooldown смены именно этой аренды FirstMail.
+    # NULL = менять можно прямо сейчас.
+    change_available_at: datetime = fields.DatetimeField(
+        null=True,
+        index=True,
+        description="Когда для этой аренды снова разрешена смена FirstMail-ящика",
+    )
+
     # Служебные даты
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
 

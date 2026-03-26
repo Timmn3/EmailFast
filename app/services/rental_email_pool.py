@@ -97,6 +97,26 @@ async def get_firstmail_change_cooldown_remaining(user: models.User) -> Optional
     return remaining
 
 
+async def get_firstmail_change_cooldown_remaining_for_lease(
+    lease: models.RentalEmailLease,
+) -> Optional[timedelta]:
+    """
+    Возвращает оставшееся время cooldown на смену конкретной аренды FirstMail.
+
+    Важно:
+    - источник бизнес-логики здесь уже lease.change_available_at;
+    - NULL означает, что смена доступна прямо сейчас;
+    - функция ничего не знает о legacy-поле пользователя.
+    """
+    if not lease.change_available_at:
+        return None
+
+    remaining = lease.change_available_at - timezone.now()
+    if remaining.total_seconds() <= 0:
+        return None
+
+    return remaining
+
 async def _get_rental_email_pool_tail_queue_order(conn) -> int:
     """
     Возвращает текущий хвост очереди пула FirstMail-аккаунтов.
