@@ -24,7 +24,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.db.models import ReferralLink
 
 from app.services.periodic_tasks import balance_replenishment_notification
-from app.services.rental_email_pool import change_rental_email_lease
+from app.services.rental_email_pool import change_rental_email_lease, get_firstmail_change_cooldown_remaining, \
+    build_firstmail_change_cooldown_message
 
 router = Router()
 
