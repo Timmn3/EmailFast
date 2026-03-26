@@ -6,7 +6,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram_dialog import DialogManager, StartMode
-from sqlalchemy.util import asyncio
+import asyncio
 
 from app.db import models
 from app.dependencies import bot, REFERRAL_PREFIX
