@@ -567,9 +567,13 @@ async def change_rental_email(call: types.CallbackQuery):
 
     Важно:
     - mail.tm здесь не используется;
-    - новый аккаунт сразу инициализируется;
+    - cooldown 24 часа действует глобально на пользователя;
+    - если cooldown ещё не закончился, сразу показываем понятный alert;
+    - новый аккаунт инициализируется внутри сервисного слоя;
     - если инициализация не удалась, старая аренда восстанавливается.
     """
+    lease_id: int | None = None
+
     try:
         user_id = call.from_user.id
         lease_id = int(call.data.split(":", 1)[1])
@@ -594,7 +598,20 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer("Арендованный ящик не найден.", show_alert=True)
             return
 
-        await call.answer("Подбираю новый почтовый ящик…", show_alert=False)
+        # Сначала мягкая UX-проверка cooldown в хэндлере,
+        # чтобы пользователь сразу получил понятное сообщение.
+        cooldown_remaining = await get_firstmail_change_cooldown_remaining(user)
+        if cooldown_remaining:
+            cooldown_message = build_firstmail_change_cooldown_message(cooldown_remaining)
+
+            logger.bind(user_id=user_id, action="change_rental_email").log(
+                "USER_ACTION",
+                f"Смена FirstMail заблокирована cooldown: lease_id={lease_id} "
+                f"remaining_seconds={int(cooldown_remaining.total_seconds())}"
+            )
+
+            await call.answer(cooldown_message, show_alert=True)
+            return
 
         new_lease = await change_rental_email_lease(
             lease_id=lease.id,
@@ -640,15 +657,32 @@ async def change_rental_email(call: types.CallbackQuery):
     except ValueError as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
         await call.answer(str(e), show_alert=True)
+
     except RuntimeError as e:
+        error_text = str(e)
+
+        # Для cooldown это не ошибка приложения, а ожидаемое ограничение.
+        if error_text.startswith("Сменить ящик можно не чаще 1 раза в 24 часа."):
+            logger.bind(
+                user_id=call.from_user.id,
+                action="change_rental_email",
+            ).log(
+                "USER_ACTION",
+                f"Смена FirstMail заблокирована сервисным cooldown: lease_id={lease_id}"
+            )
+            await call.answer(error_text, show_alert=True)
+            return
+
         logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
-        await call.answer(str(e), show_alert=True)
+        await call.answer(error_text, show_alert=True)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
         try:
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
+
 
 @router.callback_query(F.data.startswith("change_email:"))
 async def change_email(call: types.CallbackQuery):
