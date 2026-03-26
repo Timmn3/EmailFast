@@ -333,8 +333,6 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer(cooldown_message, show_alert=True)
             return
 
-        await call.answer("Подбираю новый почтовый ящик…", show_alert=False)
-
         new_lease = await change_rental_email_lease(
             lease_id=lease.id,
             user=user,
@@ -388,6 +386,7 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
+
 
 @router.callback_query(F.data.startswith('extend_email_'))
 async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):
