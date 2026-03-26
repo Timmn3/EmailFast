@@ -78,6 +78,15 @@ class User(Model):
         index=True,
         description="Код ссылки на реферал, если пользователь присоединился через личную реферальную ссылкуk"
     )
+
+    # Глобальный cooldown на смену FirstMail-ящика.
+    # NULL = менять можно прямо сейчас.
+    firstmail_change_available_at: datetime = fields.DatetimeField(
+        null=True,
+        index=True,
+        description="Когда пользователю снова разрешена смена FirstMail-ящика",
+    )
+
     # ✅ Пользовательское соглашение
     terms_accepted: bool = fields.BooleanField(
         default=False, description="Согласие с пользовательским соглашением"
@@ -134,7 +143,6 @@ class User(Model):
 
     def __str__(self):
         return self.mention
-
 
 
 class CountriesSmsActivate(Model):
@@ -798,7 +806,7 @@ class RentalEmailAccount(Model):
     """
     Пул заранее закупленных почтовых аккаунтов для аренды.
 
-    Один аккаунт можно выдавать многократно разным пользователям,
+    Один аккаунт можно выдавать разным пользователям ограниченное число раз,
     но одновременно он должен быть закреплён только за одной активной арендой.
     """
 
@@ -831,6 +839,26 @@ class RentalEmailAccount(Model):
         description="Аккаунт сейчас закреплён за активной арендой",
     )
 
+    # Пожизненный счётчик успешных выдач.
+    # Считаем только реально успешные выдачи, а не просто резервирование.
+    times_issued: int = fields.IntField(
+        default=0,
+        index=True,
+        description="Сколько раз аккаунт был успешно выдан за всё время",
+    )
+
+    # Если аккаунт выбыл из ротации, фиксируем это отдельно.
+    retired_at: datetime = fields.DatetimeField(
+        null=True,
+        index=True,
+        description="Когда аккаунт выбыл из ротации",
+    )
+    retire_reason: str = fields.CharField(
+        max_length=64,
+        null=True,
+        description="Причина выбытия аккаунта из ротации",
+    )
+
     # Очередь повторной выдачи:
     # чем меньше queue_order, тем раньше аккаунт будет выдан снова
     queue_order: int = fields.BigIntField(default=0, index=True)
@@ -846,12 +874,14 @@ class RentalEmailAccount(Model):
         Возвращает следующий доступный аккаунт из пула.
 
         Важно:
-        Это только чтение. Атомарное резервирование сделаем
+        Это только чтение. Атомарное резервирование делается
         отдельным сервисом через транзакцию.
         """
         return await cls.filter(
             is_enabled=True,
             is_reserved=False,
+            retired_at__isnull=True,
+            times_issued__lt=2,
         ).order_by("queue_order", "id").first()
 
     @classmethod
@@ -866,7 +896,6 @@ class RentalEmailAccount(Model):
 
     def __str__(self):
         return self.email
-
 
 class RentalEmailLease(Model):
     """
