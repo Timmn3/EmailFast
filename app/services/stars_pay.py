@@ -11,10 +11,9 @@ from tortoise import timezone
 from math import floor
 from app.db import models
 from loguru import logger
-from app.dialogs.personal_cabinet.states import PersonalMenu
 from aiogram.exceptions import TelegramBadRequest
 
-from app.services.periodic_tasks import send_coder, balance_replenishment_notification
+from app.services.coder_notify import send_coder
 
 
 def payment_keyboard(amount):
@@ -25,6 +24,17 @@ def payment_keyboard(amount):
 
 
 async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, manager: DialogManager):
+    """
+    Создаёт счёт на оплату через Telegram Stars.
+
+    Важно:
+    - импорт PersonalMenu сделан локально внутри функции, чтобы не создавать
+      циклический импорт при загрузке dialogs/windows;
+    - сумму в рублях переводим в Stars с округлением вверх до ближайших 2 ₽;
+    - после успешной отправки счёта возвращаем пользователя в личный кабинет.
+    """
+    from app.dialogs.personal_cabinet.states import PersonalMenu
+
     ctx = manager.current_context()
     raw_amount = ctx.dialog_data.get("stars", 0)
 
@@ -60,18 +70,19 @@ async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, man
     except TelegramBadRequest as e:
         if "total price must be positive" in str(e):
             await c.message.answer(
-                "К сожалению, у вас недостаточно Telegram Stars для этой операции. Пожалуйста, пополните баланс и попробуйте снова.")
+                "К сожалению, у вас недостаточно Telegram Stars для этой операции. "
+                "Пожалуйста, пополните баланс и попробуйте снова."
+            )
         else:
-            # Обработка других потенциальных ошибок TelegramBadRequest.
             await c.message.answer(
-                "Произошла ошибка при создании счета. Пожалуйста, попробуйте позже или обратитесь в поддержку.")
+                "Произошла ошибка при создании счета. "
+                "Пожалуйста, попробуйте позже или обратитесь в поддержку."
+            )
 
-        # При желании вы можете зарегистрировать ошибку в целях отладки.
         logger.error(f"Ошибка в send_invoice_handler_stars: {e}")
 
-    # Убедитесь, что мы всегда отвечаем на запрос обратного вызова, чтобы избежать состояния «загрузки» в пользовательском интерфейсе.
+    # Всегда отвечаем на callback, чтобы не оставлять Telegram-кнопку в состоянии загрузки.
     await c.answer()
-
 
 async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
     """

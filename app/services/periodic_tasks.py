@@ -19,7 +19,10 @@ from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
 from app.services.payments.ckassa import get_ckassa_payments
-from app.services.rental_email_pool import pull_rental_email_messages
+from app.services.rental_email_pool import (
+    pull_free_firstmail_messages,
+    pull_rental_email_messages,
+)
 from app.services.payments.cryptomus import get_paid_order_ids
 from app.services.payments.freekassa import Freekassa
 from app.services.payments.lava import LavaApi
@@ -966,6 +969,102 @@ async def check_rental_email():
     except Exception as e:
         logger.error(f"Необработанная ошибка в check_rental_email(): {type(e).__name__}: {e}")
 
+
+async def check_free_firstmail():
+    """
+    Периодически проверяет активные бесплатные FirstMail-ящики на новые письма.
+
+    Логика:
+    1. Берём только активные FreeFirstMailAssignment.
+    2. Через общий helper читаем новые письма по IMAP.
+    3. Используем old_messages_id / is_initialized, чтобы не слать дубли.
+    4. Новые письма отправляем пользователю напрямую в Telegram.
+
+    Важно:
+    - это отдельная ветка от legacy Mail/mail.tm;
+    - защита от дублей внутри одного процесса достигается общим lock
+      в pull_free_firstmail_messages().
+    """
+    try:
+        assignment_ids = await models.FreeFirstMailAssignment.filter(
+            is_active=True,
+        ).values_list("id", flat=True)
+
+        for assignment_id in assignment_ids:
+            try:
+                assignment, messages = await pull_free_firstmail_messages(
+                    assignment_id=assignment_id,
+                    limit=5,
+                )
+
+                if not messages:
+                    await asyncio.sleep(0)
+                    continue
+
+                for message_obj in messages:
+                    from_text = html.escape(message_obj.from_header or "-")
+                    subject_text = html.escape(message_obj.subject or "(без темы)")
+                    content_text = html.escape(
+                        (message_obj.content or "").strip() or "Нет текста в сообщении."
+                    )
+
+                    if len(content_text) > 3500:
+                        content_text = content_text[:3500] + "\n\n...[обрезано]"
+
+                    msg_text = (
+                        f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n"
+                        f"<b>От кого:</b> {from_text}\n"
+                        f"<b>Тема:</b> {subject_text}\n\n"
+                        f"{content_text}"
+                    )
+
+                    try:
+                        await bot.send_message(
+                            chat_id=assignment.user.telegram_id,
+                            text=msg_text,
+                        )
+                        logger.bind(
+                            user_id=assignment.user.telegram_id,
+                            action="check_free_firstmail",
+                        ).log(
+                            "USER_ACTION",
+                            f"Новое бесплатное FirstMail сообщение отправлено пользователю | "
+                            f"assignment_id={assignment.id} email={assignment.email} "
+                            f"subject={message_obj.subject or '(без темы)'}"
+                        )
+                    except TelegramBadRequest as e:
+                        logger.warning(
+                            f"Ошибка при отправке бесплатного FirstMail сообщения пользователю "
+                            f"{assignment.user.telegram_id}: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Неожиданная ошибка отправки бесплатного FirstMail сообщения: "
+                            f"user_id={assignment.user.telegram_id} "
+                            f"assignment_id={assignment.id} email={assignment.email} "
+                            f"err={type(e).__name__}: {e}"
+                        )
+
+                    await asyncio.sleep(0)
+
+            except ValueError as e:
+                logger.warning(
+                    f"Пропуск бесплатного FirstMail assignment_id={assignment_id}: {e}"
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(
+                    f"Ошибка при проверке бесплатного FirstMail assignment_id={assignment_id}: "
+                    f"{type(e).__name__}: {e}"
+                )
+
+            await asyncio.sleep(0)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.error(f"Необработанная ошибка в check_free_firstmail(): {type(e).__name__}: {e}")
 
 def get_rental_email_notice_kb(lease_id: int) -> types.InlineKeyboardMarkup:
     """

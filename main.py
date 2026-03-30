@@ -4,7 +4,7 @@ from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 import asyncio
 from aiogram import Dispatcher, F
 from app.db.database import init_db
-from app.dependencies import bot, ON_SCHEDULE, DB_NAME
+from app.dependencies import bot, ON_SCHEDULE, DB_NAME, FREE_EMAIL_PROVIDER
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
@@ -22,7 +22,8 @@ from app.services.periodic_tasks import (
     check_payment_freekassa, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
-    refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy
+    refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
+    check_free_firstmail
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
@@ -183,29 +184,64 @@ async def main(dp: Dispatcher):
 
 # === Планировщик задач ===
 def set_scheduled_jobs(scheduler):
-    try:
+    """
+    Регистрирует задачи планировщика.
 
+    Важно:
+    - при FREE_EMAIL_PROVIDER="mail_tm" остаётся legacy scheduler для mail.tm;
+    - при FREE_EMAIL_PROVIDER="firstmail" legacy mail.tm-задачи не регистрируем;
+    - бесплатный FirstMail получает свой отдельный scheduler check_free_firstmail();
+    - арендованный FirstMail scheduler check_rental_email() работает всегда.
+    """
+    try:
         # Проверка SMS
         scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
+
         # Находит истёкшие активации, по которым не пришло СМС
         scheduler.add_job(
             refund_and_cleanup_expired_sms,
             "interval",
-            seconds=20,  # частота проверки
-            max_instances=1,  # не пускать параллельные копии
-            coalesce=True,  # если пропустили — выполнить один раз
-            misfire_grace_time=10  # окно на отставание
+            seconds=20,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=10,
         )
+
         # Обновление цен SMSFast (кэш price_smsfast)
         scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
 
         if ON_SCHEDULE:
-            # ✅ Авто-исправление расхождений баланса (как /users_with_discrepancy)
-            # scheduler.add_job(auto_fix_users_balance_discrepancy, "interval", minutes=2, max_instances=1, coalesce=True, misfire_grace_time=30)
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
-            # Проверка Email mail.tm
-            scheduler.add_job(check_email, "interval", seconds=60, max_instances=3)
+
+            # Бесплатная почта: выбираем только один провайдер
+            if FREE_EMAIL_PROVIDER == "firstmail":
+                logger.info("Scheduler: включён бесплатный FirstMail, legacy mail.tm-задачи отключены")
+                scheduler.add_job(
+                    check_free_firstmail,
+                    "interval",
+                    seconds=60,
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=30,
+                )
+            else:
+                logger.info("Scheduler: включён legacy mail.tm")
+
+                # Проверка Email mail.tm
+                scheduler.add_job(check_email, "interval", seconds=60, max_instances=3)
+
+                # Проверка истечения срока почты и уведомления
+                scheduler.add_job(
+                    check_mail_expiration_and_notify,
+                    "interval",
+                    minutes=20,
+                    max_instances=3,
+                )
+
+                # Проверка истечения срока почты арендованной на неделю
+                scheduler.add_job(notify_week_expiration, "interval", minutes=10)
+
             # Проверка арендованных FirstMail-ящиков
             scheduler.add_job(
                 check_rental_email,
@@ -215,6 +251,7 @@ def set_scheduled_jobs(scheduler):
                 coalesce=True,
                 misfire_grace_time=30,
             )
+
             # Автоосвобождение просроченных FirstMail-аренд
             scheduler.add_job(
                 close_expired_rental_email_leases,
@@ -224,6 +261,7 @@ def set_scheduled_jobs(scheduler):
                 coalesce=True,
                 misfire_grace_time=30,
             )
+
             # Уведомление о завершении бесплатной недели FirstMail
             scheduler.add_job(
                 notify_rental_free_week_expiration,
@@ -233,6 +271,7 @@ def set_scheduled_jobs(scheduler):
                 coalesce=True,
                 misfire_grace_time=30,
             )
+
             # Уведомление об истечении аренды FirstMail
             scheduler.add_job(
                 notify_rental_email_expiration,
@@ -242,40 +281,47 @@ def set_scheduled_jobs(scheduler):
                 coalesce=True,
                 misfire_grace_time=30,
             )
+
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=1)
+
             # Проверка платежей через Streampay
             scheduler.add_job(check_payment_streampay, "interval", seconds=48, max_instances=10)
+
             # Проверка платежей через FreeKassa
             scheduler.add_job(check_payment_freekassa, "interval", seconds=43, max_instances=10)
+
             # Проверка платежей через Anypay
             scheduler.add_job(check_payment_anypay, "interval", seconds=60, max_instances=10)
+
             # Проверка платежей через cryptomus
             scheduler.add_job(check_payment_cryptomus, "interval", seconds=90, max_instances=10)
+
             # Добавление\обновление сервисов
             scheduler.add_job(add_services, "cron", hour=3, minute=0)
+
             # Пинг userbot
             scheduler.add_job(userbot_ping, "interval", seconds=300, max_instances=3)
+
             # Проверка арендованных SMS
             scheduler.add_job(check_rent_sms, "interval", seconds=55, max_instances=10)
-            # Проверка истечения срока почты и уведомления
-            scheduler.add_job(check_mail_expiration_and_notify, "interval", minutes=20, max_instances=3)
-            # Проверка истечения срока почты арендованной на неделю
-            scheduler.add_job(notify_week_expiration, "interval", minutes=10)
+
             # Уведомление об аренде, которая скоро завершится
             scheduler.add_job(rents_ending_soon, "interval", minutes=10, max_instances=3)
+
             # Автопродление аренды за 2 часа до окончания
             scheduler.add_job(auto_renewal_of_rent, "interval", minutes=10, max_instances=3)
+
             # Завершение аренды
             scheduler.add_job(close_rent, "interval", minutes=10, max_instances=3)
+
             # Проверка незавершенных аренд
             scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
-
         else:
-            logger.info(f'ON_SCHEDULE выключен ({ON_SCHEDULE})')
+            logger.info(f"ON_SCHEDULE выключен ({ON_SCHEDULE})")
+
     except Exception as e:
         logger.opt(exception=e).error("Ошибка при добавлении задач в планировщик")
-
 # === Фильтры для подавления лишних логов apscheduler ===
 class SkipSpecificLogFilter(logging.Filter):
     def filter(self, record):

@@ -36,7 +36,7 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
     if len(invoice_id) > 40:
         invoice_id = invoice_id[:40]
 
-    from app.services.periodic_tasks import send_coder
+    from app.services.coder_notify import send_coder
     if payer_id == str(CODER):
         await send_coder(invoice_id)
 
