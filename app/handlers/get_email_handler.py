@@ -53,9 +53,6 @@ def _build_free_firstmail_text(
         f"<b>Ваш почтовый ящик⤵️</b>\n"
         f"{email_text}\n\n"
         f"<i>Ожидаем письмо...</i>\n\n"
-        f"⚠️ Бесплатный FirstMail выдаётся <b>1 раз</b>.\n"
-        f"Срок действия — <b>без ограничений</b>.\n"
-        f"🔄 Сменить ящик можно платно: <b>50₽</b>."
     )
 
     if new_messages_count is not None:
