@@ -51,15 +51,15 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
     Важно:
     - при FREE_EMAIL_PROVIDER == "firstmail" legacy-смена mail.tm должна быть недоступна;
     - в этом режиме бесплатный FirstMail меняется только через отдельный flow из новой карточки;
-    - legacy-логику mail.tm не удаляем, а просто не даём ей выполниться при активном FirstMail.
-
-    :param c: Объект CallbackQuery.
-    :param widget: Объект Button.
-    :param manager: Объект DialogManager.
+    - в legacy-режиме mail_tm mail_id может лежать как в dialog_data, так и в start_data,
+      поэтому читаем оба варианта.
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "Запрос на смену почтового ящика")
+        logger.bind(user_id=user_id, action='on_change_email').log(
+            "USER_ACTION",
+            "Запрос на смену почтового ящика"
+        )
 
         # Защита от обхода нового переключателя провайдера через legacy dialog.
         if FREE_EMAIL_PROVIDER == "firstmail":
@@ -74,11 +74,25 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
             return
 
         ctx = manager.current_context()
-        mail_id = ctx.dialog_data.get('mail_id')
+        start_data = ctx.start_data or {}
+        dialog_data = ctx.dialog_data or {}
+
+        mail_id = dialog_data.get('mail_id') or start_data.get('mail_id')
         if not mail_id:
-            logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "ID почты не найден")
+            logger.bind(user_id=user_id, action='on_change_email').log(
+                "USER_ACTION",
+                "ID почты не найден"
+            )
             await c.answer("Не найден идентификатор почты.", show_alert=True)
             return
+
+        # Нормализуем контекст, чтобы дальше mail_id точно был доступен в обоих местах.
+        dialog_data['mail_id'] = mail_id
+        ctx.dialog_data = dialog_data
+
+        if ctx.start_data is None:
+            ctx.start_data = {}
+        ctx.start_data['mail_id'] = mail_id
 
         mail = await models.Mail.get_mail(mail_id)
         if mail:
@@ -89,23 +103,37 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
         email, token = await create_mail()
 
         if not email or not token:
-            logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "Ошибка при создании почты")
+            logger.bind(user_id=user_id, action='on_change_email').log(
+                "USER_ACTION",
+                "Ошибка при создании почты"
+            )
             await c.answer("Ошибка при создании почтового ящика. Попробуйте позже.", show_alert=True)
             return
 
         mail = await models.Mail.add_mail(user, email, token)
+
+        if ctx.start_data is None:
+            ctx.start_data = {}
         ctx.start_data['mail_id'] = mail.id
+
+        if ctx.dialog_data is None:
+            ctx.dialog_data = {}
         ctx.dialog_data['mail_id'] = mail.id
 
-        logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", f"Создана новая почта: {email}")
+        logger.bind(user_id=user_id, action='on_change_email').log(
+            "USER_ACTION",
+            f"Создана новая почта: {email}"
+        )
 
         await manager.start(
             ReceiveEmailMenu.receive_email,
             data={"mail_id": mail.id},
             mode=StartMode.RESET_STACK
         )
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_change_email: {e}")
+
 
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
