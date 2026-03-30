@@ -932,3 +932,691 @@ async def get_rental_lease_for_user(
         id=lease_id,
         user=user,
     ).prefetch_related("account")
+
+_FREE_FIRSTMAIL_ASSIGNMENT_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def _get_free_firstmail_assignment_lock(assignment_id: int) -> asyncio.Lock:
+    """
+    Возвращает in-memory lock для бесплатной FirstMail-привязки.
+
+    Нужен, чтобы ручная проверка и scheduler внутри одного процесса
+    не обрабатывали один и тот же assignment одновременно и не слали дубли.
+    """
+    lock = _FREE_FIRSTMAIL_ASSIGNMENT_LOCKS.get(assignment_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _FREE_FIRSTMAIL_ASSIGNMENT_LOCKS[assignment_id] = lock
+    return lock
+
+
+async def pull_free_firstmail_messages(
+    assignment_id: int,
+    limit: int = 5,
+) -> tuple[models.FreeFirstMailAssignment, list]:
+    """
+    Унифицированно получает новые письма для бесплатного FirstMail-ящика.
+
+    Важно:
+    - используется и ручной проверкой, и scheduler;
+    - защищает от дублей внутри одного процесса через lock по assignment_id;
+    - использует old_messages_id / is_initialized;
+    - при первом неинициализированном чтении тихо инициализирует ящик.
+
+    :param assignment_id: ID бесплатной FirstMail-привязки
+    :param limit: максимум писем за один проход
+    :return: (assignment, messages)
+    """
+    assignment_lock = _get_free_firstmail_assignment_lock(assignment_id)
+
+    async with assignment_lock:
+        assignment = (
+            await models.FreeFirstMailAssignment
+            .filter(id=assignment_id, is_active=True)
+            .prefetch_related("account", "user")
+            .first()
+        )
+
+        if not assignment:
+            raise ValueError("Бесплатный почтовый ящик не найден.")
+
+        result = await fetch_firstmail_messages_async(
+            email_addr=assignment.account.email,
+            password=assignment.account.password,
+            known_uids=assignment.old_messages_id or [],
+            limit=limit,
+            is_initialized=assignment.is_initialized,
+        )
+
+        updated_old_uids = result.get("updated_old_uids", assignment.old_messages_id or [])
+        initialized = result.get("initialized", assignment.is_initialized)
+        messages = result.get("messages", [])
+
+        update_fields = []
+
+        if updated_old_uids != (assignment.old_messages_id or []):
+            assignment.old_messages_id = updated_old_uids
+            update_fields.append("old_messages_id")
+
+        if initialized != assignment.is_initialized:
+            assignment.is_initialized = initialized
+            update_fields.append("is_initialized")
+
+        if update_fields:
+            await assignment.save(update_fields=update_fields)
+
+        logger.bind(
+            user_id=getattr(getattr(assignment, "user", None), "telegram_id", None),
+            action="pull_free_firstmail_messages",
+        ).log(
+            "USER_ACTION",
+            f"Free FirstMail pull | assignment_id={assignment.id} "
+            f"initialized={assignment.is_initialized} new_messages={len(messages)}"
+        )
+
+        return assignment, messages
+
+
+async def _rollback_failed_free_firstmail_issue(
+    assignment_id: int,
+    user_id: int,
+) -> None:
+    """
+    Откатывает неуспешную первичную бесплатную выдачу FirstMail.
+
+    Логика:
+    - созданная привязка помечается неактивной;
+    - зарезервированный аккаунт освобождается;
+    - если аккаунт ещё не выбыл из ротации, он уходит в конец очереди.
+    """
+    now = timezone.now()
+
+    async with in_transaction() as conn:
+        assignment = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=assignment_id)
+        )
+
+        if not assignment:
+            return
+
+        account = (
+            await models.RentalEmailAccount
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=assignment.account_id)
+        )
+
+        locked_user = (
+            await models.User
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=user_id)
+        )
+
+        if assignment.is_active:
+            assignment.is_active = False
+            await assignment.save(using_db=conn, update_fields=["is_active"])
+
+        if account:
+            account.is_reserved = False
+            account.released_at = now
+            account_update_fields = ["is_reserved", "released_at"]
+
+            if account.retired_at is None:
+                max_queue_order = await _get_rental_email_pool_tail_queue_order(conn)
+                account.queue_order = max_queue_order + 1
+                account_update_fields.append("queue_order")
+
+            await account.save(
+                using_db=conn,
+                update_fields=account_update_fields,
+            )
+
+        logger.bind(
+            user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+            action="_rollback_failed_free_firstmail_issue",
+        ).warning(
+            f"Откат неуспешной бесплатной выдачи FirstMail: assignment_id={assignment_id}"
+        )
+
+
+async def issue_free_firstmail(
+    user: models.User,
+    initial_old_messages_id: Optional[list] = None,
+) -> models.FreeFirstMailAssignment:
+    """
+    Выдаёт пользователю бесплатный бессрочный FirstMail-ящик.
+
+    Правила:
+    - бесплатно выдаём только один раз за всё время;
+    - если активная бесплатная привязка уже есть, возвращаем её;
+    - используем тот же пул RentalEmailAccount, что и аренда;
+    - лимит успешных выдач аккаунта берётся из FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES;
+    - успешную выдачу фиксируем только после успешной инициализации.
+    """
+    active_assignment = await models.FreeFirstMailAssignment.get_active_for_user(user.id)
+    if active_assignment:
+        await active_assignment.fetch_related("account", "user")
+        return active_assignment
+
+    if await models.FreeFirstMailAssignment.has_ever_received_free_firstmail(user.id):
+        raise RuntimeError(
+            "Бесплатная FirstMail-почта уже выдавалась ранее. Для нового ящика используйте платную смену за 50 ₽."
+        )
+
+    old_messages = list(initial_old_messages_id or [])
+    now = timezone.now()
+
+    async with in_transaction() as conn:
+        locked_user = (
+            await models.User
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=user.id)
+        )
+
+        if not locked_user:
+            raise ValueError("Пользователь не найден.")
+
+        active_assignment_locked = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(user_id=locked_user.id, is_active=True)
+        )
+        if active_assignment_locked:
+            await active_assignment_locked.fetch_related("account", "user")
+            return active_assignment_locked
+
+        history_exists = await models.FreeFirstMailAssignment.filter(user_id=locked_user.id).using_db(conn).exists()
+        if history_exists:
+            raise RuntimeError(
+                "Бесплатная FirstMail-почта уже выдавалась ранее. Для нового ящика используйте платную смену за 50 ₽."
+            )
+
+        account = await _pick_next_available_rental_email_account(conn)
+        if not account:
+            raise RuntimeError("Нет свободных почтовых ящиков для бесплатной выдачи.")
+
+        account.is_reserved = True
+        account.last_assigned_at = now
+        await account.save(
+            using_db=conn,
+            update_fields=["is_reserved", "last_assigned_at"],
+        )
+
+        assignment = await models.FreeFirstMailAssignment.create(
+            using_db=conn,
+            user=locked_user,
+            account=account,
+            email=account.email,
+            old_messages_id=old_messages,
+            is_initialized=False,
+            is_active=True,
+            last_changed_at=None,
+            changes_count=0,
+        )
+
+    init_ok = await initialize_free_firstmail_assignment(assignment.id)
+    if not init_ok:
+        await _rollback_failed_free_firstmail_issue(assignment.id, user.id)
+        raise RuntimeError("Не удалось подготовить бесплатный почтовый ящик. Попробуйте позже.")
+
+    await assignment.fetch_related("account", "user")
+
+    logger.bind(
+        user_id=getattr(user, "telegram_id", None),
+        action="issue_free_firstmail",
+    ).log(
+        "USER_ACTION",
+        f"Подготовлена бесплатная FirstMail-привязка: assignment_id={assignment.id} "
+        f"account_id={assignment.account_id} email={assignment.email}"
+    )
+
+    return assignment
+
+
+async def initialize_free_firstmail_assignment(assignment_id: int) -> bool:
+    """
+    Инициализирует бесплатный FirstMail-ящик сразу после выдачи или смены.
+
+    Логика:
+    - подключаемся к IMAP;
+    - сохраняем текущий снимок писем в old_messages_id;
+    - даже если писем нет, всё равно помечаем привязку как инициализированную;
+    - успешную выдачу аккаунта фиксируем только здесь, после успешной инициализации.
+    """
+    try:
+        assignment = (
+            await models.FreeFirstMailAssignment
+            .filter(id=assignment_id, is_active=True)
+            .prefetch_related("account", "user")
+            .first()
+        )
+
+        if not assignment:
+            logger.warning(
+                "initialize_free_firstmail_assignment: привязка не найдена assignment_id={}",
+                assignment_id,
+            )
+            return False
+
+        if assignment.is_initialized:
+            return True
+
+        result = await fetch_firstmail_messages_async(
+            email_addr=assignment.account.email,
+            password=assignment.account.password,
+            known_uids=[],
+            limit=1,
+            is_initialized=False,
+        )
+
+        updated_old_uids = result.get("updated_old_uids", []) or []
+        now = timezone.now()
+        max_successful_issuances = _get_firstmail_max_successful_issuances()
+
+        issued_now = False
+        retired_now = False
+        final_times_issued = None
+
+        async with in_transaction() as conn:
+            locked_assignment = (
+                await models.FreeFirstMailAssignment
+                .select_for_update()
+                .using_db(conn)
+                .get_or_none(id=assignment_id, is_active=True)
+            )
+
+            if not locked_assignment:
+                logger.warning(
+                    "initialize_free_firstmail_assignment: привязка исчезла или стала неактивной assignment_id={}",
+                    assignment_id,
+                )
+                return False
+
+            if locked_assignment.is_initialized:
+                return True
+
+            locked_account = (
+                await models.RentalEmailAccount
+                .select_for_update()
+                .using_db(conn)
+                .get_or_none(id=locked_assignment.account_id)
+            )
+
+            if not locked_account:
+                logger.warning(
+                    "initialize_free_firstmail_assignment: аккаунт не найден assignment_id={} account_id={}",
+                    assignment_id,
+                    locked_assignment.account_id,
+                )
+                return False
+
+            locked_assignment.old_messages_id = updated_old_uids
+            locked_assignment.is_initialized = True
+            await locked_assignment.save(
+                using_db=conn,
+                update_fields=["old_messages_id", "is_initialized"],
+            )
+
+            account_update_fields: list[str] = []
+
+            if locked_account.times_issued < max_successful_issuances:
+                locked_account.times_issued += 1
+                account_update_fields.append("times_issued")
+                issued_now = True
+
+                if locked_account.times_issued >= max_successful_issuances:
+                    if locked_account.retired_at is None:
+                        locked_account.retired_at = now
+                        account_update_fields.append("retired_at")
+                        retired_now = True
+
+                    if locked_account.retire_reason != "usage_limit_reached":
+                        locked_account.retire_reason = "usage_limit_reached"
+                        account_update_fields.append("retire_reason")
+            else:
+                if locked_account.retired_at is None:
+                    locked_account.retired_at = now
+                    account_update_fields.append("retired_at")
+
+                if locked_account.retire_reason != "usage_limit_reached":
+                    locked_account.retire_reason = "usage_limit_reached"
+                    account_update_fields.append("retire_reason")
+
+            if account_update_fields:
+                await locked_account.save(
+                    using_db=conn,
+                    update_fields=account_update_fields,
+                )
+
+            final_times_issued = locked_account.times_issued
+
+        logger.bind(
+            user_id=getattr(assignment.user, "telegram_id", None),
+            action="initialize_free_firstmail_assignment",
+        ).log(
+            "USER_ACTION",
+            f"Инициализирован бесплатный FirstMail-ящик: assignment_id={assignment.id} "
+            f"email={assignment.email} old_uids={len(updated_old_uids)}"
+        )
+
+        if issued_now:
+            logger.bind(
+                user_id=getattr(assignment.user, "telegram_id", None),
+                action="initialize_free_firstmail_assignment",
+            ).info(
+                f"Успешная бесплатная выдача FirstMail-аккаунта зафиксирована: "
+                f"assignment_id={assignment.id} account_id={assignment.account_id} email={assignment.email} "
+                f"times_issued={final_times_issued}/{max_successful_issuances}"
+            )
+
+        if retired_now:
+            logger.bind(
+                user_id=getattr(assignment.user, "telegram_id", None),
+                action="initialize_free_firstmail_assignment",
+            ).warning(
+                f"FirstMail-аккаунт выбыл из ротации по лимиту выдач: "
+                f"assignment_id={assignment.id} account_id={assignment.account_id} email={assignment.email} "
+                f"times_issued={final_times_issued}/{max_successful_issuances}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.opt(exception=e).error(
+            f"Ошибка при инициализации бесплатного FirstMail-ящика assignment_id={assignment_id}: {e}"
+        )
+        return False
+
+
+async def _finalize_free_firstmail_change(old_assignment_id: int, user_id: int) -> None:
+    """
+    Финализирует успешную смену бесплатного FirstMail-ящика.
+
+    После успешной инициализации нового ящика:
+    - старый аккаунт освобождается;
+    - если он не выбыл из ротации, он уходит в конец очереди;
+    - если аккаунт уже выбыл из ротации, он просто освобождается.
+    """
+    now = timezone.now()
+
+    async with in_transaction() as conn:
+        old_assignment = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=old_assignment_id)
+        )
+
+        if not old_assignment:
+            logger.warning(
+                "Финализация смены бесплатного FirstMail: старая привязка не найдена old_assignment_id={}",
+                old_assignment_id,
+            )
+            return
+
+        old_account = (
+            await models.RentalEmailAccount
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=old_assignment.account_id)
+        )
+
+        if not old_account:
+            logger.warning(
+                "Финализация смены бесплатного FirstMail: старый аккаунт не найден old_assignment_id={} account_id={}",
+                old_assignment_id,
+                old_assignment.account_id,
+            )
+            return
+
+        locked_user = (
+            await models.User
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=user_id)
+        )
+
+        old_account.is_reserved = False
+        old_account.released_at = now
+        account_update_fields = ["is_reserved", "released_at"]
+
+        if old_account.retired_at is None:
+            max_queue_order = await _get_rental_email_pool_tail_queue_order(conn)
+            old_account.queue_order = max_queue_order + 1
+            account_update_fields.append("queue_order")
+        else:
+            logger.bind(
+                user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+                action="_finalize_free_firstmail_change",
+            ).info(
+                f"Освобождён бесплатный FirstMail-аккаунт, уже выбывший из ротации: "
+                f"account_id={old_account.id} email={old_account.email} "
+                f"retire_reason={old_account.retire_reason}"
+            )
+
+        await old_account.save(
+            using_db=conn,
+            update_fields=account_update_fields,
+        )
+
+
+async def _rollback_free_firstmail_change(
+    old_assignment_id: int,
+    new_assignment_id: int,
+    user_id: int,
+) -> None:
+    """
+    Откатывает смену бесплатного FirstMail, если новый ящик не удалось инициализировать.
+
+    Логика:
+    - новая привязка деактивируется;
+    - новый аккаунт освобождается и уходит в конец очереди, если не выбыл из ротации;
+    - старая привязка возвращается в активное состояние;
+    - старый аккаунт остаётся закреплённым за пользователем.
+    """
+    now = timezone.now()
+
+    async with in_transaction() as conn:
+        old_assignment = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=old_assignment_id)
+        )
+        new_assignment = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=new_assignment_id)
+        )
+
+        new_account = None
+        if new_assignment:
+            new_account = (
+                await models.RentalEmailAccount
+                .select_for_update()
+                .using_db(conn)
+                .get_or_none(id=new_assignment.account_id)
+            )
+
+        old_account = None
+        if old_assignment:
+            old_account = (
+                await models.RentalEmailAccount
+                .select_for_update()
+                .using_db(conn)
+                .get_or_none(id=old_assignment.account_id)
+            )
+
+        locked_user = (
+            await models.User
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=user_id)
+        )
+
+        if new_assignment and new_assignment.is_active:
+            new_assignment.is_active = False
+            await new_assignment.save(using_db=conn, update_fields=["is_active"])
+
+        if new_account:
+            new_account.is_reserved = False
+            new_account.released_at = now
+            account_update_fields = ["is_reserved", "released_at"]
+
+            if new_account.retired_at is None:
+                max_queue_order = await _get_rental_email_pool_tail_queue_order(conn)
+                new_account.queue_order = max_queue_order + 1
+                account_update_fields.append("queue_order")
+
+            await new_account.save(
+                using_db=conn,
+                update_fields=account_update_fields,
+            )
+
+        if old_assignment and not old_assignment.is_active:
+            old_assignment.is_active = True
+            await old_assignment.save(using_db=conn, update_fields=["is_active"])
+
+        if old_account and not old_account.is_reserved:
+            old_account.is_reserved = True
+            await old_account.save(using_db=conn, update_fields=["is_reserved"])
+
+        logger.bind(
+            user_id=getattr(locked_user, "telegram_id", None) if locked_user else None,
+            action="_rollback_free_firstmail_change",
+        ).info(
+            f"Откат смены бесплатного FirstMail выполнен: old_assignment_id={old_assignment_id} "
+            f"new_assignment_id={new_assignment_id}"
+        )
+
+
+async def change_free_firstmail_assignment(
+    assignment_id: int,
+    user: models.User,
+) -> models.FreeFirstMailAssignment:
+    """
+    Меняет активную бесплатную FirstMail-привязку пользователя на новый ящик из пула.
+
+    Важно:
+    - это именно сервис смены после успешной оплаты/списания 50 ₽;
+    - payment/balance здесь не трогаем;
+    - старая привязка временно деактивируется до успешной инициализации новой;
+    - старый аккаунт после успешной смены уходит в конец очереди;
+    - reuse-лимит аккаунтов здесь не увеличивается до успешной инициализации.
+    """
+    async with in_transaction() as conn:
+        locked_user = (
+            await models.User
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=user.id)
+        )
+
+        if not locked_user:
+            raise ValueError("Пользователь не найден.")
+
+        old_assignment = (
+            await models.FreeFirstMailAssignment
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=assignment_id, user_id=locked_user.id, is_active=True)
+        )
+
+        if not old_assignment:
+            raise ValueError("Бесплатный почтовый ящик не найден.")
+
+        old_account = (
+            await models.RentalEmailAccount
+            .select_for_update()
+            .using_db(conn)
+            .get_or_none(id=old_assignment.account_id)
+        )
+
+        if not old_account:
+            raise RuntimeError("Не найден текущий бесплатный почтовый аккаунт.")
+
+        now = timezone.now()
+        new_account = await _pick_next_available_rental_email_account(
+            conn,
+            exclude_account_id=old_account.id,
+        )
+
+        if not new_account:
+            raise RuntimeError("Нет свободных почтовых ящиков для смены.")
+
+        new_account.is_reserved = True
+        new_account.last_assigned_at = now
+        await new_account.save(
+            using_db=conn,
+            update_fields=["is_reserved", "last_assigned_at"],
+        )
+
+        old_assignment.is_active = False
+        await old_assignment.save(using_db=conn, update_fields=["is_active"])
+
+        new_assignment = await models.FreeFirstMailAssignment.create(
+            using_db=conn,
+            user=locked_user,
+            account=new_account,
+            email=new_account.email,
+            old_messages_id=[],
+            is_initialized=False,
+            is_active=True,
+            last_changed_at=now,
+            changes_count=(old_assignment.changes_count or 0) + 1,
+        )
+
+    init_ok = await initialize_free_firstmail_assignment(new_assignment.id)
+    if not init_ok:
+        await _rollback_free_firstmail_change(
+            old_assignment_id=old_assignment.id,
+            new_assignment_id=new_assignment.id,
+            user_id=user.id,
+        )
+        raise RuntimeError("Не удалось подготовить новый почтовый ящик. Попробуйте ещё раз.")
+
+    await _finalize_free_firstmail_change(old_assignment.id, user.id)
+    await new_assignment.fetch_related("account", "user")
+
+    logger.bind(
+        user_id=getattr(user, "telegram_id", None),
+        action="change_free_firstmail_assignment",
+    ).log(
+        "USER_ACTION",
+        f"Смена бесплатного FirstMail завершена: old_assignment_id={old_assignment.id} "
+        f"new_assignment_id={new_assignment.id} email={new_assignment.email}"
+    )
+
+    return new_assignment
+
+
+async def get_active_free_firstmail_for_user(
+    user: models.User,
+) -> Optional[models.FreeFirstMailAssignment]:
+    """
+    Возвращает активную бесплатную FirstMail-привязку пользователя.
+    """
+    assignment = await models.FreeFirstMailAssignment.get_active_for_user(user.id)
+    if assignment:
+        await assignment.fetch_related("account", "user")
+    return assignment
+
+
+async def get_free_firstmail_assignment_for_user(
+    assignment_id: int,
+    user: models.User,
+) -> Optional[models.FreeFirstMailAssignment]:
+    """
+    Возвращает бесплатную FirstMail-привязку пользователя по ID, если она принадлежит ему.
+    """
+    return await models.FreeFirstMailAssignment.get_or_none(
+        id=assignment_id,
+        user_id=user.id,
+    ).prefetch_related("account", "user")
