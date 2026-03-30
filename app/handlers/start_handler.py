@@ -815,9 +815,22 @@ async def change_email(call: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith('continue_payment:'))
 async def continue_payment(call: types.CallbackQuery, dialog_manager: DialogManager):
+    """
+    Продолжает отложенное действие после успешной оплаты.
+
+    Поддерживает:
+    - старый flow аренды email через continue_data['email'];
+    - новый flow платной смены бесплатного FirstMail через continue_data['action'] == 'change_free_firstmail';
+    - старый SMS-flow через service_code.
+
+    Важно:
+    - для free FirstMail здесь НЕ списываем деньги с баланса повторно;
+    - считаем, что успешная оплата уже и есть оплата действия на 50 ₽.
+    """
     try:
         user_id = call.from_user.id
         payment_id = int(call.data.split(':')[1])
+
         logger.bind(user_id=user_id, action='continue_payment').log(
             "USER_ACTION",
             f"Продолжение оплаты для платежа ID={payment_id}"
@@ -832,22 +845,78 @@ async def continue_payment(call: types.CallbackQuery, dialog_manager: DialogMana
             await call.answer()
             return
 
-        if 'email' in payment.continue_data:
+        continue_data = payment.continue_data or {}
+
+        if continue_data.get("action") == "change_free_firstmail":
+            from app.handlers.get_email_handler import try_handle_free_firstmail_receive_email
+            from app.services.rental_email_pool import change_free_firstmail_assignment
+
+            logger.bind(user_id=user_id, action='continue_payment').log(
+                "USER_ACTION",
+                f"Продолжение платной смены бесплатного FirstMail по платежу ID={payment_id}"
+            )
+
+            user = await models.User.get_user(user_id)
+            if not user:
+                await call.answer("Пользователь не найден.", show_alert=True)
+                return
+
+            assignment_id = int(continue_data.get("assignment_id", 0))
+            if assignment_id <= 0:
+                await call.answer("Некорректные данные для продолжения оплаты.", show_alert=True)
+                return
+
+            new_assignment = await change_free_firstmail_assignment(
+                assignment_id=assignment_id,
+                user=user,
+            )
+
+            logger.bind(user_id=user_id, action='continue_payment').log(
+                "USER_ACTION",
+                f"Платная смена бесплатного FirstMail завершена: new_assignment_id={new_assignment.id}"
+            )
+
+            await call.answer("✅ Новый почтовый ящик подготовлен", show_alert=False)
+
+            handled = await try_handle_free_firstmail_receive_email(
+                event=call,
+                dialog_manager=dialog_manager,
+                user=user,
+            )
+            if handled:
+                return
+
+            return
+
+        if 'email' in continue_data:
             logger.bind(user_id=user_id, action='continue_payment').log(
                 "USER_ACTION",
                 f"Старт диалога ReceiveEmailMenu.rent_email_confirm"
             )
-            await dialog_manager.start(ReceiveEmailMenu.rent_email_confirm, data=payment.continue_data,
-                                       mode=StartMode.RESET_STACK)
-        else:
-            logger.bind(user_id=user_id, action='continue_payment').log(
-                "USER_ACTION",
-                f"Вызов send_country_info для продолжения оплаты"
+            await dialog_manager.start(
+                ReceiveEmailMenu.rent_email_confirm,
+                data=continue_data,
+                mode=StartMode.RESET_STACK
             )
-            await send_country_info(payment.continue_data['service_code'], call, dialog_manager)
+            return
+
+        logger.bind(user_id=user_id, action='continue_payment').log(
+            "USER_ACTION",
+            f"Вызов send_country_info для продолжения оплаты"
+        )
+        await send_country_info(continue_data['service_code'], call, dialog_manager)
+
+    except ValueError as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере continue_payment: {e}")
+        await call.answer(str(e), show_alert=True)
+
+    except RuntimeError as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере continue_payment: {e}")
+        await call.answer(str(e), show_alert=True)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере continue_payment: {e}")
-
+        await call.answer("Не удалось продолжить оплату. Попробуйте позже.", show_alert=True)
 
 @router.callback_query(F.data.startswith('bonus_price:'))
 async def bonus_price(call: types.CallbackQuery, dialog_manager: DialogManager):
