@@ -75,8 +75,10 @@ def _build_free_firstmail_markup(
     Формирует клавиатуру для бесплатного FirstMail-ящика.
 
     Важно:
-    - кнопки продления здесь нет;
-    - смена ящика ведёт в отдельный flow оплаты на 50 ₽.
+    - бесплатный ящик можно вручную проверять и платно менять;
+    - отсюда же должен быть доступ к аренде FirstMail;
+    - отсюда же должен быть доступ к списку арендованных ящиков;
+    - кнопку "Назад" оставляем только для callback-сценариев.
     """
     inline_keyboard = [
         [
@@ -89,6 +91,18 @@ def _build_free_firstmail_markup(
             types.InlineKeyboardButton(
                 text=f"{bt.CHANGE_EMAIL_BTN} (50₽)",
                 callback_data=f"change_free_firstmail:{assignment_id}",
+            )
+        ],
+        [
+            types.InlineKeyboardButton(
+                text=bt.RENT_EMAIL_BTN,
+                callback_data="rent_email",
+            )
+        ],
+        [
+            types.InlineKeyboardButton(
+                text=bt.MY_RENT_EMAILS_BTN,
+                callback_data="my_rent_emails",
             )
         ],
     ]
@@ -105,6 +119,32 @@ def _build_free_firstmail_markup(
 
     return types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
+@router.callback_query(F.data == 'rent_email')
+async def rent_email_callback(call: types.CallbackQuery, dialog_manager: DialogManager):
+    """
+    Открывает flow аренды FirstMail по inline-кнопке.
+
+    Важно:
+    - используется в том числе из карточки бесплатного FirstMail;
+    - переводит пользователя в уже существующий flow аренды;
+    - не зависит от legacy mail.tm.
+    """
+    try:
+        user_id = call.from_user.id
+        logger.bind(user_id=user_id, action='rent_email_callback').log(
+            "USER_ACTION",
+            "Пользователь открыл аренду почты из inline-кнопки"
+        )
+
+        from app.dialogs.receive_email.selected import on_rent_email_check_discount
+        await on_rent_email_check_discount(call, dialog_manager)
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере rent_email_callback: {e}")
+        try:
+            await call.answer("Не удалось открыть аренду почты. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
 
 async def _show_free_firstmail_screen(
     event: Union[types.Message, types.CallbackQuery],
@@ -337,6 +377,10 @@ async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: Dialo
             await call.answer("Недостаточно средств. Открываю оплату на 50 ₽.", show_alert=False)
             return
 
+        # Проверяем порог низкого баланса ДО списания,
+        # чтобы корректно понять, пересечёт ли пользователь границу в 50 ₽ после оплаты.
+        low_balance = await check_low_balance(user, change_cost)
+
         old_balance = float(user.balance or 0)
         user.balance = round(old_balance - change_cost, 2)
         await user.save(update_fields=["balance"])
@@ -347,11 +391,12 @@ async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: Dialo
                 user=user,
             )
         except Exception:
+            # Если смена ящика не удалась, возвращаем баланс назад.
             user.balance = old_balance
             await user.save(update_fields=["balance"])
             raise
 
-        if await check_low_balance(user):
+        if low_balance:
             await send_low_balance_alert(user)
 
         msg_text = _build_free_firstmail_text(new_assignment)
@@ -380,6 +425,7 @@ async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: Dialo
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
+
 
 @router.message(Command("get_email"))  # Обработка команды /get_email
 @router.message(F.text == bt.RECEIVE_EMAIL_BTN)  # кнопка '📩Принять Email'

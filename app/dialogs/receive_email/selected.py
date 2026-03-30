@@ -20,6 +20,7 @@ from app.services.rental_email_pool import (
     release_rental_email_lease,
 )
 from app.dependencies import FREE_EMAIL_PROVIDER
+from typing import Union
 
 async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
@@ -274,17 +275,23 @@ async def on_rent_email_item_discount(c: types.CallbackQuery, widget: Button, ma
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_item_discount: {e}")
 
-async def on_rent_email_check_discount(message: types.Message, manager: DialogManager):
-    """
-    Проверяет, предлагалась ли пользователю скидка, и переключает
-    на соответствующее окно аренды.
 
-    Для нового пула FirstMail:
-    - больше НЕ ищем последний Mail пользователя;
-    - запускаем окно аренды без привязки к временной почте.
+async def on_rent_email_check_discount(
+    event: Union[types.Message, types.CallbackQuery],
+    manager: DialogManager
+):
+    """
+    Проверяет, предлагалась ли пользователю скидка, и открывает
+    соответствующее окно аренды FirstMail.
+
+    Важно:
+    - функция работает и для Message, и для CallbackQuery;
+    - используется как из legacy dialog-кнопок, так и из inline-кнопок
+      бесплатного FirstMail;
+    - больше не зависит от старой модели Mail/mail.tm.
     """
     try:
-        user_id = message.from_user.id
+        user_id = event.from_user.id
         logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
             "USER_ACTION",
             "Проверка наличия скидки у пользователя"
@@ -294,18 +301,27 @@ async def on_rent_email_check_discount(message: types.Message, manager: DialogMa
         if not user:
             return
 
+        if isinstance(event, types.CallbackQuery):
+            await event.answer()
+
         if user.discount_used is True:
             logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
                 "USER_ACTION",
                 "Скидка уже была использована"
             )
-            await manager.start(ReceiveEmailMenu.rent_email_no_discount, mode=StartMode.RESET_STACK)
+            await manager.start(
+                ReceiveEmailMenu.rent_email_no_discount,
+                mode=StartMode.RESET_STACK
+            )
         else:
             logger.bind(user_id=user_id, action='on_rent_email_check_discount').log(
                 "USER_ACTION",
                 "Скидка ещё не использована"
             )
-            await manager.start(ReceiveEmailMenu.rent_email_discount, mode=StartMode.RESET_STACK)
+            await manager.start(
+                ReceiveEmailMenu.rent_email_discount,
+                mode=StartMode.RESET_STACK
+            )
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_check_discount: {e}")
