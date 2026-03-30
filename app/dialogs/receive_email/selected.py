@@ -19,7 +19,7 @@ from app.services.rental_email_pool import (
     initialize_rental_email_lease,
     release_rental_email_lease,
 )
-
+from app.dependencies import FREE_EMAIL_PROVIDER
 
 async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
@@ -46,7 +46,11 @@ async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogMa
 async def on_change_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Изменить почтовый ящик".
-    Генерирует новый почтовый ящик и сохраняет его в базе данных.
+
+    Важно:
+    - при FREE_EMAIL_PROVIDER == "firstmail" legacy-смена mail.tm должна быть недоступна;
+    - в этом режиме бесплатный FirstMail меняется только через отдельный flow из новой карточки;
+    - legacy-логику mail.tm не удаляем, а просто не даём ей выполниться при активном FirstMail.
 
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
@@ -55,6 +59,18 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
     try:
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='on_change_email').log("USER_ACTION", "Запрос на смену почтового ящика")
+
+        # Защита от обхода нового переключателя провайдера через legacy dialog.
+        if FREE_EMAIL_PROVIDER == "firstmail":
+            logger.bind(user_id=user_id, action='on_change_email').log(
+                "USER_ACTION",
+                "Legacy смена mail.tm заблокирована, так как активен FREE_EMAIL_PROVIDER=firstmail"
+            )
+            await c.answer(
+                "Этот сценарий отключён. Для бесплатного FirstMail используйте новую карточку почты.",
+                show_alert=True
+            )
+            return
 
         ctx = manager.current_context()
         mail_id = ctx.dialog_data.get('mail_id')
@@ -89,7 +105,6 @@ async def on_change_email(c: types.CallbackQuery, widget: Button, manager: Dialo
         )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_change_email: {e}")
-
 
 async def on_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
