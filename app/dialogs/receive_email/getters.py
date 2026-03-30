@@ -7,17 +7,16 @@ from app.dialogs.receive_email.selected import on_rent_email_item
 from app.services.sms_receive import SmsReceive
 from loguru import logger
 
-
 async def get_email_info(dialog_manager: DialogManager, **middleware_data):
     """
-    Получает информацию о текущем временном почтовом ящике пользователя.
+    Получает данные для email-диалогов.
 
     Важно:
-    - временный ящик остаётся в старой модели Mail;
-    - список/количество арендованных ящиков для кнопки "Мои ящики"
-      теперь берём из новой модели RentalEmailLease;
-    - факт использования бесплатной недели тоже берём из RentalEmailLease,
-      чтобы не смешивать старую и новую логику.
+    - legacy mail.tm остаётся в старой модели Mail;
+    - аренда FirstMail теперь может открываться и без legacy mail_id;
+    - поэтому getter обязан корректно работать в двух режимах:
+      1) с mail_id (старый сценарий mail.tm),
+      2) без mail_id (новый сценарий free FirstMail -> аренда).
     """
     try:
         user_id = dialog_manager.event.from_user.id
@@ -36,40 +35,52 @@ async def get_email_info(dialog_manager: DialogManager, **middleware_data):
             return {}
 
         ctx = dialog_manager.current_context()
-        mail_id = ctx.start_data.get('mail_id')
-        if not mail_id:
-            logger.bind(user_id=user_id, action='get_email_info').log(
-                "USER_ACTION",
-                "ID почты не передан"
-            )
-            return {}
 
-        ctx.dialog_data['mail_id'] = mail_id
-        mail = await models.Mail.get_mail(mail_id)
-        if not mail:
-            logger.bind(user_id=user_id, action='get_email_info').log(
-                "USER_ACTION",
-                f"Почта с ID={mail_id} не найдена"
-            )
-            return {}
+        # Важно:
+        # - в legacy-сценарии mail_id обычно лежит в start_data;
+        # - в старых переходах внутри диалога он мог лежать в dialog_data;
+        # - в новом сценарии free FirstMail -> аренда mail_id может не быть вообще.
+        start_data = ctx.start_data or {}
+        dialog_data = ctx.dialog_data or {}
 
-        # Количество активных арендованных ящиков ТОЛЬКО текущего пользователя
+        mail_id = dialog_data.get('mail_id') or start_data.get('mail_id')
+
+        # Количество активных арендованных ящиков ТОЛЬКО текущего пользователя.
         paid_mails_count = await models.RentalEmailLease.filter(
             user=user,
             is_active=True
         ).count()
 
-        # История использования бесплатной недели теперь живёт в новой модели аренд
+        # История использования бесплатной недели живёт в новой модели аренд.
         free_week_used = await models.RentalEmailLease.has_used_free_week(user)
 
-        logger.bind(user_id=user_id, action='get_email_info').log(
-            "USER_ACTION",
-            f"Информация о почте '{mail.email}' успешно получена | "
-            f"free_week_used={free_week_used} | paid_mails_count={paid_mails_count}"
-        )
+        email_value = ""
+
+        if mail_id:
+            dialog_data['mail_id'] = mail_id
+
+            mail = await models.Mail.get_mail(mail_id)
+            if mail:
+                email_value = mail.email
+                logger.bind(user_id=user_id, action='get_email_info').log(
+                    "USER_ACTION",
+                    f"Информация о почте '{mail.email}' успешно получена | "
+                    f"free_week_used={free_week_used} | paid_mails_count={paid_mails_count}"
+                )
+            else:
+                logger.bind(user_id=user_id, action='get_email_info').log(
+                    "USER_ACTION",
+                    f"Почта с ID={mail_id} не найдена, продолжаем без legacy mail"
+                )
+        else:
+            logger.bind(user_id=user_id, action='get_email_info').log(
+                "USER_ACTION",
+                f"mail_id отсутствует, продолжаем без legacy mail | "
+                f"free_week_used={free_week_used} | paid_mails_count={paid_mails_count}"
+            )
 
         return {
-            "email": mail.email,
+            "email": email_value,
             "is_free_week": free_week_used,
             "rent_keyboard": rent_email_kb(on_rent_email_item, free_week_used),
             "paid_mails_count": paid_mails_count,

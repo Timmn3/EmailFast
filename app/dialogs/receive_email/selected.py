@@ -326,7 +326,6 @@ async def on_rent_email_check_discount(
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_rent_email_check_discount: {e}")
 
-
 async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Подтверждает аренду почтового ящика из нового пула FirstMail.
@@ -335,6 +334,11 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
     - создаём аренду;
     - сразу инициализируем ящик через IMAP;
     - только после успешной инициализации показываем успех и списываем деньги.
+
+    Важно:
+    - функция должна работать как из legacy email-dialog, так и из нового
+      сценария free FirstMail -> аренда;
+    - поэтому start_data может отсутствовать, и это не должно приводить к падению.
     """
     try:
         user_id = c.from_user.id
@@ -344,11 +348,17 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
         )
 
         ctx = manager.current_context()
-        if 'email' in ctx.start_data:
-            ctx.dialog_data = ctx.start_data
+        start_data = ctx.start_data or {}
+        dialog_data = ctx.dialog_data or {}
 
-        cost = ctx.dialog_data.get('cost')
-        rent_days = ctx.dialog_data.get('rent_days')
+        # Поддержка старого сценария:
+        # если диалог был открыт со start_data, аккуратно переносим данные в dialog_data.
+        if start_data.get('email') and not dialog_data.get('email'):
+            dialog_data.update(start_data)
+            ctx.dialog_data = dialog_data
+
+        cost = dialog_data.get('cost')
+        rent_days = dialog_data.get('rent_days')
 
         if cost is None or rent_days is None:
             await c.answer("Данные аренды не найдены. Откройте меню заново.", show_alert=True)
@@ -383,14 +393,8 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             await c.answer("Свободные почтовые ящики временно закончились", show_alert=True)
             return
 
-        init_ok = await initialize_rental_email_lease(lease.id)
-        if not init_ok:
-            await release_rental_email_lease(lease.id)
-
-            logger.bind(user_id=user_id, action='on_confirm_rent_email').log(
-                "USER_ACTION",
-                f"Инициализация ящика не удалась, аренда отменена: lease_id={lease.id}"
-            )
+        except Exception as e:
+            logger.opt(exception=e).error(f"Ошибка выдачи арендуемой почты: {e}")
             await c.answer(
                 "Не удалось подготовить почтовый ящик. Попробуйте ещё раз.",
                 show_alert=True
@@ -408,8 +412,9 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             f"Успешная аренда и инициализация почты '{lease.email}' на {rent_days} дней"
         )
 
-        ctx.dialog_data['lease_id'] = lease.id
-        ctx.dialog_data['email'] = lease.email
+        dialog_data['lease_id'] = lease.id
+        dialog_data['email'] = lease.email
+        ctx.dialog_data = dialog_data
 
         await manager.switch_to(ReceiveEmailMenu.rent_email_success)
         await asyncio.sleep(2)

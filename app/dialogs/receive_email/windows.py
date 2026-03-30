@@ -112,17 +112,23 @@ def confirm_rent_email_window():
     """
     Создает окно для подтверждения аренды почтового ящика.
 
+    Важно:
+    - подтверждение аренды должно работать и из legacy email-dialog,
+      и из нового сценария free FirstMail -> аренда;
+    - для текста подтверждения нужны cost/rent_days из dialog_data,
+      поэтому обязательно подключаем getter=get_rent_info.
+
     :return: Объект Window для подтверждения аренды.
     """
+    from app.dialogs.receive_email.getters import get_rent_info
 
     return Window(
-        Format(bt.CONFIRM_RENT_EMAIL),  # Форматированный текст с подтверждением аренды
+        Format(bt.CONFIRM_RENT_EMAIL),
         Button(Const(bt.CONFIRM_BTN), id='confirm_btn', on_click=on_confirm_rent_email),
-        # Кнопка для подтверждения аренды
-        Back(Const(bt.BACK_BTN)),  # Кнопка для возврата назад
-        state=states.ReceiveEmailMenu.rent_email_confirm  # Состояние окна
+        Back(Const(bt.BACK_BTN)),
+        state=states.ReceiveEmailMenu.rent_email_confirm,
+        getter=get_rent_info,
     )
-
 
 def not_enough_balance_window():
     """
@@ -170,10 +176,15 @@ def rent_email_no_discount_window():
     """
     Создает окно для выбора периода аренды почтового ящика без скидки.
 
-    :return: Объект Window для выбора периода аренды без скидки.
+    Важно:
+    - здесь используются ОБЫЧНЫЕ тарифы без скидки;
+    - поэтому кнопки должны идти через rent_email_kb(...),
+      а обработчик должен быть on_rent_email_item(...), а не discount-версия.
+    - это окно должно корректно работать и из сценария free FirstMail -> аренда.
     """
-    return Window(Const(RENT_EMAIL_NO_DISCOUNT),
-        rent_email_kb(on_rent_email_item_discount, is_free_week=True),
+    return Window(
+        Const(RENT_EMAIL_NO_DISCOUNT),
+        rent_email_kb(on_rent_email_item, is_free_week=True),
         state=states.ReceiveEmailMenu.rent_email_no_discount,
         getter=get_email_info
     )
