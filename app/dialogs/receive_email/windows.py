@@ -160,11 +160,11 @@ def rent_email_discount_window():
 
     :return: Объект Window для выбора периода аренды со скидкой.
     """
-    return Window(Const(RENT_EMAIL_NO_DISCOUNT),
-                  rent_email_kb(on_rent_email_item_discount, is_free_week=True),
-                  state=states.ReceiveEmailMenu.rent_email_no_discount,
-                  getter=get_email_info
-                  )
+    return Window(Const(RENT_EMAIL_DISCOUNT_PROMO),
+        rent_email_discount_kb(on_rent_email_item_discount),
+        state=states.ReceiveEmailMenu.rent_email_discount,
+        getter=get_email_info
+    )
 
 def rent_email_no_discount_window():
     """
