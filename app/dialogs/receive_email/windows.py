@@ -1,5 +1,5 @@
 import operator
-
+from app.dependencies import FREE_EMAIL_PROVIDER
 from aiogram import F
 from aiogram_dialog import Window
 from aiogram_dialog.widgets.kbd import Cancel, Back, Button
@@ -14,37 +14,76 @@ from app.dialogs.receive_email.selected import on_change_email, on_rent_email, o
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_DISCOUNT_PROMO, RENT_EMAIL_NO_DISCOUNT
 
+def _get_receive_email_header_widget():
+    """
+    Возвращает верхний текстовый виджет для email-диалогов.
+
+    Логика:
+    - при FREE_EMAIL_PROVIDER="mail_tm" оставляем legacy-текст текущего ящика;
+    - при FREE_EMAIL_PROVIDER="firstmail" не показываем пользователю старый mail.tm-текст,
+      но сохраняем доступ к аренде и списку арендованных ящиков через legacy dialog.
+
+    :return: Виджет текста для верхней части окна.
+    """
+    if FREE_EMAIL_PROVIDER == "firstmail":
+        return Const(
+            "Бесплатная почта работает через FirstMail.\n\n"
+            "Здесь доступны только действия с арендованными почтовыми ящиками."
+        )
+
+    return Format(bt.MY_EMAIL)
+
 
 def receive_email_window():
     """
-    Создает окно для отображения информации о текущем почтовом ящике пользователя и предоставляет кнопки для изменения
-    почтового ящика, аренды нового и просмотра арендованных ящиков.
+    Создает окно для отображения email-раздела.
 
-    :return: Объект Window для отображения информации о почтовом ящике.
+    Логика:
+    - в legacy-режиме mail.tm показываем текущий бесплатный ящик и кнопку его смены;
+    - в режиме free FirstMail скрываем legacy mail.tm-текст и кнопку смены,
+      но оставляем доступ к аренде и к списку арендованных ящиков.
+
+    :return: Объект Window для отображения email-раздела.
     """
+    widgets = [
+        _get_receive_email_header_widget(),
+    ]
+
+    if FREE_EMAIL_PROVIDER != "firstmail":
+        widgets.append(
+            Button(Const(bt.CHANGE_EMAIL_BTN), id='change_email', on_click=on_change_email)
+        )
+
+    widgets.extend(
+        [
+            Button(Const(bt.RENT_EMAIL_BTN), id='rent_email', on_click=on_rent_email),
+            Button(
+                Const(bt.MY_RENT_EMAILS_BTN),
+                id='my_rent_emails_btn',
+                on_click=on_my_rent_emails,
+                when=F['paid_mails_count'] > 0
+            ),
+        ]
+    )
 
     return Window(
-        Format(bt.MY_EMAIL),  # Форматированный текст с информацией о почтовом ящике
-        Button(Const(bt.CHANGE_EMAIL_BTN), id='change_email', on_click=on_change_email),
-        # Кнопка для изменения почтового ящика
-        Button(Const(bt.RENT_EMAIL_BTN), id='rent_email', on_click=on_rent_email),
-        # Кнопка для аренды нового почтового ящика
-        Button(
-            Const(bt.MY_RENT_EMAILS_BTN),
-            id='my_rent_emails_btn',
-            on_click=on_my_rent_emails,
-            when=F['paid_mails_count'] > 0
-            # Кнопка для просмотра арендованных ящиков, отображается только если есть арендованные ящики
-        ),
-        state=states.ReceiveEmailMenu.receive_email,  # Состояние окна
-        getter=get_email_info  # Функция для получения информации о почтовом ящике
+        *widgets,
+        state=states.ReceiveEmailMenu.receive_email,
+        getter=get_email_info
     )
 
 
 def rent_email_window():
+    """
+    Создает окно выбора тарифа аренды почты.
+
+    Важно:
+    - при FREE_EMAIL_PROVIDER="firstmail" не показываем legacy mail.tm-текст в шапке;
+    - аренда продолжает работать как раньше.
+    """
     buttons = rent_email_kb(on_rent_email_item, is_free_week=False)  # неделя ДОСТУПНА
     return Window(
-        Format(bt.MY_EMAIL),
+        _get_receive_email_header_widget(),
         buttons,
         Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
         state=states.ReceiveEmailMenu.rent_email,
@@ -52,9 +91,16 @@ def rent_email_window():
     )
 
 def rent_email_no_free_week():
+    """
+    Создает окно выбора тарифа аренды почты, если бесплатная неделя уже использована.
+
+    Важно:
+    - при FREE_EMAIL_PROVIDER="firstmail" не показываем legacy mail.tm-текст в шапке;
+    - логика аренды не меняется.
+    """
     buttons = rent_email_kb(on_rent_email_item, is_free_week=True)  # неделя ИСПОЛЬЗОВАНА
     return Window(
-        Format(bt.MY_EMAIL),
+        _get_receive_email_header_widget(),
         buttons,
         Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
         state=states.ReceiveEmailMenu.rent_email_no_free_week,
