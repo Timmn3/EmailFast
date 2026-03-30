@@ -70,6 +70,24 @@ def _get_rental_email_lease_lock(lease_id: int) -> asyncio.Lock:
     return lock
 
 
+def _get_firstmail_max_successful_issuances() -> int:
+    """
+    Возвращает лимит успешных выдач одного FirstMail-аккаунта за всё время.
+
+    Важно:
+    - читаем настройку лениво, чтобы не тащить жёсткую зависимость
+      на этапе импорта модуля;
+    - минимум всегда 1.
+    """
+    from app.dependencies import FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES
+
+    try:
+        value = int(FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES)
+    except Exception:
+        value = 2
+
+    return max(1, value)
+
 def build_firstmail_change_cooldown_message(remaining: timedelta) -> str:
     """
     Формирует понятное сообщение для пользователя по cooldown смены FirstMail-ящика.
@@ -141,8 +159,11 @@ async def _pick_next_available_rental_email_account(
     Важно:
     - берём только не зарезервированные аккаунты;
     - берём только аккаунты, не выбывшие из ротации;
-    - берём только аккаунты, не исчерпавшие лимит выдач.
+    - берём только аккаунты, не исчерпавшие лимит выдач;
+    - лимит берётся из настройки FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES.
     """
+    max_successful_issuances = _get_firstmail_max_successful_issuances()
+
     query = (
         models.RentalEmailAccount
         .select_for_update()
@@ -151,7 +172,7 @@ async def _pick_next_available_rental_email_account(
             is_enabled=True,
             is_reserved=False,
             retired_at__isnull=True,
-            times_issued__lt=2,
+            times_issued__lt=max_successful_issuances,
         )
     )
 
@@ -159,6 +180,7 @@ async def _pick_next_available_rental_email_account(
         query = query.exclude(id=exclude_account_id)
 
     return await query.order_by("queue_order", "id").first()
+
 
 async def pull_rental_email_messages(
     lease_id: int,
@@ -369,7 +391,9 @@ async def initialize_rental_email_lease(lease_id: int) -> bool:
     - текущий снимок писем сохраняем в old_messages_id;
     - даже если писем нет, всё равно помечаем аренду как инициализированную;
     - именно здесь фиксируем успешную выдачу аккаунта, потому что только
-      после успешной инициализации можно считать, что выдача действительно состоялась.
+      после успешной инициализации можно считать, что выдача действительно состоялась;
+    - лимит успешных выдач берётся из настройки
+      FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES.
 
     :param lease_id: ID аренды
     :return: True если инициализация выполнена успешно, иначе False
@@ -399,6 +423,7 @@ async def initialize_rental_email_lease(lease_id: int) -> bool:
 
         updated_old_uids = result.get("updated_old_uids", []) or []
         now = timezone.now()
+        max_successful_issuances = _get_firstmail_max_successful_issuances()
 
         issued_now = False
         retired_now = False
@@ -446,12 +471,12 @@ async def initialize_rental_email_lease(lease_id: int) -> bool:
 
             account_update_fields: list[str] = []
 
-            if locked_account.times_issued < 2:
+            if locked_account.times_issued < max_successful_issuances:
                 locked_account.times_issued += 1
                 account_update_fields.append("times_issued")
                 issued_now = True
 
-                if locked_account.times_issued >= 2:
+                if locked_account.times_issued >= max_successful_issuances:
                     if locked_account.retired_at is None:
                         locked_account.retired_at = now
                         account_update_fields.append("retired_at")
@@ -495,26 +520,27 @@ async def initialize_rental_email_lease(lease_id: int) -> bool:
             ).info(
                 f"Успешная выдача FirstMail-аккаунта зафиксирована: "
                 f"lease_id={lease.id} account_id={lease.account_id} email={lease.email} "
-                f"times_issued={final_times_issued}"
+                f"times_issued={final_times_issued}/{max_successful_issuances}"
             )
 
         if retired_now:
             logger.bind(
                 user_id=getattr(lease.user, "telegram_id", None),
                 action="initialize_rental_email_lease",
-            ).log(
-                "USER_ACTION",
-                f"FirstMail-аккаунт выбыл из ротации по лимиту использований: "
-                f"account_id={lease.account_id} email={lease.email} times_issued={final_times_issued}"
+            ).warning(
+                f"FirstMail-аккаунт выбыл из ротации по лимиту выдач: "
+                f"lease_id={lease.id} account_id={lease.account_id} email={lease.email} "
+                f"times_issued={final_times_issued}/{max_successful_issuances}"
             )
 
         return True
 
     except Exception as e:
         logger.opt(exception=e).error(
-            f"Ошибка инициализации арендного ящика lease_id={lease_id}: {e}"
+            f"Ошибка при инициализации арендного FirstMail-ящика lease_id={lease_id}: {e}"
         )
         return False
+
 
 async def _finalize_rental_email_change(old_lease_id: int, user_id: int) -> None:
     """

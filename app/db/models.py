@@ -876,13 +876,21 @@ class RentalEmailAccount(Model):
         Важно:
         Это только чтение. Атомарное резервирование делается
         отдельным сервисом через транзакцию.
+
+        Лимит успешных выдач берётся из настройки
+        FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES.
         """
+        from app.dependencies import FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES
+
+        max_successful_issuances = max(1, int(FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES))
+
         return await cls.filter(
             is_enabled=True,
             is_reserved=False,
             retired_at__isnull=True,
-            times_issued__lt=2,
+            times_issued__lt=max_successful_issuances,
         ).order_by("queue_order", "id").first()
+
 
     @classmethod
     async def get_max_queue_order(cls) -> int:
