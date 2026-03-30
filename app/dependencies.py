@@ -28,6 +28,14 @@ SMS_ACTIVATE_KEY = config.get("SMS_ACTIVATE_KEY")
 SMSFAST_API_KEY = config.get("SMSFAST_API_KEY")
 SMSFAST_API_URL = config.get("SMSFAST_API_URL", "https://api.smsfast.com/stubs/handler_api.php")
 
+FREE_EMAIL_PROVIDER = str(config.get("FREE_EMAIL_PROVIDER", "mail_tm")).strip().lower()
+if FREE_EMAIL_PROVIDER not in {"mail_tm", "firstmail"}:
+    FREE_EMAIL_PROVIDER = "firstmail"
+
+FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES = int(config.get("FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES", 2))
+if FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES < 1:
+    FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES = 1
+
 REF_BONUS = config.get("REF_BONUS")
 WITHDRAW_CHAT_ID = config.get("WITHDRAW_CHAT_ID")
 SUPPORT_URL = config.get("SUPPORT_URL")

@@ -1259,6 +1259,94 @@ class Activation(Model):
         # Если нет активных арендуемых данных
         return None
 
+class FreeFirstMailAssignment(Model):
+    """
+    Бесплатная бессрочная FirstMail-привязка пользователя.
+
+    Важно:
+    - Это отдельная ветка от старой Mail/mail.tm логики.
+    - Это отдельная ветка от RentalEmailLease (аренда).
+    - История смен сохраняется отдельными записями через is_active=False.
+    """
+
+    class Meta:
+        table = "free_firstmail_assignments"
+        table_description = "Free FirstMail assignments"
+        ordering = ["-id"]
+
+    id: int = fields.BigIntField(pk=True)
+
+    # Пользователь, которому выдан бесплатный FirstMail
+    user: "User" = fields.ForeignKeyField(
+        "models.User",
+        related_name="free_firstmail_assignments",
+    )
+    user_id: int
+
+    # Какой аккаунт из общего пула RentalEmailAccount был выдан
+    account: "RentalEmailAccount" = fields.ForeignKeyField(
+        "models.RentalEmailAccount",
+        related_name="free_firstmail_assignments",
+    )
+    account_id: int
+
+    # Снимок email на момент выдачи
+    email: str = fields.CharField(max_length=128)
+
+    # Уже обработанные UID писем, чтобы не отправлять дубли
+    old_messages_id: list = fields.JSONField(default=list)
+
+    # Был ли ящик уже инициализирован
+    is_initialized: bool = fields.BooleanField(default=False)
+
+    # Активна ли текущая привязка
+    is_active: bool = fields.BooleanField(default=True)
+
+    # Когда ящик впервые выдали пользователю
+    issued_at: datetime = fields.DatetimeField(auto_now_add=True)
+
+    # Когда была последняя платная смена
+    last_changed_at: datetime = fields.DatetimeField(null=True)
+
+    # Сколько раз пользователь платно менял бесплатный ящик
+    changes_count: int = fields.IntField(default=0)
+
+    # Служебная дата создания записи
+    created_at: datetime = fields.DatetimeField(auto_now_add=True)
+
+    @classmethod
+    async def get_active_for_user(cls, user_id: int):
+        """
+        Возвращает текущую активную бесплатную FirstMail-привязку пользователя.
+        """
+        return await cls.filter(
+            user_id=user_id,
+            is_active=True,
+        ).first().prefetch_related("account", "user")
+
+    @classmethod
+    async def has_ever_received_free_firstmail(cls, user_id: int) -> bool:
+        """
+        Проверяет, выдавался ли пользователю бесплатный FirstMail хотя бы один раз.
+        """
+        return await cls.filter(user_id=user_id).exists()
+
+    @classmethod
+    async def deactivate_active_for_user(cls, user_id: int) -> int:
+        """
+        Деактивирует текущую активную бесплатную FirstMail-привязку пользователя.
+
+        Возвращает:
+            int: количество обновлённых записей.
+        """
+        return await cls.filter(
+            user_id=user_id,
+            is_active=True,
+        ).update(is_active=False)
+
+    def __str__(self):
+        return self.email
+
 class Payment(Model):
     class Meta:
         # Метаданные для модели Payment

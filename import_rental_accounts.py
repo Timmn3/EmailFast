@@ -319,5 +319,6 @@ def main() -> None:
 
 
 # python .\import_rental_accounts.py .\accounts.txt --account-type limited --batch-size 500
+# cd /srv/bots/tgbot && /srv/bots/tgbot/venv/bin/python /srv/bots/tgbot/import_rental_accounts.py ./accounts.txt --account-type limited --batch-size 500
 if __name__ == "__main__":
     main()
