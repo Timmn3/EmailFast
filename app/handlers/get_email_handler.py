@@ -72,10 +72,15 @@ def _build_free_firstmail_markup(
     Формирует клавиатуру для бесплатного FirstMail-ящика.
 
     Важно:
-    - бесплатный ящик можно вручную проверять и платно менять;
-    - отсюда же должен быть доступ к аренде FirstMail;
-    - отсюда же должен быть доступ к списку арендованных ящиков;
-    - кнопку "Назад" оставляем только для callback-сценариев.
+    - бесплатный ящик можно платно менять;
+    - отсюда должен быть доступ к аренде FirstMail;
+    - отсюда должен быть доступ к списку арендованных ящиков;
+    - кнопку "Назад" в этом меню больше не показываем ни при каких сценариях.
+
+    :param assignment_id: ID активного бесплатного FirstMail-назначения.
+    :param show_back: Параметр оставлен для обратной совместимости вызовов,
+        но больше не используется.
+    :return: Inline-клавиатура карточки бесплатного FirstMail.
     """
     inline_keyboard = [
         [
@@ -98,17 +103,8 @@ def _build_free_firstmail_markup(
         ],
     ]
 
-    if show_back:
-        inline_keyboard.append(
-            [
-                types.InlineKeyboardButton(
-                    text=bt.BACK_BTN,
-                    callback_data="receive_email",
-                )
-            ]
-        )
-
     return types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
 
 @router.callback_query(F.data == 'rent_email')
 async def rent_email_callback(call: types.CallbackQuery, dialog_manager: DialogManager):
