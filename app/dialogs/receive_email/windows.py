@@ -27,8 +27,7 @@ def _get_receive_email_header_widget():
     """
     if FREE_EMAIL_PROVIDER == "firstmail":
         return Const(
-            "Бесплатная почта работает через FirstMail.\n\n"
-            "Здесь доступны только действия с арендованными почтовыми ящиками."
+            "Выберите подходящий срок аренды для продления⤵️"
         )
 
     return Format(bt.MY_EMAIL)
@@ -164,13 +163,22 @@ def rent_email_discount_window():
     """
     Создает окно для выбора периода аренды почтового ящика со скидкой.
 
+    Важно:
+    - добавляем явную кнопку "Назад", чтобы пользователь мог вернуться
+      в основное меню почтовых ящиков;
+    - обработчик используем тот же, что и в обычных окнах аренды,
+      чтобы поведение было единообразным.
+
     :return: Объект Window для выбора периода аренды со скидкой.
     """
-    return Window(Const(RENT_EMAIL_DISCOUNT_PROMO),
+    return Window(
+        Const(RENT_EMAIL_DISCOUNT_PROMO),
         rent_email_discount_kb(on_rent_email_item_discount),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
         state=states.ReceiveEmailMenu.rent_email_discount,
         getter=get_email_info
     )
+
 
 def rent_email_no_discount_window():
     """
@@ -179,12 +187,17 @@ def rent_email_no_discount_window():
     Важно:
     - здесь используются ОБЫЧНЫЕ тарифы без скидки;
     - поэтому кнопки должны идти через rent_email_kb(...),
-      а обработчик должен быть on_rent_email_item(...), а не discount-версия.
-    - это окно должно корректно работать и из сценария free FirstMail -> аренда.
+      а обработчик должен быть on_rent_email_item(...), а не discount-версия;
+    - это окно должно корректно работать и из сценария free FirstMail -> аренда;
+    - добавляем явную кнопку "Назад", чтобы пользователь мог вернуться
+      в основное меню почтовых ящиков.
+
+    :return: Объект Window для выбора периода аренды без скидки.
     """
     return Window(
         Const(RENT_EMAIL_NO_DISCOUNT),
         rent_email_kb(on_rent_email_item, is_free_week=True),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
         state=states.ReceiveEmailMenu.rent_email_no_discount,
         getter=get_email_info
     )

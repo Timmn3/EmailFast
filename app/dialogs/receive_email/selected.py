@@ -25,7 +25,11 @@ from typing import Union
 async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик для кнопки "Назад" в меню почтовых ящиков.
-    Переключает состояние диалога на основное меню почтовых ящиков.
+
+    Логика:
+    - при FREE_EMAIL_PROVIDER == "mail_tm" возвращаемся в legacy-окно диалога;
+    - при FREE_EMAIL_PROVIDER == "firstmail" выходим из dialog-flow аренды
+      и показываем тот же экран бесплатного FirstMail, что и по callback `receive_email`.
 
     :param c: Объект CallbackQuery.
     :param widget: Объект Button.
@@ -33,16 +37,39 @@ async def on_back_mail(c: types.CallbackQuery, widget: Button, manager: DialogMa
     """
     try:
         user_id = c.from_user.id
-        logger.bind(user_id=user_id, action='on_back_mail').log("USER_ACTION", "Возврат к меню почтовых ящиков")
+        logger.bind(user_id=user_id, action='on_back_mail').log(
+            "USER_ACTION",
+            "Возврат к меню почтовых ящиков"
+        )
 
         user = await models.User.get_user(user_id)
         if not user:
             return
 
+        # Для новой ветки FirstMail возвращаем именно в карточку бесплатного ящика,
+        # а не в legacy dialog-окно receive_email.
+        if FREE_EMAIL_PROVIDER == "firstmail":
+            logger.bind(user_id=user_id, action='on_back_mail').log(
+                "USER_ACTION",
+                "Возврат из flow аренды в карточку бесплатного FirstMail"
+            )
+
+            # Сбрасываем dialog-стек, чтобы корректно выйти из flow аренды.
+            await manager.reset_stack(remove_keyboard=False)
+
+            # Локальный импорт, чтобы не создавать цикл импортов на уровне модуля.
+            from app.handlers.get_email_handler import receive_email
+
+            # Переиспользуем существующий flow, который уже умеет показывать
+            # правильную карточку бесплатного FirstMail.
+            await receive_email(c, manager)
+            return
+
+        # Legacy-ветка mail.tm остается без изменений.
         await manager.switch_to(ReceiveEmailMenu.receive_email)
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_back_mail: {e}")
-
 
 async def on_change_email(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
