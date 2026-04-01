@@ -80,12 +80,6 @@ def _build_free_firstmail_markup(
     inline_keyboard = [
         [
             types.InlineKeyboardButton(
-                text=bt.RECEIVE_MY_EMAIL_BTN,
-                callback_data=f"receive_my_free_firstmail:{assignment_id}",
-            )
-        ],
-        [
-            types.InlineKeyboardButton(
                 text=f"{bt.CHANGE_EMAIL_BTN} (50₽)",
                 callback_data=f"change_free_firstmail:{assignment_id}",
             )
@@ -783,12 +777,6 @@ async def change_rental_email(call: types.CallbackQuery):
         )
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text=bt.RECEIVE_MY_EMAIL_BTN,
-                        callback_data=f"receive_my_mail:{new_lease.id}",
-                    ),
-                ],
                 [
                     types.InlineKeyboardButton(
                         text=bt.EXTEND_EMAIL_BTN,

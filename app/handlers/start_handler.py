@@ -294,12 +294,6 @@ async def mail_info(call: types.CallbackQuery):
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text=bt.RECEIVE_MY_EMAIL_BTN,
-                        callback_data=f'receive_my_mail:{lease.id}'
-                    ),
-                ],
-                [
-                    types.InlineKeyboardButton(
                         text=bt.EXTEND_EMAIL_BTN,
                         callback_data=f'extend_rental_email:{lease.id}'
                     )
@@ -630,12 +624,6 @@ async def change_rental_email(call: types.CallbackQuery):
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text=bt.RECEIVE_MY_EMAIL_BTN,
-                        callback_data=f"receive_my_mail:{new_lease.id}",
-                    ),
-                ],
-                [
-                    types.InlineKeyboardButton(
                         text=bt.EXTEND_EMAIL_BTN,
                         callback_data=f"extend_rental_email:{new_lease.id}",
                     )
@@ -779,12 +767,6 @@ async def change_email(call: types.CallbackQuery):
         )
         mk = types.InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text=bt.RECEIVE_MY_EMAIL_BTN,
-                        callback_data=f"receive_my_mail:{new_mail.id}",
-                    ),
-                ],
                 [
                     types.InlineKeyboardButton(
                         text=bt.EXTEND_EMAIL_BTN,
