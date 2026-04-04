@@ -4,7 +4,7 @@ from aiogram import Router, types, F
 
 from app.db import models
 from app.services.bot_texts import MAIN_MENU
-from app.services.keyboards import start_kb
+from app.services.keyboards import start_kb, send_main_menu
 
 TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie-EmailFast-01-21"
 TERMS_TEXT = (
@@ -50,4 +50,4 @@ async def terms_accept(call: types.CallbackQuery):
 
     # пускаем в меню
     if call.message:
-        await call.message.answer(text=MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+        await send_main_menu(call.message, MAIN_MENU, parse_mode="HTML")

@@ -13,7 +13,7 @@ from app.handlers import (
 )
 from app.handlers.health_check_router import health_check_router
 from app.handlers.terms_middleware import TermsMiddleware
-from app.services.keyboards import start_kb
+from app.services.keyboards import start_kb, send_main_menu
 from app.services.notify_admins import notify_wakeup_bot
 from app.services.onlinesim.service_updater import add_services
 from app.services.periodic_tasks import (
@@ -63,7 +63,7 @@ async def on_unknown_intent(
             await event.answer("Кнопка устарела. Откройте меню заново.", show_alert=False)
 
         if event.message:
-            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+            await send_main_menu(event.message, bt.MAIN_MENU, parse_mode="HTML")
         return
 
     # Если это обычное сообщение
@@ -90,11 +90,11 @@ async def on_unknown_state(
             await event.answer("Сессия устарела. Откройте меню заново.", show_alert=False)
 
         if event.message:
-            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+            await send_main_menu(event.message, bt.MAIN_MENU, parse_mode="HTML")
         return
 
     if isinstance(event, Message):
-        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+        await send_main_menu(event, bt.MAIN_MENU, parse_mode="HTML")
 
 
 

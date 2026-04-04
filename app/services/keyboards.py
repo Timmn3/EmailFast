@@ -1,5 +1,5 @@
 from aiogram import types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 from app.services import bot_texts as bt
@@ -39,6 +39,23 @@ def start_kb():
 
     builder.adjust(1, 1, 1, 1)
     return builder.as_markup()
+
+async def send_main_menu(message, text, parse_mode="HTML"):
+    """
+    Отправляет главное меню и гарантированно убирает старую reply-клавиатуру.
+
+    Почему так:
+    - нижняя reply-клавиатура в Telegram живёт отдельно от inline-кнопок;
+    - если ранее была показана ReplyKeyboardMarkup, она останется у пользователя,
+      пока бот явно не отправит ReplyKeyboardRemove();
+    - сначала снимаем старую клавиатуру, потом отправляем сообщение с inline-меню.
+    """
+    await message.answer("⬇️", reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        text=text,
+        reply_markup=start_kb(),
+        parse_mode=parse_mode,
+    )
 
 
 def payment_kb(url: str):

@@ -15,7 +15,7 @@ from app.dialogs.receive_email.states import ReceiveEmailMenu
 from app.dialogs.receive_sms.selected import send_country_info
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL_SIX_MONTHS, RENT_EMAIL_YEAR
-from app.services.keyboards import start_kb
+from app.services.keyboards import start_kb, send_main_menu
 from app.services.low_balance import check_low_balance, send_low_balance_alert
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
@@ -155,7 +155,7 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
             "USER_ACTION",
             f"Отправка главного меню"
         )
-        await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+        await send_main_menu(message, bt.MAIN_MENU, parse_mode="HTML")
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
 
@@ -207,7 +207,7 @@ async def check_subscribe_handler(call: types.CallbackQuery):
             #     f"Подписка подтверждена"
             # )
             await call.message.delete()
-            await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
+            await send_main_menu(call.message, bt.MAIN_MENU, parse_mode="HTML")
         else:
             # logger.bind(user_id=user_id, action='check_subscribe').log(
             #     "USER_ACTION",
