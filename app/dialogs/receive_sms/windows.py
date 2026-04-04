@@ -16,7 +16,7 @@ from app.dialogs.receive_sms.selected import on_select_country_new, on_select_se
 from app.services import bot_texts as bt
 from app.dialogs.personal_cabinet import keyboards
 from app.services.stars_pay import send_invoice_handler_stars
-
+from aiogram_dialog.widgets.style import Style
 
 # Окно выбора сервиса
 def select_service_window():
@@ -39,7 +39,14 @@ def select_service_window():
             width=2,
             height=5
         ),
-        Button(Const(bt.SEARCH_SERVICE_BTN), id="search_service", on_click=on_search_service),
+        Button(
+            Const(bt.SEARCH_SERVICE_BTN),
+            id="search_service",
+            on_click=on_search_service,
+            style=Style(
+                emoji_id="5188217332748527444",
+            ),
+        ),
         # Cancel(Const(bt.BACK_BTN)),
         state=states.ServiceMenu.select_service,
         getter=get_services_2
