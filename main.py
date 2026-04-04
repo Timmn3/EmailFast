@@ -37,7 +37,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 31.03.2026"
+msg_text = "Версия 04.04.2026"
 
 from contextlib import suppress
 from aiogram.types import Message, CallbackQuery
@@ -63,12 +63,12 @@ async def on_unknown_intent(
             await event.answer("Кнопка устарела. Откройте меню заново.", show_alert=False)
 
         if event.message:
-            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
         return
 
     # Если это обычное сообщение
     if isinstance(event, Message):
-        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
 
 
 async def on_unknown_state(
@@ -90,11 +90,11 @@ async def on_unknown_state(
             await event.answer("Сессия устарела. Откройте меню заново.", show_alert=False)
 
         if event.message:
-            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+            await event.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
         return
 
     if isinstance(event, Message):
-        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        await event.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
 
 
 

@@ -50,4 +50,4 @@ async def terms_accept(call: types.CallbackQuery):
 
     # пускаем в меню
     if call.message:
-        await call.message.answer(text=MAIN_MENU, reply_markup=start_kb())
+        await call.message.answer(text=MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")

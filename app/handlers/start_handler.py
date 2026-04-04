@@ -155,7 +155,7 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
             "USER_ACTION",
             f"Отправка главного меню"
         )
-        await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+        await message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
 
@@ -207,7 +207,7 @@ async def check_subscribe_handler(call: types.CallbackQuery):
             #     f"Подписка подтверждена"
             # )
             await call.message.delete()
-            await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb())
+            await call.message.answer(text=bt.MAIN_MENU, reply_markup=start_kb(), parse_mode="HTML")
         else:
             # logger.bind(user_id=user_id, action='check_subscribe').log(
             #     "USER_ACTION",

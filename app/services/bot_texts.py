@@ -1,9 +1,9 @@
 # ========================= Messages =========================
 
 MAIN_MENU = """
-Привет👋🏻 
+Добро пожаловать в сервис по защите от спама <tg-emoji emoji-id="5197288647275071607">🛡</tg-emoji>
 
-Выбери нужное действие⤵️
+Выберите нужный раздел по кнопке <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>
 """
 
 SELECT_COUNTRY = 'Выберите страну⤵️'
@@ -172,10 +172,10 @@ PAID_EMAIL_INFO = """
 CREATING_EMAIL = "<b>Создание почтового ящика...</b>"
 
 PERSONAL_CABINET = """
-<b>ID:</b> <code>{user_id}</code>
+<tg-emoji emoji-id="5381808177547321132">🔤</tg-emoji><tg-emoji emoji-id="5361630910816984823">🔤</tg-emoji><b>{user_id}</b>
 
-<b>Мой кошелек:</b> <code>{balance}₽</code>
-<b>Мой партнерский счет:</b> <code>{ref_balance}₽</code>
+<tg-emoji emoji-id="5215420556089776398">👛</tg-emoji><b>Баланс:</b> <code>{balance}₽</code>
+<tg-emoji emoji-id="5357080225463149588">🤝</tg-emoji><b>Партнёрский счёт:</b> <code>{ref_balance}₽</code>
 """
 
 SELECT_DEPOSIT_PRICE = "Выберите сумму пополнения⤵️"
@@ -330,7 +330,7 @@ RECEIVE_SMS_BTN = '📲Принять SMS'
 RENT_NUMBER = '📞Длительная аренда'
 RECEIVE_EMAIL_BTN = '📩Принять Email'
 PERSONAL_CABINET_BTN = '👤Личный кабинет'
-AFFILIATE_PROGRAM_BTN = '💰Партнерская программа'
+AFFILIATE_PROGRAM_BTN = '🤝Партнерская программа'
 
 # Country menu
 SEARCH_COUNTRY_BTN = '🔎Поиск страны'
@@ -344,10 +344,10 @@ REQUEST_ANOTHER_CODE = '➕Принять SMS для другого сервис
 RECEIVE_ANOTHER_SMS_TO_NUMBER = '📩Принять новое SMS на этот же номер'
 
 # Personal cabinet
-DEPOSIT_BTN = '💵Пополнить баланс'
-INSTRUCTIONS = "📖 Инструкция"
+DEPOSIT_BTN = '👛Пополнить баланс'
+INSTRUCTIONS = 'ℹ️Инструкция'
 LINK_TO_BUTTON = "https://telegra.ph/Rekomendacii-dlya-priema-SMS-11-14"
-SUPPORT_BTN = '🙋‍♂️Поддержка'
+SUPPORT_BTN = '❓Поддержка'
 
 # Receive email
 CHANGE_EMAIL_BTN = '🔄Сменить почтовый ящик'

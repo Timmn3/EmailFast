@@ -1,6 +1,6 @@
 aerich==0.7.2
 aiofiles==24.1.0
-aiogram==3.15.0
+aiogram==3.27.0
 aiogram_dialog==2.3.0
 aiohappyeyeballs==2.4.4
 aiohttp==3.10.11
