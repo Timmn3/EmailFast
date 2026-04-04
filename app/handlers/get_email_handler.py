@@ -35,6 +35,7 @@ from app.services.rental_email_pool import (
 router = Router()
 
 
+
 def _build_free_firstmail_text(
     assignment: models.FreeFirstMailAssignment,
     new_messages_count: int | None = None,
@@ -45,12 +46,13 @@ def _build_free_firstmail_text(
     Важно:
     - это отдельная ветка от legacy mail.tm;
     - срок действия бесплатного FirstMail не ограничен;
-    - смена ящика платная: 50 ₽.
+    - смена ящика платная: 50 ₽;
+    - оформление меняем только для этого экрана.
     """
     email_text = html.escape(assignment.email)
 
     text = (
-        f"<b>Ваш почтовый ящик⤵️</b>\n"
+        '<b>Ваш Email <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji></b>\n'
         f"{email_text}\n\n"
         f"<i>Ожидаем письмо...</i>\n\n"
     )
@@ -75,30 +77,30 @@ def _build_free_firstmail_markup(
     - бесплатный ящик можно платно менять;
     - отсюда должен быть доступ к аренде FirstMail;
     - отсюда должен быть доступ к списку арендованных ящиков;
-    - кнопку "Назад" в этом меню больше не показываем ни при каких сценариях.
-
-    :param assignment_id: ID активного бесплатного FirstMail-назначения.
-    :param show_back: Параметр оставлен для обратной совместимости вызовов,
-        но больше не используется.
-    :return: Inline-клавиатура карточки бесплатного FirstMail.
+    - кнопку "Назад" в этом меню больше не показываем ни при каких сценариях;
+    - premium emoji и стиль задаём локально, чтобы не менять другие экраны.
     """
     inline_keyboard = [
         [
             types.InlineKeyboardButton(
-                text=f"{bt.CHANGE_EMAIL_BTN} (50₽)",
+                text="Сменить Email (50₽)",
                 callback_data=f"change_free_firstmail:{assignment_id}",
+                icon_custom_emoji_id="5390863029464213754",
             )
         ],
         [
             types.InlineKeyboardButton(
-                text=bt.RENT_EMAIL_BTN,
+                text="Арендовать Email",
                 callback_data="rent_email",
+                icon_custom_emoji_id="5397916757333654639",
+                style="success",
             )
         ],
         [
             types.InlineKeyboardButton(
-                text=bt.MY_RENT_EMAILS_BTN,
+                text="Мои Email",
                 callback_data="my_rent_emails",
+                icon_custom_emoji_id="5406631276042002796",
             )
         ],
     ]
@@ -277,7 +279,7 @@ async def receive_my_free_firstmail(call: types.CallbackQuery):
                 content_text = content_text[:3500] + "\n\n...[обрезано]"
 
             msg_text = (
-                f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n"
+                f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n'
                 f"<b>От кого:</b> {from_text}\n"
                 f"<b>Тема:</b> {subject_text}\n\n"
                 f"{content_text}"
@@ -570,8 +572,8 @@ async def my_rent_emails(call: types.CallbackQuery):
         builder.adjust(1)
 
         await call.message.edit_text(
-            text='Выберите почтовый ящик',
-            reply_markup=builder.as_markup()
+            text=bt.CHOOSE_A_MAILBOX,
+            reply_markup=builder.as_markup(), parse_mode="HTML"
         )
 
     except Exception as e:
@@ -659,7 +661,7 @@ async def receive_my_mail(call: types.CallbackQuery):
                 content_text = content_text[:3500] + "\n\n...[обрезано]"
 
             msg_text = (
-                f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n"
+                f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n'
                 f"<b>От кого:</b> {from_text}\n"
                 f"<b>Тема:</b> {subject_text}\n\n"
                 f"{content_text}"

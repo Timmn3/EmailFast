@@ -643,13 +643,13 @@ async def check_sms():
 
                     if safe_name:
                         msg_text = (
-                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                            f'<tg-emoji emoji-id="5406809207947142040">📲</tg-emoji><b>Новое SMS</b> на номер: +{activation.phone_number}\n\n'
                             f"Ваш код активации для <b>{safe_name}</b>:\n"
                             f"<code>{safe_code}</code>"
                         )
                     else:
                         msg_text = (
-                            f"💬<b>Новое SMS</b> на номер: +{activation.phone_number}\n\n"
+                            f'<tg-emoji emoji-id="5406809207947142040">📲</tg-emoji><b>Новое SMS</b> на номер: +{activation.phone_number}\n\n'
                             f"Ваш код активации:\n"
                             f"<code>{safe_code}</code>"
                         )
@@ -842,7 +842,7 @@ async def check_email():
                 )
 
                 msg_text = (
-                    f'📩<b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
+                    f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{mail.email}</b>\n\n'
                     f'<b>От кого:</b> {unread_message.get("from")}\n'
                     f'<b>Тема:</b> {unread_message.get("subject")}\n\n'
                     f'{unread_message.get("content", "")}'
@@ -919,7 +919,7 @@ async def check_rental_email():
                         content_text = content_text[:3500] + "\n\n...[обрезано]"
 
                     msg_text = (
-                        f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n"
+                        f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n'
                         f"<b>От кого:</b> {from_text}\n"
                         f"<b>Тема:</b> {subject_text}\n\n"
                         f"{content_text}"
@@ -1009,7 +1009,7 @@ async def check_free_firstmail():
                         content_text = content_text[:3500] + "\n\n...[обрезано]"
 
                     msg_text = (
-                        f"📩<b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n"
+                        f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n'
                         f"<b>От кого:</b> {from_text}\n"
                         f"<b>Тема:</b> {subject_text}\n\n"
                         f"{content_text}"

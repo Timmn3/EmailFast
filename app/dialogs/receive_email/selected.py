@@ -532,7 +532,7 @@ async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: Dia
         )
 
         await c.message.edit_text(
-            text='Выберите почтовый ящик',
+            text=bt.CHOOSE_A_MAILBOX,
             reply_markup=builder.as_markup()
         )
         await manager.reset_stack(remove_keyboard=False)
