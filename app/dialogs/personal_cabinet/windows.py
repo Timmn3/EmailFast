@@ -12,15 +12,50 @@ from app.handlers.affiliate_program import affiliate_program
 from app.services import bot_texts as bt
 from app.services.bot_texts import LINK_TO_BUTTON
 from app.services.stars_pay import send_invoice_handler_stars
-
+from aiogram.enums import ButtonStyle
+from aiogram_dialog.widgets.style import Style
 
 def personal_cabinet_window():
+    """
+    Окно личного кабинета.
+
+    Показывает ID пользователя, баланс и кнопки действий.
+    Для inline-кнопок добавлены premium emoji, а кнопка пополнения
+    дополнительно выделена зелёным стилем.
+    """
     return Window(
         Format(bt.PERSONAL_CABINET),
-        Button(Const(bt.DEPOSIT_BTN), id='deposit', on_click=on_deposit),
-        Button(Const(bt.AFFILIATE_PROGRAM_BTN), id='affiliate', on_click=affiliate),
-        Url(Const(bt.INSTRUCTIONS), url=Const(LINK_TO_BUTTON)),
-        Url(Const(bt.SUPPORT_BTN), url=Const(dependencies.SUPPORT_URL)),
+        Button(
+            Const(bt.DEPOSIT_BTN),
+            id='deposit',
+            on_click=on_deposit,
+            style=Style(
+                style=ButtonStyle.SUCCESS,
+                emoji_id="5215420556089776398",
+            ),
+        ),
+        Button(
+            Const(bt.AFFILIATE_PROGRAM_BTN),
+            id='affiliate',
+            on_click=affiliate,
+            style=Style(
+                emoji_id="5357080225463149588",
+            ),
+        ),
+        Url(
+            Const(bt.INSTRUCTIONS),
+            url=Const(LINK_TO_BUTTON),
+            style=Style(
+                emoji_id="5334544901428229844",
+            ),
+        ),
+        Url(
+            Const(bt.SUPPORT_BTN),
+            url=Const(dependencies.SUPPORT_URL),
+            style=Style(
+                emoji_id="5452069934089641166",
+            ),
+        ),
         state=states.PersonalMenu.user_info,
         getter=get_user_info
     )

@@ -330,7 +330,7 @@ RECEIVE_SMS_BTN = '📲Принять SMS'
 RENT_NUMBER = '📞Длительная аренда'
 RECEIVE_EMAIL_BTN = '📩Принять Email'
 PERSONAL_CABINET_BTN = '👤Личный кабинет'
-AFFILIATE_PROGRAM_BTN = '🤝Партнерская программа'
+AFFILIATE_PROGRAM_BTN = 'Партнерская программа'
 
 # Country menu
 SEARCH_COUNTRY_BTN = '🔎Поиск страны'
@@ -344,10 +344,10 @@ REQUEST_ANOTHER_CODE = '➕Принять SMS для другого сервис
 RECEIVE_ANOTHER_SMS_TO_NUMBER = '📩Принять новое SMS на этот же номер'
 
 # Personal cabinet
-DEPOSIT_BTN = '👛Пополнить баланс'
-INSTRUCTIONS = 'ℹ️Инструкция'
+DEPOSIT_BTN = 'Пополнить баланс'
+INSTRUCTIONS = 'Инструкция'
 LINK_TO_BUTTON = "https://telegra.ph/Rekomendacii-dlya-priema-SMS-11-14"
-SUPPORT_BTN = '❓Поддержка'
+SUPPORT_BTN = 'Поддержка'
 
 # Receive email
 CHANGE_EMAIL_BTN = '🔄Сменить почтовый ящик'

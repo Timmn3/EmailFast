@@ -6,25 +6,39 @@ from app.services import bot_texts as bt
 
 
 def start_kb():
-    builder = ReplyKeyboardBuilder()
+    """
+    Inline-клавиатура главного меню.
 
-    builder.row(
-        KeyboardButton(text=bt.RECEIVE_SMS_BTN)
-    )
-    builder.add(
-        KeyboardButton(text=bt.RENT_NUMBER)
-    )
-    builder.row(
-        KeyboardButton(text=bt.RECEIVE_EMAIL_BTN)
-    )
-    builder.add(
-        KeyboardButton(text=bt.PERSONAL_CABINET_BTN),
-    )
-    # builder.row(
-    #     KeyboardButton(text=bt.AFFILIATE_PROGRAM_BTN)
-    # )
+    Используется вместо reply-клавиатуры, чтобы:
+    - показывать premium emoji на кнопках;
+    - не зависеть от текстового ввода пользователя;
+    - вызывать нужные разделы через callback_data.
+    """
+    builder = InlineKeyboardBuilder()
 
-    return builder.as_markup(resize_keyboard=True, is_persistent=False)
+    builder.button(
+        text="Принять SMS",
+        callback_data="receive_sms",
+        icon_custom_emoji_id="5406809207947142040",
+    )
+    builder.button(
+        text="Длительная аренда",
+        callback_data="rent_number",
+        icon_custom_emoji_id="5258419835922030550",
+    )
+    builder.button(
+        text="Принять Email",
+        callback_data="receive_email",
+        icon_custom_emoji_id="5472239203590888751",
+    )
+    builder.button(
+        text="Личный кабинет",
+        callback_data="personal_cabinet",
+        icon_custom_emoji_id="5257963315258204021",
+    )
+
+    builder.adjust(1, 1, 1, 1)
+    return builder.as_markup()
 
 
 def payment_kb(url: str):

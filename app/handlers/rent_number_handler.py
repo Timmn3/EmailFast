@@ -1,3 +1,5 @@
+from typing import Union
+
 from aiogram import types, F, Router
 from aiogram.filters import Command
 from aiogram_dialog import DialogManager, StartMode
@@ -15,11 +17,17 @@ router = Router()
 
 import time
 
+@router.callback_query(F.data == "rent_number")
 @router.message(Command("rent_number"))
 @router.message(F.text == bt.RENT_NUMBER)
-async def rent_number(message: types.Message, dialog_manager: DialogManager):
+async def rent_number(message: Union[types.Message, types.CallbackQuery], dialog_manager: DialogManager):
     """
-    📞Арендовать номер
+    Открывает раздел длительной аренды номера.
+
+    Поддерживает:
+    - inline-кнопку главного меню;
+    - старую текстовую reply-кнопку;
+    - команду /rent_number.
     """
     user_id = message.from_user.id
     logger.bind(user_id=user_id, action='rent_number').log("USER_ACTION", "Пользователь начал процесс аренды номера")
@@ -38,7 +46,6 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
             f"Запрос к БД: получение данных пользователя {user_id}, баланс = {user.balance} ₽"
         )
 
-        # Проверяем подписку
         sub = await check_subscribe(user)
         t2 = time.perf_counter()
         logger.bind(user_id=user_id, action='rent_number').log(
@@ -52,9 +59,10 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
                 f"Подписка неактивна для пользователя {user_id}, баланс = {user.balance} ₽"
             )
             await send_subscribe_msg(user)
+            if isinstance(message, types.CallbackQuery):
+                await message.answer()
             return
 
-        # Проверяем аренды пользователя
         activation_list = await models.Rent.get_active_rent(user.id)
         t3 = time.perf_counter()
         logger.bind(user_id=user_id, action='rent_number').log(
@@ -66,31 +74,22 @@ async def rent_number(message: types.Message, dialog_manager: DialogManager):
             "USER_ACTION",
             f"Запрос к БД: получение активных аренд для пользователя {user_id}, баланс = {user.balance} ₽"
         )
-        logger.bind(user_id=user_id, action='rent_number').log(
-            "USER_ACTION",
-            f"Результат из БД: найдено активных аренд - {len(activation_list) if activation_list else 0}"
-        )
 
-        # Если нет активных арендных номеров, то предлагаем
-        if activation_list is None or not activation_list:
-            logger.bind(user_id=user_id, action='rent_number').log(
-                "USER_ACTION",
-                f"Нет активных аренд, перенаправляем в выбор страны для пользователя {user_id}, баланс = {user.balance} ₽"
-            )
+        if activation_list:
+            await dialog_manager.start(PersonalMenu.rent_sms_info, mode=StartMode.RESET_STACK)
+        else:
             await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
-            return
 
-        # Отправляем меню аренды
-        await send_rent_menu(user, message=message)
+        if isinstance(message, types.CallbackQuery):
+            await message.answer()
 
-        t4 = time.perf_counter()
-        logger.bind(user_id=user_id, action='rent_number').log(
-            "USER_ACTION",
-            f"PERF: total_full={(t4 - t0):.3f}s"
-        )
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /rent_number: {e}")
-
+        if isinstance(message, types.CallbackQuery):
+            try:
+                await message.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+            except Exception:
+                pass
 
 async def send_rent_menu(user: "User", message: types.Message = None, callback_query: types.CallbackQuery = None):
     """

@@ -4,7 +4,7 @@ from app.dependencies import ADMINS
 
 async def set_default_commands(bot: Bot):
     user_commands = [
-        types.BotCommand(command="start", description="Перезапустить"),
+        types.BotCommand(command="start", description="Открыть меню"),
         types.BotCommand(command="get_sms", description="Принять SMS"),
         types.BotCommand(command="rent_number", description="Длительная аренда"),
         types.BotCommand(command="get_email", description="Принять Email"),
@@ -14,7 +14,7 @@ async def set_default_commands(bot: Bot):
                               scope=types.BotCommandScopeAllPrivateChats())
 
     admin_commands = [
-        types.BotCommand(command="start", description="Перезапустить"),
+        types.BotCommand(command="start", description="Открыть меню"),
         types.BotCommand(command="stat", description="Статистика"),
         types.BotCommand(command="send", description="Рассылка"),
         types.BotCommand(command="help_admin", description="Список доступных команд"),

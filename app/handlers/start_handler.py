@@ -218,14 +218,23 @@ async def check_subscribe_handler(call: types.CallbackQuery):
         logger.opt(exception=e).error(f"Ошибка в хэндлере check_subscribe: {e}")
 
 
+@router.callback_query(F.data == "personal_cabinet")
 @router.message(Command("account"))
 @router.message(F.text == bt.PERSONAL_CABINET_BTN)
-async def personal_cabinet(message: types.Message, dialog_manager: DialogManager):
+async def personal_cabinet(message: Union[types.Message, types.CallbackQuery], dialog_manager: DialogManager):
+    """
+    Открывает личный кабинет.
+
+    Поддерживает:
+    - inline-кнопку главного меню;
+    - старую текстовую reply-кнопку;
+    - команду /account.
+    """
     try:
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action='personal_cabinet').log(
             "USER_ACTION",
-            f"Переход в личный кабинет"
+            "Переход в личный кабинет"
         )
 
         user = await models.User.get_user(user_id)
@@ -233,19 +242,29 @@ async def personal_cabinet(message: types.Message, dialog_manager: DialogManager
         if not sub:
             logger.bind(user_id=user_id, action='personal_cabinet').log(
                 "USER_ACTION",
-                f"Подписка не оформлена"
+                "Подписка не оформлена"
             )
             await send_subscribe_msg(user)
+            if isinstance(message, types.CallbackQuery):
+                await message.answer()
             return
 
         logger.bind(user_id=user_id, action='personal_cabinet').log(
             "USER_ACTION",
-            f"Запуск диалога PersonalMenu.user_info"
+            "Запуск диалога PersonalMenu.user_info"
         )
         await dialog_manager.start(PersonalMenu.user_info, mode=StartMode.RESET_STACK)
+
+        if isinstance(message, types.CallbackQuery):
+            await message.answer()
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере personal_cabinet: {e}")
-
+        if isinstance(message, types.CallbackQuery):
+            try:
+                await message.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+            except Exception:
+                pass
 
 @router.callback_query(F.data.startswith('mail:'))
 async def mail_info(call: types.CallbackQuery):

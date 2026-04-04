@@ -1,4 +1,5 @@
 from operator import truediv
+from typing import Union
 
 from aiogram import types, F, Router
 from aiogram.filters import Command
@@ -52,9 +53,18 @@ def log_exceptions(func):
     return wrapper
 
 
+@router.callback_query(F.data == "receive_sms")
 @router.message(Command("get_sms"))
 @router.message(F.text == bt.RECEIVE_SMS_BTN)
-async def receive_sms(message: types.Message, dialog_manager: DialogManager):
+async def receive_sms(message: Union[types.Message, types.CallbackQuery], dialog_manager: DialogManager):
+    """
+    Открывает раздел получения SMS.
+
+    Поддерживает:
+    - inline-кнопку главного меню;
+    - старую текстовую reply-кнопку;
+    - команду /get_sms.
+    """
     try:
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
@@ -66,6 +76,8 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
         )
 
         if not user:
+            if isinstance(message, types.CallbackQuery):
+                await message.answer()
             return
 
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка активации")
@@ -76,9 +88,15 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
             if not sub:
                 logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Подписка неактивна, отправляем сообщение")
                 await send_subscribe_msg(user)
+                if isinstance(message, types.CallbackQuery):
+                    await message.answer()
                 return
+
             logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Запуск диалога выбора сервиса")
             await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
+
+            if isinstance(message, types.CallbackQuery):
+                await message.answer()
         else:
             logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Получение информации о текущей активации")
             await activation.fetch_related('country')
@@ -95,9 +113,26 @@ async def receive_sms(message: types.Message, dialog_manager: DialogManager):
                 "USER_ACTION",
                 f"Текущая активация: сервис={service}, страна={country}"
             )
-            await send_service_info_with_keyboard(message=message, activation=activation, service=service, country=country)
+
+            target_message = message.message if isinstance(message, types.CallbackQuery) else message
+            await send_service_info_with_keyboard(
+                message=target_message,
+                activation=activation,
+                service=service,
+                country=country
+            )
+
+            if isinstance(message, types.CallbackQuery):
+                await message.answer()
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms: {e}")
+        if isinstance(message, types.CallbackQuery):
+            try:
+                await message.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+            except Exception:
+                pass
+
 
 @router.callback_query(F.data == 'receive_sms_for_another_service')
 async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_manager: DialogManager):
