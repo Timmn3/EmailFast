@@ -117,7 +117,14 @@ def select_country_window():
             width=2,
             height=5
         ),
-        Button(Const(bt.SEARCH_COUNTRY_BTN), id="search_country", on_click=on_search_country),
+        Button(
+            Const(bt.SEARCH_COUNTRY_BTN),
+            id="search_country",
+            on_click=on_search_country,
+            style=Style(
+                emoji_id="5224450179368767019",
+            ),
+        ),
         Cancel(Const(bt.BACK_BTN)),
         state=states.CountryMenu.select_country,
         getter=get_countries_service

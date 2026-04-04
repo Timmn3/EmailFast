@@ -87,7 +87,7 @@ RENT_DETAILS = """
 """
 
 
-RENT_SUCCESS_MESSAGE = "✅ Номер успешно арендован на {days}"
+RENT_SUCCESS_MESSAGE = '<tg-emoji emoji-id="5206607081334906820">✔️</tg-emoji>Номер успешно арендован на {days}'
 NUMBER_RENTAL_CLOSED = "Срок аренды номера {number} истек"
 
 SERVICE_CANCEL_MONEY_RETURNED = """
@@ -338,7 +338,7 @@ PERSONAL_CABINET_BTN = '👤Личный кабинет'
 AFFILIATE_PROGRAM_BTN = 'Партнерская программа'
 
 # Country menu
-SEARCH_COUNTRY_BTN = '🔎Поиск страны'
+SEARCH_COUNTRY_BTN = 'Поиск страны'
 ENTER_AGAIN_BTN = 'Ввести заново'
 
 # Service menu
@@ -347,6 +347,12 @@ OTHER_SERVICE_BTN = 'Другой сервис'
 CANCEL_SERVICE_BTN = '❌Отменить аренду номера'
 REQUEST_ANOTHER_CODE = '➕Принять SMS для другого сервиса'
 RECEIVE_ANOTHER_SMS_TO_NUMBER = '📩Принять новое SMS на этот же номер'
+
+SMS_NOT_RECEIVED = """
+<tg-emoji emoji-id="5258203794772085854">⚡️</tg-emoji>SMS не поступило, деньги уже вернулись на ваш баланс в боте.
+
+<tg-emoji emoji-id="5260687119092817530">🔄</tg-emoji>Попробуйте новый номер или выберите другую страну
+"""
 
 # Personal cabinet
 DEPOSIT_BTN = 'Пополнить баланс'
@@ -363,7 +369,7 @@ EXTEND_THE_LEASE = 'Продлить аренду'
 GET_FULL_MESSAGE = "Получить полный текст сообщения"
 
 # Константы для сообщений об аренде номера
-RENT_NEW_ROOM = "📞Арендовать новый номер"
+RENT_NEW_ROOM = "Арендовать новый номер"
 RENT_NOT_FOUND_MSG = "Аренда не найдена."
 RENT_ALREADY_CANCELED_MSG = "Аренда уже отменена."
 RENT_CANCEL_SUCCESS_MSG = "Аренда успешно отменена."

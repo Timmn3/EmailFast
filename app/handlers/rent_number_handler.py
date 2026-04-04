@@ -122,7 +122,7 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
         )
 
         # Создаем список для вывода информации
-        rent_details = ["<i>Ваши арендованные номера⤵️</i>\n"]
+        rent_details = ['<i>Ваши арендованные номера <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji></i>\n']
         # Создаем inline клавиатуру
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
 
@@ -158,7 +158,14 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
 
         # Добавляем кнопку для аренды нового номера
         keyboard.inline_keyboard.append(
-            [types.InlineKeyboardButton(text=bt.RENT_NEW_ROOM, callback_data="new_number")]
+            [
+                types.InlineKeyboardButton(
+                    text=bt.RENT_NEW_ROOM,
+                    callback_data="new_number",
+                    icon_custom_emoji_id="5397916757333654639",
+                    style="success",
+                )
+            ]
         )
 
         # Отправляем сообщение с inline клавиатурой
