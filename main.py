@@ -126,11 +126,11 @@ async def main(dp: Dispatcher):
         terms_handler.router,
         start_handler.router,
         affiliate_program.router,
-        health_check_router,
         get_email_handler.router,
         receive_sms_handler.router,
         rent_number_handler.router,
         create_links.router,
+        health_check_router,
     ]
 
     # Регистрация глобальных обработчиков ошибок
