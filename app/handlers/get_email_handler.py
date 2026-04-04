@@ -777,14 +777,17 @@ async def change_rental_email(call: types.CallbackQuery):
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text=bt.EXTEND_EMAIL_BTN,
+                        text="Продлить аренду",
                         callback_data=f"extend_rental_email:{new_lease.id}",
+                        icon_custom_emoji_id="5397916757333654639",
+                        style="success",
                     )
                 ],
                 [
                     types.InlineKeyboardButton(
-                        text=bt.CHANGE_EMAIL_BTN,
+                        text="Сменить Email",
                         callback_data=f"change_rental_email:{new_lease.id}",
+                        icon_custom_emoji_id="5390863029464213754",
                     )
                 ],
                 [

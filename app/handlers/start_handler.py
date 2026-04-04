@@ -313,14 +313,17 @@ async def mail_info(call: types.CallbackQuery):
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text=bt.EXTEND_EMAIL_BTN,
-                        callback_data=f'extend_rental_email:{lease.id}'
+                        text="Продлить аренду",
+                        callback_data=f'extend_rental_email:{lease.id}',
+                        icon_custom_emoji_id="5397916757333654639",
+                        style="success",
                     )
                 ],
                 [
                     types.InlineKeyboardButton(
-                        text=bt.CHANGE_EMAIL_BTN,
-                        callback_data=f'change_rental_email:{lease.id}'
+                        text="Сменить Email",
+                        callback_data=f'change_rental_email:{lease.id}',
+                        icon_custom_emoji_id="5390863029464213754",
                     )
                 ],
                 [

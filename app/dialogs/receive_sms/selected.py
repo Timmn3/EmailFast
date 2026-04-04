@@ -752,22 +752,33 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     if not provider:
         provider = "onlinesim" if getattr(activation, "service_2_id", None) else "smsactivate"
 
-    # Кнопка "📩Принять новое SMS..." должна быть и для smsfast тоже
+    # Кнопка "Запросить повторное SMS" должна быть и для smsfast тоже
     if provider in ("smsfast", "onlinesim") and getattr(activation, "activation_id", None) is not None:
-        buttons.append([types.InlineKeyboardButton(
-            text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
-            callback_data=f"request_code:{activation.id}"
-        )])
+        buttons.append([
+            types.InlineKeyboardButton(
+                text=bt.RECEIVE_ANOTHER_SMS_TO_NUMBER,
+                callback_data=f"request_code:{activation.id}",
+                icon_custom_emoji_id="5472239203590888751",
+            )
+        ])
 
-    # Вторая и третья кнопки всегда добавляются
-    buttons.append([types.InlineKeyboardButton(
-        text=bt.CANCEL_SERVICE_BTN,
-        callback_data=f"cancel_service:{activation.id}"
-    )])
-    buttons.append([types.InlineKeyboardButton(
-        text=bt.REQUEST_ANOTHER_CODE,
-        callback_data="receive_sms_for_another_service"
-    )])
+    buttons.append([
+        types.InlineKeyboardButton(
+            text=bt.CANCEL_SERVICE_BTN,
+            callback_data=f"cancel_service:{activation.id}",
+            icon_custom_emoji_id="5215204871422093648",
+        )
+    ])
+
+    buttons.append([
+        types.InlineKeyboardButton(
+            text=bt.REQUEST_ANOTHER_CODE,
+            callback_data="receive_sms_for_another_service",
+            icon_custom_emoji_id="5397916757333654639",
+        )
+    ])
+
+    mk = types.InlineKeyboardMarkup(inline_keyboard=buttons)
 
     mk = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     country = country.strip()
