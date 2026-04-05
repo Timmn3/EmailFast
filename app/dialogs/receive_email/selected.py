@@ -523,7 +523,11 @@ async def on_my_rent_emails(c: types.CallbackQuery, widget: Button, manager: Dia
                 )
             )
 
-        builder.button(text=bt.BACK_BTN, callback_data='receive_email')
+        builder.button(
+            text=bt.BACK_BTN,
+            callback_data='receive_email',
+            icon_custom_emoji_id="5258236805890710909",  # ⬅️
+        )
         builder.adjust(1)
 
         logger.bind(user_id=user_id, action='on_my_rent_emails').log(

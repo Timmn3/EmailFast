@@ -92,7 +92,8 @@ def rent_email_window():
     return Window(
         _get_receive_email_header_widget(),
         buttons,
-        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail,
+               style=Style(emoji_id="5258236805890710909")),
         state=states.ReceiveEmailMenu.rent_email,
         getter=get_email_info,
     )
@@ -109,7 +110,8 @@ def rent_email_no_free_week():
     return Window(
         _get_receive_email_header_widget(),
         buttons,
-        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail,
+               style=Style(emoji_id="5258236805890710909")),
         state=states.ReceiveEmailMenu.rent_email_no_free_week,
         getter=get_email_info,
     )
@@ -182,7 +184,8 @@ def rent_email_discount_window():
     return Window(
         Const(RENT_EMAIL_DISCOUNT_PROMO),
         rent_email_discount_kb(on_rent_email_item_discount),
-        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail,
+               style=Style(emoji_id="5258236805890710909")),
         state=states.ReceiveEmailMenu.rent_email_discount,
         getter=get_email_info
     )
@@ -205,7 +208,8 @@ def rent_email_no_discount_window():
     return Window(
         Const(RENT_EMAIL_NO_DISCOUNT),
         rent_email_kb(on_rent_email_item, is_free_week=True),
-        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail),
+        Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail,
+               style=Style(emoji_id="5258236805890710909")),
         state=states.ReceiveEmailMenu.rent_email_no_discount,
         getter=get_email_info
     )

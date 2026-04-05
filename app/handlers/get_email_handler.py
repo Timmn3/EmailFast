@@ -587,7 +587,11 @@ async def my_rent_emails(call: types.CallbackQuery):
                 )
             )
 
-        builder.button(text=bt.BACK_BTN, callback_data='receive_email')
+        builder.button(
+            text=bt.BACK_BTN,
+            callback_data='receive_email',
+            icon_custom_emoji_id="5258236805890710909",  # ⬅️
+        )
         builder.adjust(1)
 
         await call.message.edit_text(
