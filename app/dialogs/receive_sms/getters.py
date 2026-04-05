@@ -39,7 +39,7 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
                 "не принять код после ввода, заморозить аккаунт или наложить временный бан.\n\n"
                 "Указанные ограничения не являются основанием для возврата.\n\n"
                 'Изучите <a href="https://telegra.ph/Rekomendacii-dlya-registracii-Telegram-03-14">рекомендации</a>, '
-                "как минимизировать риски и выберите страну⤵️"
+                'как минимизировать риски и выберите страну<tg-emoji emoji-id="5197474438970363734">\u2935\ufe0f</tg-emoji>'
             )
         else:
             select_country_text = bt.SELECT_COUNTRY

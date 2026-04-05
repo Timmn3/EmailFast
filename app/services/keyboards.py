@@ -50,7 +50,8 @@ async def send_main_menu(message, text, parse_mode="HTML"):
       пока бот явно не отправит ReplyKeyboardRemove();
     - сначала снимаем старую клавиатуру, потом отправляем сообщение с inline-меню.
     """
-    await message.answer("⬇️", reply_markup=ReplyKeyboardRemove())
+    tmp = await message.answer("⬇️", reply_markup=ReplyKeyboardRemove())
+    await tmp.delete()  # ← сразу удаляем, оно своё дело уже сделало
     await message.answer(
         text=text,
         reply_markup=start_kb(),

@@ -23,7 +23,8 @@ async def withdraw(call: types.CallbackQuery):
             ],
             [
                 types.InlineKeyboardButton(text=bt.BACK_BTN,
-                                           callback_data='back')
+                                           callback_data='back',
+                                           icon_custom_emoji_id="5258236805890710909")
             ]
         ]
     )

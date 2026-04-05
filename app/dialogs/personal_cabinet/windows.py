@@ -1,13 +1,13 @@
 from aiogram import F
 from aiogram_dialog import Window
 from aiogram_dialog.widgets.input import TextInput
-from aiogram_dialog.widgets.kbd import Back, Button, Url
+from aiogram_dialog.widgets.kbd import Back, Button, Url, Cancel
 from aiogram_dialog.widgets.text import Const, Format
 from app import dependencies
 from app.dialogs.personal_cabinet import states, keyboards
 from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
-    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate
+    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main
 from app.handlers.affiliate_program import affiliate_program
 from app.services import bot_texts as bt
 from app.services.bot_texts import LINK_TO_BUTTON
@@ -15,14 +15,8 @@ from app.services.stars_pay import send_invoice_handler_stars
 from aiogram.enums import ButtonStyle
 from aiogram_dialog.widgets.style import Style
 
-def personal_cabinet_window():
-    """
-    Окно личного кабинета.
 
-    Показывает ID пользователя, баланс и кнопки действий.
-    Для inline-кнопок добавлены premium emoji, а кнопка пополнения
-    дополнительно выделена зелёным стилем.
-    """
+def personal_cabinet_window():
     return Window(
         Format(bt.PERSONAL_CABINET),
         Button(
@@ -56,10 +50,17 @@ def personal_cabinet_window():
                 emoji_id="5452069934089641166",
             ),
         ),
+        Button(                                      # ← КНОПКА НАЗАД
+            Const(bt.BACK_BTN),
+            id='back_to_main',
+            on_click=on_back_to_main,
+            style=Style(
+                emoji_id="5258236805890710909",
+            ),
+        ),
         state=states.PersonalMenu.user_info,
         getter=get_user_info
     )
-
 
 def deposit_window():
     return Window(

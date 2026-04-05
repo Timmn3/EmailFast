@@ -4,6 +4,7 @@ from aiogram.fsm.state import StatesGroup, State
 from app import dependencies
 from app.db import models
 from app.dependencies import REFERRAL_PREFIX
+from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.services import bot_texts as bt
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from app.services.payments.cryptomus import create_a_payout
@@ -12,6 +13,7 @@ from loguru import logger
 from tortoise.functions import Count
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from time import perf_counter
+from aiogram_dialog import DialogManager, StartMode
 
 router = Router()
 
@@ -86,106 +88,84 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
             user_id = m.from_user.id
 
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", "Запрос на отправку реферального сообщения")
-        loading_msg = await m.answer("⏳Идёт загрузка, ожидайте...")
         me = await m.bot.me()
         link = f'https://t.me/{me.username}?start={user_id}'
-        qr_code_bytes = await generate_qr_code(link)
         user = await models.User.get_user(user_id)
 
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+        builder = InlineKeyboardBuilder()
 
-        keyboard.inline_keyboard.append([
-            types.InlineKeyboardButton(
-                text=bt.SHARE_LINK_BTN,
-                switch_inline_query_chosen_chat=types.SwitchInlineQueryChosenChat(
-                    query=bt.SHARE_BOT_TEXT.format(
-                        link=link,
-                        mention=user.mention
-                    ),
-                    allow_user_chats=True,
-                    allow_group_chats=True,
-                    allow_channel_chats=True
-                )
-            )
-        ])
+        # 🔗 Поделиться ссылкой (зелёная)
+        builder.button(
+            text=bt.SHARE_LINK_BTN,
+            switch_inline_query_chosen_chat=types.SwitchInlineQueryChosenChat(
+                query=bt.SHARE_BOT_TEXT.format(link=link, mention=user.mention),
+                allow_user_chats=True,
+                allow_group_chats=True,
+                allow_channel_chats=True
+            ),
+            icon_custom_emoji_id="5271604874419647061",  # 🔗
+        )
 
-        keyboard.inline_keyboard.append([
-            types.InlineKeyboardButton(text=bt.WITHDRAW_BTN, callback_data='withdraw')
-        ])
+        # 💵 Вывод средств
+        builder.button(
+            text=bt.WITHDRAW_BTN,
+            callback_data='withdraw',
+            icon_custom_emoji_id="5201873447554145566",  # 💵
+        )
 
-        if user.disable_ref_notifications:
-            keyboard.inline_keyboard.append([
-                types.InlineKeyboardButton(
-                    text="🔔 Включить уведомления о рефералах",
-                    callback_data=f"enable_ref_notify:{user_id}"
-                )
-            ])
+        # ⬅️ Назад
+        builder.button(
+            text=bt.BACK_BTN,
+            callback_data='back_to_personal_cabinet',
+            icon_custom_emoji_id="5258236805890710909",  # ⬅️
+        )
 
-        t0 = perf_counter()
+        builder.adjust(1, 1, 1)
+        keyboard = builder.as_markup()
 
-        # ✅ Быстрые агрегаты (без N+1 запросов)
-        t = perf_counter()
+        # Считаем статистику
         ref_count = await models.User.filter(refer_id=user.id).count()
-        t_ref = perf_counter() - t
-
-        t = perf_counter()
-        payment_count = await models.Payment.filter(
-            is_success=True,
-            user__refer_id=user.id
-        ).count()
-        t_pay = perf_counter() - t
-
-        t = perf_counter()
+        payment_count = await models.Payment.filter(is_success=True, user__refer_id=user.id).count()
         referral_stats = (
-            await models.Payment.filter(
-                user__refer_id=user.id,
-                is_success=True
-            )
+            await models.Payment.filter(user__refer_id=user.id, is_success=True)
             .group_by("user_id")
             .annotate(payment_count=Count("id"))
             .values("payment_count")
         )
         repeat_payment_users = sum(max(0, stat["payment_count"] - 1) for stat in referral_stats)
-        t_repeat = perf_counter() - t
-
-        t_total = perf_counter() - t0
-
-        logger.bind(user_id=user_id, action="send_affiliate_message").log(
-            "USER_ACTION",
-            f"PERF affiliate: ref={t_ref:.3f}s pay={t_pay:.3f}s repeat={t_repeat:.3f}s total={t_total:.3f}s | "
-            f"ref_count={ref_count} payment_count={payment_count} repeat={repeat_payment_users}"
-        )
 
         if user_id == REFERRAL_PREFIX:
-
-            await m.answer_photo(
-                photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
-                caption=bt.AFFILIATE_PROGRAM_TEXT_SHORT.format(
-                    link=link,
-                    ref_count=ref_count,
-                    payment_count=payment_count,
-                ),
-                reply_markup=keyboard
+            text = bt.AFFILIATE_PROGRAM_TEXT_SHORT.format(
+                link=link,
+                ref_count=ref_count,
+                payment_count=payment_count,
             )
-
         else:
-
-            await m.answer_photo(
-                photo=types.BufferedInputFile(qr_code_bytes.read(), filename='qr_code.png'),
-                caption=bt.AFFILIATE_PROGRAM_TEXT.format(
-                    link=link,
-                    ref_balance=round(user.ref_balance),
-                    ref_count=ref_count,
-                    ref_balance_total=round(user.total_ref_earnings),
-                    payment_count=payment_count,
-                    repeat_payment_count=repeat_payment_users
-                ),
-                reply_markup=keyboard
+            text = bt.AFFILIATE_PROGRAM_TEXT.format(
+                link=link,
+                ref_balance=round(user.ref_balance),
+                ref_count=ref_count,
+                ref_balance_total=round(user.total_ref_earnings),
+                payment_count=payment_count,
+                repeat_payment_count=repeat_payment_users
             )
 
-        await loading_msg.delete()
+        # Редактируем текущее сообщение вместо отправки нового
+        await m.answer(text=text, reply_markup=keyboard, parse_mode="HTML")
+
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /send_affiliate_message: {e}")
+
+
+@router.callback_query(F.data == 'back_to_personal_cabinet')
+async def back_to_personal_cabinet(call: types.CallbackQuery, dialog_manager: DialogManager):
+    try:
+        user_id = call.from_user.id
+        user = await models.User.get_user(user_id)
+        await dialog_manager.start(PersonalMenu.user_info, mode=StartMode.RESET_STACK)
+        await call.answer()
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в back_to_personal_cabinet: {e}")
 
 # --- Хэндлеры ---
 @router.message(F.text == bt.AFFILIATE_PROGRAM_BTN)
@@ -210,7 +190,7 @@ async def affiliate_program(call: types.CallbackQuery):
         user_id = call.from_user.id
         logger.bind(user_id=user_id, action="callback_affiliate_program").log("USER_ACTION", "Пользователь вернулся к Партнерская программа")
         await call.message.delete()
-        await send_affiliate_message(call.message)
+        await send_affiliate_message(call.message, user_id=user_id)  # ← передаём user_id явно
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /callback_affiliate_program: {e}")
 
@@ -242,7 +222,8 @@ async def withdraw(call: types.CallbackQuery, state: FSMContext):
                 ],
                 [
                     types.InlineKeyboardButton(text=bt.BACK_BTN,
-                                               callback_data='affiliate_program')
+                                               callback_data='affiliate_program',
+                                               icon_custom_emoji_id="5258236805890710909")
                 ]
             ]
         )

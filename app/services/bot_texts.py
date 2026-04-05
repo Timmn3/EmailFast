@@ -6,11 +6,11 @@ MAIN_MENU = """
 Выберите нужный раздел по кнопке <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>
 """
 
-SELECT_COUNTRY = 'Выберите страну⤵️'
+SELECT_COUNTRY = 'Выберите страну<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
 SELECT_COUNTRY_RENT = ('— Длительная аренда от 3 до 30 дней с возможностью продления\n'
                        '— Неограниченное количество для приема СМС по любым сервисам, доступным в боте\n'
                        '— Если на арендованный номер поступит звонок для подтверждения регистрации, бот укажет звонивший номер\n\n'
-                       'Выберите страну⤵️')
+                       'Выберите страну<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>')
 
 SELECT_SERVICE = """
 Принять SMS
@@ -22,11 +22,11 @@ SELECT_SERVICE = """
 
 Выберите сервис <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>
 """
-SELECT_RENTAL_PERIOD = "Выберите срок аренды⤵️"
-ENTER_COUNTRY = "Введите наименование страны на русском языке⤵️"
-ENTER_SERVICE = "Введите название необходимого сервиса⤵️"
+SELECT_RENTAL_PERIOD = 'Выберите срок аренды<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+ENTER_COUNTRY = 'Введите наименование страны на русском языке<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>️'
+ENTER_SERVICE = 'Введите название необходимого сервиса<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
 
-ENTER_COUNTRY_ERROR = "Страна не найдена. Проверьте правильность ввода"
+ENTER_COUNTRY_ERROR = 'Страна не найдена. Проверьте правильность ввода'
 
 ENTER_SERVICE_ERROR = (
     "<b>Данный сервис не найден.</b>\n\n"
@@ -126,7 +126,7 @@ RENT_EMAIL_NO_DISCOUNT = """
 CHOOSE_A_MAILBOX = 'Выберите почтовый ящик <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
 
 MY_EMAIL = """
-<b>Ваш временный почтовый ящик⤵️</b>
+<b>Ваш временный почтовый ящик<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji></b>
 {email}
 
 <i>Ожидаем письмо...</i>
@@ -188,9 +188,9 @@ PERSONAL_CABINET = """
 <tg-emoji emoji-id="5357080225463149588">🤝</tg-emoji><b>Партнёрский счёт:</b> <code>{ref_balance}₽</code>
 """
 
-SELECT_DEPOSIT_PRICE = "Выберите сумму пополнения⤵️"
-SELECT_DEPOSIT_METHOD = "Выберите способ пополнения⤵️"
-SELECT_DEPOSIT_METHOD_ANYPAY = "Способы оплаты AnyPay⤵️"
+SELECT_DEPOSIT_PRICE = 'Выберите сумму пополнения<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+SELECT_DEPOSIT_METHOD = 'Выберите способ пополнения<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+SELECT_DEPOSIT_METHOD_ANYPAY = 'Способы оплаты AnyPay<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
 ENTER_DEPOSIT_AMOUNT = "Введите сумму пополнения"
 FOLLOW_THE_LINK_TO_PAY = "Перейдите по ссылке для оплаты:"
 PAYMENT = "Оплата"
@@ -211,14 +211,15 @@ PAYMENT_SUCCESS = """
 """
 
 AFFILIATE_PROGRAM_TEXT = """
-🤝<b>Партнёрская программа</b>
+<b><tg-emoji emoji-id="5357080225463149588">🤝</tg-emoji>Партнёрская программа</b>
 
 Приводи друзей и зарабатывай 10% с их пополнений, пожизненно!
 
-⬇️<b>Твоя реферальная ссылка:</b>
-└ {link}
+<b>Твоя реферальная ссылка<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji></b>
 
-🏅Статистика:
+{link}
+
+<tg-emoji emoji-id="5458875275410429667">📈</tg-emoji><b>Статистика:</b>
 ├ Лично приглашённых: <b>{ref_count}</b>
 ├ Количество оплат: <b>{payment_count}</b>
 ├ Повторные оплаты: <b>{repeat_payment_count}</b>
@@ -227,17 +228,21 @@ AFFILIATE_PROGRAM_TEXT = """
 """
 
 AFFILIATE_PROGRAM_TEXT_SHORT = """
-🤝<b>Партнёрская программа</b>
+<b>🤝Партнёрская программа</b>
 
 Приводи друзей и зарабатывай 10% с их пополнений, пожизненно!
 
-⬇️<b>Твоя реферальная ссылка:</b>
-└ {link}
+<b>Твоя реферальная ссылка⤵️</b>
 
-🏅Статистика:
+{link}
+
+<b>📈Статистика:</b>
 ├ Лично приглашённых: <b>{ref_count}</b>
 ├ Количество оплат: <b>{payment_count}</b>
 """
+
+SHARE_LINK_BTN = 'Поделиться ссылкой'
+WITHDRAW_BTN = 'Вывод средств'
 
 SHARE_BOT_TEXT = """
 

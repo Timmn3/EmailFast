@@ -1,6 +1,6 @@
 from typing import Union
 from aiogram import types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
@@ -14,6 +14,7 @@ from app.dialogs.rent_sms.selected import rent_number_in_days
 from app.dialogs.rent_sms.states import RentCountryMenu
 from app.handlers.affiliate_program import send_affiliate_message
 from app.services import bot_texts as bt
+from app.services.keyboards import send_main_menu
 from app.services.payments.anypay import AnypayAPI
 from app.services.bot_texts import FOLLOW_THE_LINK_TO_PAY
 from app.services.payments.ckassa import create_invoice_ckassa
@@ -41,6 +42,11 @@ async def on_deposit(c: types.CallbackQuery, widget: Button, manager: DialogMana
         logger.opt(exception=e).error(f"Ошибка в on_deposit: {e}")
 
 
+async def on_back_to_main(callback: CallbackQuery, button: Button, manager: DialogManager):
+    await manager.done()
+    await callback.message.delete()  # ← удаляем сообщение с личным кабинетом
+    await send_main_menu(callback.message, bt.MAIN_MENU, parse_mode="HTML")
+
 async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик кнопки "Партнерская программа".
@@ -52,6 +58,8 @@ async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManag
     try:
         user_id = c.from_user.id
         logger.bind(user_id=user_id, action='affiliate').log("USER_ACTION", "Открытие партнерской программы")
+        await manager.done()  # ← закрываем диалог, чтобы не перерисовывал
+        await c.message.delete()  # ← удаляем сообщение личного кабинета
         await send_affiliate_message(m=c.message, user_id=user_id)
         await c.answer()
     except Exception as e:

@@ -17,6 +17,7 @@ from app.services import bot_texts as bt
 from app.dialogs.personal_cabinet import keyboards
 from app.services.stars_pay import send_invoice_handler_stars
 from aiogram_dialog.widgets.style import Style
+from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay, on_payment_method, on_back_to_main
 
 # Окно выбора сервиса
 def select_service_window():
@@ -47,11 +48,17 @@ def select_service_window():
                 emoji_id="5188217332748527444",
             ),
         ),
-        # Cancel(Const(bt.BACK_BTN)),
+        Button(
+            Const(bt.BACK_BTN),
+            id='back_to_main_sms',
+            on_click=on_back_to_main,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
         state=states.ServiceMenu.select_service,
         getter=get_services_2
     )
-
 
 # Окно ввода сервиса
 def enter_service_window():
@@ -125,7 +132,12 @@ def select_country_window():
                 emoji_id="5224450179368767019",
             ),
         ),
-        Cancel(Const(bt.BACK_BTN)),
+        Cancel(
+            Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
         state=states.CountryMenu.select_country,
         getter=get_countries_service
     )
@@ -155,7 +167,12 @@ def enter_country_error_window():
     return Window(
         Const(bt.ENTER_COUNTRY_ERROR),
         Button(Const(bt.ENTER_AGAIN_BTN), id="enter_again", on_click=on_search_country),
-        Cancel(Const(bt.BACK_BTN)),
+        Cancel(
+            Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
         state=states.CountryMenu.enter_country_error
     )
 
