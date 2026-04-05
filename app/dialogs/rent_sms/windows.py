@@ -5,7 +5,8 @@ from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Cancel, Back, Button, ScrollingGroup, Select
 from aiogram_dialog.widgets.text import Const, Format
 from app.dialogs.personal_cabinet import keyboards
-
+from aiogram_dialog.widgets.kbd import Cancel, Back, Button, ScrollingGroup, Select
+from aiogram_dialog.widgets.style import Style
 from app.dialogs.rent_sms import states
 from app.dialogs.rent_sms.getters import get_rent_countries, get_country_details, cancel_btn
 from app.dialogs.rent_sms.selected import rent_on_result_country, rent_on_select_country_new, \
@@ -21,6 +22,7 @@ def select_rent_window():
 
     :return: Объект Window от aiogram_dialog.
     """
+    from app.dialogs.personal_cabinet.selected import on_back_to_main
     return Window(
         Const(bt.SELECT_COUNTRY_RENT),
         ScrollingGroup(
@@ -36,11 +38,17 @@ def select_rent_window():
             height=5
         ),
         # Button(Const(bt.SEARCH_COUNTRY_BTN), id="rent_search_country", on_click=on_search_rent_country),
-        # Cancel(Const(bt.BACK_BTN), on_click=cancel_btn),
+        Button(                                  # ← ДОБАВИТЬ
+            Const(bt.BACK_BTN),
+            id='back_to_main_rent',
+            on_click=on_back_to_main,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
         state=states.RentCountryMenu.select_country,
         getter=get_rent_countries
     )
-
 
 # Окно ввода страны
 def enter_country_window():
