@@ -480,7 +480,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
         await call.answer()
         if answer_text:
-            await bot.send_message(chat_id=user_id, text=answer_text)
+            await bot.send_message(chat_id=user_id, text=answer_text, parse_mode="HTML")
 
         # 🧹 UX: убираем клавиатуру у конкретного сообщения, по которому нажали
         if need_clear_kb:
@@ -493,7 +493,7 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
         # ✉️ Обычным сообщением (не alert)
         if need_send_msg and send_msg_text:
             try:
-                await bot.send_message(chat_id=user_id, text=send_msg_text)
+                await bot.send_message(chat_id=user_id, text=send_msg_text, parse_mode="HTML")
             except Exception as e:
                 logger.opt(exception=e).warning("Не удалось отправить сообщение пользователю после отмены")
 

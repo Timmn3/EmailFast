@@ -1,5 +1,6 @@
 import operator
 
+from aiogram.enums import ButtonStyle
 from aiogram_dialog import Window, DialogManager, Data
 from aiogram_dialog.widgets.input import TextInput, MessageInput
 from aiogram_dialog.widgets.kbd import Cancel, Back, Button, ScrollingGroup, Select
@@ -224,34 +225,32 @@ def payment_method_window_country():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_deposit
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
-        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment),
-        Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment),
-        # Button(Const(bt.METHOD_LAVA), id='SBP', on_click=switch_to_payment),
-        # Button(Const(bt.METHOD_ANYPAY), id='anypay', on_click=send_payment_keyboard_anypay),
-        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
-        Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
-        # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN),
-            style=Style(
-                emoji_id="5258236805890710909",  # ⬅️
-            ), id='back', on_click=on_deposit),
+        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
+               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
+        Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment,
+               style=Style(emoji_id="5226794552907554474")),                              # 🔁
+        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
+               style=Style(emoji_id="5888993774540951956")),                              # ⭐️
+        Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment,
+               style=Style(emoji_id="5280862672131204613")),                              # 💰
+        Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
+               style=Style(emoji_id="5258236805890710909")),                              # ⬅️
         state=states.CountryMenu.payment_method
     )
-
 
 # Функция для выбора метода оплаты с платежем менее 300 руб
 def payment_method_window_country_minimum_pay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_deposit
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
-        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment),
-        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
-        Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
-        # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN),
-            style=Style(
-                emoji_id="5258236805890710909",  # ⬅️
-            ), id='back', on_click=on_deposit),
+        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
+               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
+        Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
+               style=Style(emoji_id="5888993774540951956")),                              # ⭐️
+        Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment,
+               style=Style(emoji_id="5280862672131204613")),                              # 💰
+        Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
+               style=Style(emoji_id="5258236805890710909")),                              # ⬅️
         state=states.CountryMenu.payment_method_minimum_pay
     )
 

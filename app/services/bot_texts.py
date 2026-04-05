@@ -94,15 +94,12 @@ RENT_DETAILS = """
 RENT_SUCCESS_MESSAGE = '<tg-emoji emoji-id="5206607081334906820">✔️</tg-emoji>Номер успешно арендован на {days}'
 NUMBER_RENTAL_CLOSED = "Срок аренды номера {number} истек"
 
-SERVICE_CANCEL_MONEY_RETURNED = """
-⛔️Номер отменен
+SERVICE_CANCEL_MONEY_RETURNED = (
+    '<tg-emoji emoji-id="5215204871422093648">❌</tg-emoji>Номер отменен\n\n'
+    '<tg-emoji emoji-id="5445221832074483553">💼</tg-emoji>Деньги вернулись на баланс в боте.'
+)
 
-💰Деньги вернулись на баланс.
-"""
-
-SERVICE_CANCEL = """
-⛔️Номер отменен
-"""
+SERVICE_CANCEL = '<tg-emoji emoji-id="5215204871422093648">❌</tg-emoji>Номер отменен'
 
 NOT_ENOUGH_BALANCE = """
 <b>Недостаточно средств</b>
