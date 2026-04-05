@@ -169,6 +169,17 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
             ]
         )
 
+        # Кнопка возврата в главное меню
+        keyboard.inline_keyboard.append(
+            [
+                types.InlineKeyboardButton(
+                    text="« Назад",
+                    callback_data="back_to_main_from_rent_menu",
+                    icon_custom_emoji_id="5258236805890710909",  # ⬅️
+                )
+            ]
+        )
+
         # Отправляем сообщение с inline клавиатурой
         t_send0 = time.perf_counter()
         if message:
@@ -184,7 +195,19 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_rent_menu: {e}")
 
-
+@router.callback_query(F.data == "back_to_main_from_rent_menu")
+async def back_to_main_from_rent_menu(call: types.CallbackQuery):
+    """
+    Возвращает пользователя в главное меню из списка арендованных номеров.
+    """
+    try:
+        from app.services.keyboards import send_main_menu
+        from app.services import bot_texts as bt
+        await call.message.delete()
+        await send_main_menu(call.message, bt.MAIN_MENU, parse_mode="HTML")
+        await call.answer()
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в back_to_main_from_rent_menu: {e}")
 
 @router.callback_query(F.data == "back_to_rent_menu")
 async def back_to_rent_menu(callback_query: types.CallbackQuery, dialog_manager: DialogManager):
