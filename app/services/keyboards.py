@@ -40,24 +40,26 @@ def start_kb():
     builder.adjust(1, 1, 1, 1)
     return builder.as_markup()
 
-async def send_main_menu(message, text, parse_mode="HTML"):
+async def send_main_menu(message, text, parse_mode="HTML", remove_reply_kb: bool = False):
     """
-    Отправляет главное меню и гарантированно убирает старую reply-клавиатуру.
+    Отправляет главное меню.
 
-    Почему так:
-    - нижняя reply-клавиатура в Telegram живёт отдельно от inline-кнопок;
-    - если ранее была показана ReplyKeyboardMarkup, она останется у пользователя,
-      пока бот явно не отправит ReplyKeyboardRemove();
-    - сначала снимаем старую клавиатуру, потом отправляем сообщение с inline-меню.
+    Параметр remove_reply_kb=True нужен только при первом входе (/start),
+    когда необходимо явно убрать старую ReplyKeyboardMarkup.
+    При возврате из inline-диалогов (кнопка «Назад») reply-клавиатуры уже нет,
+    поэтому эмодзи-заглушку отправлять не нужно.
     """
-    tmp = await message.answer("⬇️", reply_markup=ReplyKeyboardRemove())
-    await tmp.delete()  # ← сразу удаляем, оно своё дело уже сделало
+    if remove_reply_kb:
+        # Отправляем временное сообщение, чтобы Telegram убрал reply-клавиатуру,
+        # и сразу удаляем его — пользователь видит лишь мигание.
+        tmp = await message.answer("⬇️", reply_markup=ReplyKeyboardRemove())
+        await tmp.delete()
+
     await message.answer(
         text=text,
         reply_markup=start_kb(),
         parse_mode=parse_mode,
     )
-
 
 def payment_kb(url: str):
     builder = InlineKeyboardBuilder()

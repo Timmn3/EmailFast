@@ -155,7 +155,7 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
             "USER_ACTION",
             f"Отправка главного меню"
         )
-        await send_main_menu(message, bt.MAIN_MENU, parse_mode="HTML")
+        await send_main_menu(message, bt.MAIN_MENU, parse_mode="HTML", remove_reply_kb=True)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /start: {e}")
 
