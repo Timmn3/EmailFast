@@ -100,7 +100,14 @@ def country_details_window():
             width=1,
             height=5
         ),
-        Button(Const(bt.BACK_BTN), id="back_to_country_select", on_click=rent_back_country),
+        Button(
+            Const(bt.BACK_BTN),
+            id="back_to_country_select",
+            on_click=rent_back_country,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
         state=states.RentCountryMenu.country_details,
         getter=get_country_details,
     )
