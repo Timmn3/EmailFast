@@ -121,9 +121,10 @@ def deposit_window_country():
     return Window(
         Const(bt.SELECT_DEPOSIT_PRICE),
         keyboards.prices_kb(on_deposit_price),
-        Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price, when=~F['bonus']),
-        Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN + ' (+10%)'), id='other_price', on_click=on_other_price,
-               when=F['bonus']),
+        # Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price, when=~F['bonus']),
+        # Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN + ' (+10%)'), id='other_price', on_click=on_other_price,
+        #        when=F['bonus']),
+        Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price),
         Back(Const(bt.BACK_BTN)),
         state=states.RentCountryMenu.deposit,
         getter=get_deposit_prices
