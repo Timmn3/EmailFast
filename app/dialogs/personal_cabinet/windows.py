@@ -70,7 +70,10 @@ def deposit_window():
         # Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN + ' (+10%)'), id='other_price', on_click=on_other_price,
         #        when=F['bonus']),
         Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.PersonalMenu.deposit,
         getter=get_deposit_prices
     )
@@ -80,7 +83,10 @@ def enter_amount_window():
     return Window(
         Const(bt.ENTER_DEPOSIT_AMOUNT),
         TextInput(id='enter_deposit_amount', on_success=on_enter_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.PersonalMenu.enter_amount
     )
 
@@ -166,7 +172,10 @@ def payment_method_window_anypay():
         Button(Const(bt.METHOD_BANK_CARD), id='card', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_SBP), id='sbp', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
+        Button(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ), id='back', on_click=on_payment_method),
         state=states.PersonalMenu.payment_method_anypay
     )
 

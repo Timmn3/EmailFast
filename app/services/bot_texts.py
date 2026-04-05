@@ -338,7 +338,7 @@ SUBSCRIBE_CHANNEL = """
 CONFIRM_BTN = '✅Подтвердить'
 DECLINE_BTN = '❌Отклонить'
 CONTINUE_BTN = '🔁Продолжить'
-BACK_BTN = '« Назад'
+BACK_BTN = 'Назад'
 
 # Start menu
 RECEIVE_SMS_BTN = '📲Принять SMS'

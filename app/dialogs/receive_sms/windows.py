@@ -70,7 +70,10 @@ def enter_service_window():
     return Window(
         Const(bt.ENTER_SERVICE),
         TextInput(id="service_name", on_success=on_result_service),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.ServiceMenu.enter_service
     )
 
@@ -94,7 +97,10 @@ def enter_service_error_window():
             when=F["show_smsfast_other"],
         ),
 
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.ServiceMenu.enter_service_error,
         getter=get_show_smsfast_other_button,
     )
@@ -152,7 +158,10 @@ def enter_country_window():
     return Window(
         Const(bt.ENTER_COUNTRY),
         TextInput(id="country_name", on_success=on_result_country),
-        Button(Const(bt.BACK_BTN), id="back", on_click=back_country),
+        Button(Const(bt.BACK_BTN), id="back", on_click=back_country,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.CountryMenu.enter_country
     )
 
@@ -188,7 +197,10 @@ def deposit_window_country():
         # Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN + ' (+10%)'), id='other_price', on_click=on_other_price,
         #        when=F['bonus']),
         Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.CountryMenu.deposit,
         getter=get_deposit_prices
     )
@@ -199,7 +211,10 @@ def enter_amount_window_country():
     return Window(
         Const(bt.ENTER_DEPOSIT_AMOUNT),
         TextInput(id='enter_deposit_amount', on_success=on_enter_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.CountryMenu.enter_amount
     )
 
@@ -216,7 +231,10 @@ def payment_method_window_country():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit),
+        Button(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ), id='back', on_click=on_deposit),
         state=states.CountryMenu.payment_method
     )
 
@@ -230,7 +248,10 @@ def payment_method_window_country_minimum_pay():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit),
+        Button(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ), id='back', on_click=on_deposit),
         state=states.CountryMenu.payment_method_minimum_pay
     )
 
@@ -242,7 +263,10 @@ def payment_method_window_anypay():
         Button(Const(bt.METHOD_BANK_CARD), id='card', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_SBP), id='sbp', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
+        Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.CountryMenu.payment_method_anypay
     )
 

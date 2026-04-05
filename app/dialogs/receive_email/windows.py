@@ -134,7 +134,10 @@ def confirm_rent_email_window():
     return Window(
         Format(bt.CONFIRM_RENT_EMAIL),
         Button(Const(bt.CONFIRM_BTN), id='confirm_btn', on_click=on_confirm_rent_email),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.ReceiveEmailMenu.rent_email_confirm,
         getter=get_rent_info,
     )
@@ -149,7 +152,10 @@ def not_enough_balance_window():
     return Window(
         Format(bt.NOT_ENOUGH_BALANCE),  # Форматированный текст с уведомлением о недостаточном балансе
         Button(Const(bt.DEPOSIT_BTN), id='deposit_btn', on_click=on_deposit_state),  # Кнопка для пополнения баланса
-        Back(Const(bt.BACK_BTN)),  # Кнопка для возврата назад
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),  # Кнопка для возврата назад
         state=states.ReceiveEmailMenu.not_enough_balance,  # Состояние окна
         getter=get_balance  # Функция для получения текущего баланса пользователя
     )

@@ -60,7 +60,10 @@ def enter_country_window():
     return Window(
         Const(bt.ENTER_COUNTRY),
         TextInput(id="rent_country_name", on_success=rent_on_result_country),
-        Button(Const(bt.BACK_BTN), id="rent_back", on_click=rent_back_country),
+        Button(Const(bt.BACK_BTN), id="rent_back", on_click=rent_back_country,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.enter_country
     )
 
@@ -75,7 +78,11 @@ def enter_country_error_window():
     return Window(
         Const(bt.ENTER_COUNTRY_ERROR),
         Button(Const(bt.ENTER_AGAIN_BTN), id="enter_again", on_click=on_search_rent_country),
-        Cancel(Const(bt.BACK_BTN)),
+        Cancel(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+               ),
         state=states.RentCountryMenu.enter_country_error
     )
 
@@ -125,7 +132,10 @@ def deposit_window_country():
         # Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN + ' (+10%)'), id='other_price', on_click=on_other_price,
         #        when=F['bonus']),
         Button(Const(bt.OTHER_DEPOSIT_PRICE_BTN), id='other_price', on_click=on_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.deposit,
         getter=get_deposit_prices
     )
@@ -136,7 +146,10 @@ def enter_amount_window_country():
     return Window(
         Const(bt.ENTER_DEPOSIT_AMOUNT),
         TextInput(id='enter_deposit_amount', on_success=on_enter_other_price),
-        Back(Const(bt.BACK_BTN)),
+        Back(Const(bt.BACK_BTN),
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.enter_amount
     )
 
@@ -154,7 +167,10 @@ def payment_method_window_country():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit),
+        Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.payment_method
     )
 
@@ -168,7 +184,10 @@ def payment_method_window_country_minimum_pay():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars),
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment),
         # Button(Const(bt.METHOD_OTHER_BTN), id='other', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit),
+        Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.payment_method_minimum_pay
     )
 
@@ -180,7 +199,10 @@ def payment_method_window_anypay():
         Button(Const(bt.METHOD_BANK_CARD), id='card', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_SBP), id='sbp', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
-        Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
+        Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),),
         state=states.RentCountryMenu.payment_method_anypay
     )
 
