@@ -258,19 +258,37 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
             # Кнопки для управления автопродлением
             if rented.autorenew:
-                keyboard.inline_keyboard.append([types.InlineKeyboardButton(text="✅ Автопродление включено",
-                                                                           callback_data=f"auto_renew_{rent_id}")])
+                keyboard.inline_keyboard.append([types.InlineKeyboardButton(
+                    text="✔️ Автопродление включено",
+                    callback_data=f"auto_renew_{rent_id}",
+                    icon_custom_emoji_id="5370893703575511656",  # ✔️
+                )])
             else:
-                keyboard.inline_keyboard.append([types.InlineKeyboardButton(text="❌Автопродление выключено",
-                                                                           callback_data=f"auto_renew_{rent_id}")])
+                keyboard.inline_keyboard.append([types.InlineKeyboardButton(
+                    text="❌ Автопродление выключено",
+                    callback_data=f"auto_renew_{rent_id}",
+                    icon_custom_emoji_id="5215204871422093648",  # ❌
+                )])
             # Кнопки для продления и отмены аренды
             keyboard.inline_keyboard.append([
-                types.InlineKeyboardButton(text="🔄 Продлить аренду", callback_data=f"extend_rent_{rent_id}"),
-                types.InlineKeyboardButton(text="🚫 Отменить аренду", callback_data=f"cancel_rent_{rent_id}")
+                types.InlineKeyboardButton(
+                    text="➕ Продлить аренду",
+                    callback_data=f"extend_rent_{rent_id}",
+                    icon_custom_emoji_id="5397916757333654639",  # ➕
+                ),
+                types.InlineKeyboardButton(
+                    text="⛔️ Отменить аренду",
+                    callback_data=f"cancel_rent_{rent_id}",
+                    icon_custom_emoji_id="5283283384418707920",  # ⛔️
+                ),
             ])
             # Кнопка для возврата
             keyboard.inline_keyboard.append([
-                types.InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_rent_menu")
+                types.InlineKeyboardButton(
+                    text="« Назад",
+                    callback_data="back_to_rent_menu",
+                    icon_custom_emoji_id="5258236805890710909",  # ⬅️
+                )
             ])
             # Отправляем информацию о номере и клавиатуру
             await callback_query.message.edit_text(rent_details, reply_markup=keyboard)
@@ -341,30 +359,36 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
         # Кнопка автопродления
         if rented.autorenew:
-            keyboard.inline_keyboard.append([
-                types.InlineKeyboardButton(
-                    text="✅ Автопродление включено", callback_data=f"auto_renew_{rent_id}"
-                )
-            ])
+            keyboard.inline_keyboard.append([types.InlineKeyboardButton(
+                text="✔️ Автопродление включено",
+                callback_data=f"auto_renew_{rent_id}",
+                icon_custom_emoji_id="5370893703575511656",  # ✔️
+            )])
         else:
-            keyboard.inline_keyboard.append([
-                types.InlineKeyboardButton(
-                    text="❌ Автопродление выключено", callback_data=f"auto_renew_{rent_id}"
-                )
-            ])
+            keyboard.inline_keyboard.append([types.InlineKeyboardButton(
+                text="❌ Автопродление выключено",
+                callback_data=f"auto_renew_{rent_id}",
+                icon_custom_emoji_id="5215204871422093648",  # ❌
+            )])
         # Кнопки для продления и отмены аренды
         keyboard.inline_keyboard.append([
             types.InlineKeyboardButton(
-                text="🔄 Продлить аренду", callback_data=f"extend_rent_{rent_id}"
+                text="➕ Продлить аренду",
+                callback_data=f"extend_rent_{rent_id}",
+                icon_custom_emoji_id="5397916757333654639",  # ➕
             ),
             types.InlineKeyboardButton(
-                text="🚫 Отменить аренду", callback_data=f"cancel_rent_{rent_id}"
-            )
+                text="⛔️ Отменить аренду",
+                callback_data=f"cancel_rent_{rent_id}",
+                icon_custom_emoji_id="5283283384418707920",  # ⛔️
+            ),
         ])
         # Кнопка для возврата
         keyboard.inline_keyboard.append([
             types.InlineKeyboardButton(
-                text="🔙 Назад", callback_data="back_to_rent_menu"
+                text="« Назад",
+                callback_data="back_to_rent_menu",
+                icon_custom_emoji_id="5258236805890710909",  # ⬅️
             )
         ])
         await callback_query.message.edit_text(rent_details, reply_markup=keyboard)
