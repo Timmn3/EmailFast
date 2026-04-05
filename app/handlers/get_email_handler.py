@@ -77,7 +77,6 @@ def _build_free_firstmail_markup(
     - бесплатный ящик можно платно менять;
     - отсюда должен быть доступ к аренде FirstMail;
     - отсюда должен быть доступ к списку арендованных ящиков;
-    - кнопку "Назад" в этом меню больше не показываем ни при каких сценариях;
     - premium emoji и стиль задаём локально, чтобы не менять другие экраны.
     """
     inline_keyboard = [
@@ -103,10 +102,30 @@ def _build_free_firstmail_markup(
                 icon_custom_emoji_id="5406631276042002796",
             )
         ],
+        [                                               # ← ДОБАВИТЬ
+            types.InlineKeyboardButton(
+                text="« Назад",
+                callback_data="back_to_main_from_email",
+                icon_custom_emoji_id="5258236805890710909",  # ⬅️
+            )
+        ],
     ]
 
     return types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
+@router.callback_query(F.data == 'back_to_main_from_email')
+async def back_to_main_from_email(call: types.CallbackQuery):
+    """
+    Возвращает пользователя в главное меню из экрана бесплатного FirstMail.
+    """
+    try:
+        await call.message.delete()
+        from app.services.keyboards import send_main_menu
+        from app.services import bot_texts as bt
+        await send_main_menu(call.message, bt.MAIN_MENU, parse_mode="HTML")
+        await call.answer()
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в back_to_main_from_email: {e}")
 
 @router.callback_query(F.data == 'rent_email')
 async def rent_email_callback(call: types.CallbackQuery, dialog_manager: DialogManager):

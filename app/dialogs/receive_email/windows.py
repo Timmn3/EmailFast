@@ -5,7 +5,7 @@ from aiogram_dialog import Window
 from aiogram_dialog.widgets.kbd import Cancel, Back, Button
 from aiogram_dialog.widgets.text import Const, Format
 
-
+from app.dialogs.personal_cabinet.selected import on_back_to_main
 from app.dialogs.receive_email import states
 from app.dialogs.receive_email.getters import get_email_info, get_balance
 from app.dialogs.receive_email.keyboards import rent_email_kb, rent_email_discount_kb
@@ -13,6 +13,7 @@ from app.dialogs.receive_email.selected import on_change_email, on_rent_email, o
     on_confirm_rent_email, on_back_mail, on_my_rent_emails, on_rent_email_item_discount
 from app.services import bot_texts as bt
 from app.services.bot_texts import RENT_EMAIL_DISCOUNT_PROMO, RENT_EMAIL_NO_DISCOUNT
+from aiogram_dialog.widgets.style import Style
 
 def _get_receive_email_header_widget():
     """
@@ -62,6 +63,14 @@ def receive_email_window():
                 on_click=on_my_rent_emails,
                 when=F['paid_mails_count'] > 0
             ),
+            Button(
+                Const(bt.BACK_BTN),
+                id='back_to_main_email',
+                on_click=on_back_to_main,
+                style=Style(
+                    emoji_id="5258236805890710909",  # ⬅️
+                ),
+            ),
         ]
     )
 
@@ -70,7 +79,6 @@ def receive_email_window():
         state=states.ReceiveEmailMenu.receive_email,
         getter=get_email_info
     )
-
 
 def rent_email_window():
     """

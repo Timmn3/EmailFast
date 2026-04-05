@@ -271,8 +271,13 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         # формируем ссылку на оплату
         # ✅ external_id должен быть уникальным для каждого платежа
         external_id = f"sms_email_{payment_streampay.id}"
-        payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
-        await payment_streampay.save()
+        try:
+            payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
+            await payment_streampay.save()
+        except Exception as e:
+            # StreamPay недоступен или неверная подпись — скрываем кнопку, остальные способы работают
+            logger.warning("StreamPay недоступен для платежа {}: {}", payment_streampay.id, e)
+            streampay_url = ''
     else:
         streampay_url = ''
 
