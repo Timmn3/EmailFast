@@ -76,7 +76,8 @@ async def rent_number(message: Union[types.Message, types.CallbackQuery], dialog
         )
 
         if activation_list:
-            await dialog_manager.start(PersonalMenu.rent_sms_info, mode=StartMode.RESET_STACK)
+            await send_rent_menu(user, message=message if isinstance(message, types.Message) else None,
+                                 callback_query=message if isinstance(message, types.CallbackQuery) else None)
         else:
             await dialog_manager.start(RentCountryMenu.select_country, mode=StartMode.RESET_STACK)
 
@@ -259,25 +260,25 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             # Кнопки для управления автопродлением
             if rented.autorenew:
                 keyboard.inline_keyboard.append([types.InlineKeyboardButton(
-                    text="✔️ Автопродление включено",
+                    text="Автопродление включено",
                     callback_data=f"auto_renew_{rent_id}",
                     icon_custom_emoji_id="5370893703575511656",  # ✔️
                 )])
             else:
                 keyboard.inline_keyboard.append([types.InlineKeyboardButton(
-                    text="❌ Автопродление выключено",
+                    text="Автопродление выключено",
                     callback_data=f"auto_renew_{rent_id}",
                     icon_custom_emoji_id="5215204871422093648",  # ❌
                 )])
             # Кнопки для продления и отмены аренды
             keyboard.inline_keyboard.append([
                 types.InlineKeyboardButton(
-                    text="➕ Продлить аренду",
+                    text="Продлить аренду",
                     callback_data=f"extend_rent_{rent_id}",
                     icon_custom_emoji_id="5397916757333654639",  # ➕
                 ),
                 types.InlineKeyboardButton(
-                    text="⛔️ Отменить аренду",
+                    text="Отменить аренду",
                     callback_data=f"cancel_rent_{rent_id}",
                     icon_custom_emoji_id="5283283384418707920",  # ⛔️
                 ),
@@ -285,7 +286,7 @@ async def rent_number_selected(callback_query: types.CallbackQuery, dialog_manag
             # Кнопка для возврата
             keyboard.inline_keyboard.append([
                 types.InlineKeyboardButton(
-                    text="« Назад",
+                    text="Назад",
                     callback_data="back_to_rent_menu",
                     icon_custom_emoji_id="5258236805890710909",  # ⬅️
                 )
@@ -360,25 +361,25 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
         # Кнопка автопродления
         if rented.autorenew:
             keyboard.inline_keyboard.append([types.InlineKeyboardButton(
-                text="✔️ Автопродление включено",
+                text="Автопродление включено",
                 callback_data=f"auto_renew_{rent_id}",
                 icon_custom_emoji_id="5370893703575511656",  # ✔️
             )])
         else:
             keyboard.inline_keyboard.append([types.InlineKeyboardButton(
-                text="❌ Автопродление выключено",
+                text="Автопродление выключено",
                 callback_data=f"auto_renew_{rent_id}",
                 icon_custom_emoji_id="5215204871422093648",  # ❌
             )])
         # Кнопки для продления и отмены аренды
         keyboard.inline_keyboard.append([
             types.InlineKeyboardButton(
-                text="➕ Продлить аренду",
+                text="Продлить аренду",
                 callback_data=f"extend_rent_{rent_id}",
                 icon_custom_emoji_id="5397916757333654639",  # ➕
             ),
             types.InlineKeyboardButton(
-                text="⛔️ Отменить аренду",
+                text="Отменить аренду",
                 callback_data=f"cancel_rent_{rent_id}",
                 icon_custom_emoji_id="5283283384418707920",  # ⛔️
             ),
@@ -386,7 +387,7 @@ async def toggle_autorenew(callback_query: types.CallbackQuery):
         # Кнопка для возврата
         keyboard.inline_keyboard.append([
             types.InlineKeyboardButton(
-                text="« Назад",
+                text="Назад",
                 callback_data="back_to_rent_menu",
                 icon_custom_emoji_id="5258236805890710909",  # ⬅️
             )
