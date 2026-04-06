@@ -104,7 +104,7 @@ def _build_free_firstmail_markup(
         ],
         [                                               # ← ДОБАВИТЬ
             types.InlineKeyboardButton(
-                text="« Назад",
+                text="Назад",
                 callback_data="back_to_main_from_email",
                 icon_custom_emoji_id="5258236805890710909",  # ⬅️
             )

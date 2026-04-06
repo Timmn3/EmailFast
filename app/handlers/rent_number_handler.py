@@ -173,7 +173,7 @@ async def send_rent_menu(user: "User", message: types.Message = None, callback_q
         keyboard.inline_keyboard.append(
             [
                 types.InlineKeyboardButton(
-                    text="« Назад",
+                    text="Назад",
                     callback_data="back_to_main_from_rent_menu",
                     icon_custom_emoji_id="5258236805890710909",  # ⬅️
                 )
