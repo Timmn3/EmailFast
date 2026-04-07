@@ -269,8 +269,8 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         )
 
         # формируем ссылку на оплату
-        # ✅ external_id должен быть уникальным для каждого платежа
-        external_id = f"sms_email_{payment_streampay.id}"
+        # ✅ external_id должен быть уникальным для каждого пользователя
+        external_id = f"user_{user.id}"
         try:
             payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
             await payment_streampay.save()
