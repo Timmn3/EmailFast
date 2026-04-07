@@ -17,6 +17,7 @@ from tabulate import tabulate
 from aiogram_dialog import DialogManager
 from loguru import logger
 from tortoise.functions import Sum, Count
+from tortoise.expressions import RawSQL
 import calendar
 from tortoise import timezone
 
@@ -363,9 +364,131 @@ async def admin_referrals_top(call: types.CallbackQuery):
             f"Приведено пользователей: <b>{invited}</b>\n"
             f"Количество оплат: <b>{pays}</b>\n"
             f"Партнерский баланс: <b>{ref_balance:.2f} ₽</b>\n"
+            f"📊 <code>/refer_report {telegram_id}</code>\n"
         )
 
     await call.message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("refer_report"))
+async def refer_report(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip().lstrip("-").isdigit():
+        await message.answer("❌ Использование: <code>/refer_report &lt;telegram_id&gt;</code>", parse_mode="HTML")
+        return
+
+    target_tg_id = int(args[1].strip())
+
+    referrer = await models.User.get_or_none(telegram_id=target_tg_id)
+    if not referrer:
+        await message.answer(f"❌ Рефовод с ID <code>{target_tg_id}</code> не найден.", parse_mode="HTML")
+        return
+
+    msk = pytz.timezone("Europe/Moscow")
+    now_msk = datetime.now(tz=msk)
+
+    # Границы периодов по МСК (00:00), конвертируем в UTC для фильтрации
+    day_start   = now_msk.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+    week_start  = (now_msk - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+    month_start = now_msk.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+
+    # --- Рефералы по периодам ---
+    base_refs = models.User.filter(refer_id=referrer.id)
+    refs_day   = await base_refs.filter(created_at__gte=day_start).count()
+    refs_week  = await base_refs.filter(created_at__gte=week_start).count()
+    refs_month = await base_refs.filter(created_at__gte=month_start).count()
+    refs_total = await base_refs.count()
+
+    # --- Оплаты рефералов по периодам ---
+    async def get_pay_stats(gte=None):
+        qs = models.Payment.filter(is_success=True, user__refer_id=referrer.id)
+        if gte:
+            qs = qs.filter(created_at__gte=gte)
+        cnt = await qs.count()
+        amounts = await qs.values_list("amount", flat=True)
+        total = sum(amounts) if amounts else 0.0
+        return cnt, total
+
+    pays_day_cnt,   pays_day_sum   = await get_pay_stats(day_start)
+    pays_week_cnt,  pays_week_sum  = await get_pay_stats(week_start)
+    pays_month_cnt, pays_month_sum = await get_pay_stats(month_start)
+    pays_total_cnt, pays_total_sum = await get_pay_stats()
+
+    # --- Дневной дашборд текущего месяца ---
+    daily_refs_rows = await models.User.filter(
+        refer_id=referrer.id,
+        created_at__gte=month_start
+    ).annotate(
+        day=RawSQL("DATE(created_at AT TIME ZONE 'Europe/Moscow')")
+    ).group_by("day").annotate(cnt=Count("id")).values("day", "cnt")
+
+    daily_pays_rows = await models.Payment.filter(
+        is_success=True,
+        user__refer_id=referrer.id,
+        created_at__gte=month_start
+    ).annotate(
+        day=RawSQL("DATE(\"payments\".\"created_at\" AT TIME ZONE 'Europe/Moscow')")
+    ).group_by("day").annotate(cnt=Count("id"), total=Sum("amount")).values("day", "cnt", "total")
+
+    # Объединяем в словарь по дате
+    daily_ref_map  = {str(r["day"]): int(r["cnt"]) for r in daily_refs_rows}
+    daily_pay_map  = {str(r["day"]): (int(r["cnt"]), float(r["total"] or 0)) for r in daily_pays_rows}
+
+    # Все дни месяца которые есть в данных
+    all_days = sorted(set(daily_ref_map.keys()) | set(daily_pay_map.keys()))
+
+    month_name_en = now_msk.strftime("%B")
+    month_name_ru = MONTHS_RU.get(month_name_en, month_name_en)
+    month_year = now_msk.strftime("%Y")
+
+    # Форматируем таблицу дней
+    if all_days:
+        table_header = "Дата        👥     💳      Сумма"
+        separator    = "─" * 34
+        table_rows = []
+        for d in all_days:
+            day_label = datetime.strptime(d, "%Y-%m-%d").strftime("%d.%m")
+            ref_cnt   = daily_ref_map.get(d, 0)
+            pay_cnt, pay_sum = daily_pay_map.get(d, (0, 0.0))
+            table_rows.append(f"{day_label:<8}  {ref_cnt:>6}  {pay_cnt:>5}  {pay_sum:>8.0f} ₽")
+        table_body = "\n".join(table_rows)
+        daily_block = (
+            f"\n📆 <b>{month_name_ru} {month_year} — по дням</b>\n\n"
+            f"<code>{table_header}\n{separator}\n{table_body}</code>"
+        )
+    else:
+        daily_block = f"\n📆 <b>{month_name_ru} {month_year}</b>\n\nДанных за этот месяц нет."
+
+    username_str = f"@{referrer.username}" if referrer.username else "—"
+    ref_balance      = float(referrer.ref_balance or 0)
+    total_ref_earn   = float(referrer.total_ref_earnings or 0)
+
+    text = (
+        f"📊 <b>Детальный отчёт рефовода</b>\n\n"
+        f"👤 <b>Имя:</b> {referrer.full_name}\n"
+        f"🆔 <b>TG ID:</b> <code>{referrer.telegram_id}</code>\n"
+        f"🔗 <b>Username:</b> {username_str}\n\n"
+
+        f"💰 <b>Всего заработано:</b> {total_ref_earn:.2f} ₽\n\n"
+        f"─────────────────────────\n"
+        f"📈 <b>Переходы по рефссылке</b>\n\n"
+        f"📅 Сегодня:   <b>{refs_day}</b>\n"
+        f"📅 За неделю: <b>{refs_week}</b>\n"
+        f"🗓 За месяц:  <b>{refs_month}</b>\n"
+        f"∞  Всего:     <b>{refs_total}</b>\n\n"
+        f"─────────────────────────\n"
+        f"💳 <b>Оплаты рефералов</b>\n\n"
+        f"📅 Сегодня:   <b>{pays_day_cnt}</b> шт · <b>{pays_day_sum:.2f} ₽</b>\n"
+        f"📅 За неделю: <b>{pays_week_cnt}</b> шт · <b>{pays_week_sum:.2f} ₽</b>\n"
+        f"🗓 За месяц:  <b>{pays_month_cnt}</b> шт · <b>{pays_month_sum:.2f} ₽</b>\n"
+        f"∞  Всего:     <b>{pays_total_cnt}</b> шт · <b>{pays_total_sum:.2f} ₽</b>"
+        f"{daily_block}"
+    )
+
+    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(Command('test_balance'))
@@ -2143,6 +2266,7 @@ async def help_admin(message: types.Message):
     /reset_ref_stats [telegram_id] - Обнулить всю реф статистику
     /info_id [telegram_id] - Информация о пользователе
     /user_report [telegram_id] - HTML-отчёт по пользователю
+    /refer_report [telegram_id] - Детальная статистика рефовода: переходы/оплаты за сегодня, 7 дней, месяц и дашборд по дням текущего месяца
     /users_with_balance [сумма] - Выгрузка пользователей с балансом выше указанного
     /users_without_payments - Пользователи с балансом > 0 и без пополнений
     /users_with_discrepancy - Выгрузка пользователей с (расходы + баланс) > пополнений
