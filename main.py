@@ -194,23 +194,23 @@ def set_scheduled_jobs(scheduler):
     - арендованный FirstMail scheduler check_rental_email() работает всегда.
     """
     try:
-        # Проверка SMS
-        scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
-
-        # Находит истёкшие активации, по которым не пришло СМС
-        scheduler.add_job(
-            refund_and_cleanup_expired_sms,
-            "interval",
-            seconds=20,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=10,
-        )
-
-        # Обновление цен SMSFast (кэш price_smsfast)
-        scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
-
         if ON_SCHEDULE:
+            # Проверка SMS
+            scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
+
+            # Находит истёкшие активации, по которым не пришло СМС
+            scheduler.add_job(
+                refund_and_cleanup_expired_sms,
+                "interval",
+                seconds=20,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=10,
+            )
+
+            # Обновление цен SMSFast (кэш price_smsfast)
+            scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
+                
             # Проверка пользователей на пополнение и расходы (бан)
             scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
 
