@@ -22,6 +22,7 @@ def select_services_dialogs():
     return [
         Dialog(
             windows.select_service_window(),
+            windows.select_favorites_window(),
             windows.enter_service_window(),
             windows.enter_service_error_window(),
         )

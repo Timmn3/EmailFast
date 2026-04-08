@@ -60,10 +60,24 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
         else:
             filtered_countries = []
 
+        # Проверяем, в избранном ли текущий сервис
+        user = await models.User.get_user(dialog_manager.event.from_user.id)
+        service_name = service_code or ""
+        if service_code:
+            svc_obj = await models.ServicesSmsActivate.get_service(code=service_code)
+            if svc_obj is None:
+                svc_obj = await models.ServicesOnlinesim.get_service(code=service_code)
+            if svc_obj:
+                service_name = svc_obj.name
+        is_fav = await models.FavoriteService.is_favorite(user.id, service_code) if service_code else False
+
         data = {
             "countries": filtered_countries,
             "service_code": service_code,
             "select_country_text": select_country_text,
+            "show_add_favorite": bool(service_code) and not is_fav,
+            "show_remove_favorite": bool(service_code) and is_fav,
+            "service_name": service_name,
         }
         return data
 
@@ -152,12 +166,35 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
                 {"code": "ot", "name": "Любой другой"}
             ])
 
-            priority_codes = {"telegram", "google", "vkcom", "whatsapp"}
-            priority_services = [s for s in services_db["services"] if s["code"] in priority_codes]
-            other_services = [s for s in services_db["services"] if s["code"] not in priority_codes]
+        # Сортировка: приоритетные первыми, Telegram первым на 2-й странице (позиция 11)
+        PAGE_SIZE = 10
+        priority_codes = {"google", "vkcom", "whatsapp"}
+        all_services = services_db["services"]
 
-            services_db["services"] = priority_services + other_services
+        priority_services = [s for s in all_services if s["code"] in priority_codes]
+        telegram_services = [s for s in all_services if s["code"] == "telegram"]
+        other_services = [s for s in all_services if s["code"] not in priority_codes and s["code"] != "telegram"]
+
+        # Заполняем 1-ю страницу до PAGE_SIZE, потом Telegram, потом остальные
+        fill_count = PAGE_SIZE - len(priority_services)
+        first_page_others = other_services[:fill_count]
+        rest_others = other_services[fill_count:]
+
+        services_db["services"] = priority_services + first_page_others + telegram_services + rest_others
         return services_db
+
+
+async def get_favorites(dialog_manager: DialogManager, **middleware_data):
+    """
+    Getter для окна избранных сервисов.
+    Возвращает список избранных сервисов текущего пользователя.
+    """
+    user_id = dialog_manager.event.from_user.id
+    user = await models.User.get_user(user_id)
+    favs = await models.FavoriteService.get_favorites(user.id)
+    return {
+        "services": [{"code": f["service_code"], "name": f["service_name"]} for f in favs]
+    }
 
 
 

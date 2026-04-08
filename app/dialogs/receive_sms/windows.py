@@ -10,10 +10,11 @@ from aiogram import F
 from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay, on_payment_method
 from app.dialogs.receive_sms import states
 from app.dialogs.receive_sms.getters import get_countries_service, get_services, get_need_balance, get_other_service, \
-    get_services_2, get_show_smsfast_other_button
+    get_services_2, get_show_smsfast_other_button, get_favorites
 from app.dialogs.receive_sms.selected import on_select_country_new, on_select_service, on_search_country, \
     on_result_country, \
-    on_search_service, on_result_service, back_country, on_smsfast_other_service
+    on_search_service, on_result_service, back_country, on_smsfast_other_service, \
+    on_show_favorites, on_back_to_services, on_toggle_favorite
 from app.services import bot_texts as bt
 from app.dialogs.personal_cabinet import keyboards
 from app.services.stars_pay import send_invoice_handler_stars
@@ -29,6 +30,12 @@ def select_service_window():
     """
     return Window(
         Const(bt.SELECT_SERVICE),
+        Button(
+            Const(bt.FAVORITES_SERVICES_BTN),
+            id="show_favorites",
+            on_click=on_show_favorites,
+            style=Style(emoji_id="5296348778012361146"),
+        ),
         ScrollingGroup(
             Select(
                 Format("{item[name]}"),
@@ -59,6 +66,40 @@ def select_service_window():
         ),
         state=states.ServiceMenu.select_service,
         getter=get_services_2
+    )
+
+
+# Окно избранных сервисов
+def select_favorites_window():
+    """
+    Создает окно с избранными сервисами пользователя.
+
+    :return: Объект Window от aiogram_dialog.
+    """
+    return Window(
+        Const(bt.SELECT_FAVORITES_TITLE),
+        ScrollingGroup(
+            Select(
+                Format("{item[name]}"),
+                id="favorites_select",
+                item_id_getter=operator.itemgetter("code"),
+                items="services",
+                on_click=on_select_service,
+            ),
+            id="favorites_scroll",
+            width=2,
+            height=5
+        ),
+        Button(
+            Const(bt.BACK_TO_SERVICES_BTN),
+            id="back_to_services",
+            on_click=on_back_to_services,
+            style=Style(
+                emoji_id="5258236805890710909",  # ⬅️
+            ),
+        ),
+        state=states.ServiceMenu.favorites,
+        getter=get_favorites
     )
 
 # Окно ввода сервиса
@@ -130,6 +171,20 @@ def select_country_window():
             id="countries_scroll",
             width=2,
             height=5
+        ),
+        Button(
+            Format("Добавить {service_name} в избранное"),
+            id="add_favorite",
+            on_click=on_toggle_favorite,
+            when="show_add_favorite",
+            style=Style(emoji_id="5296348778012361146"),
+        ),
+        Button(
+            Format("Удалить {service_name} из избранных"),
+            id="remove_favorite",
+            on_click=on_toggle_favorite,
+            when="show_remove_favorite",
+            style=Style(emoji_id="5296678515536581003"),
         ),
         Button(
             Const(bt.SEARCH_COUNTRY_BTN),

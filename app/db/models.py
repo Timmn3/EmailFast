@@ -145,6 +145,38 @@ class User(Model):
         return self.mention
 
 
+class FavoriteService(Model):
+    class Meta:
+        table = "favorite_services"
+        unique_together = (("user", "service_code"),)
+
+    id: int = fields.IntField(pk=True)
+    user: fields.ForeignKeyRelation = fields.ForeignKeyField(
+        'models.User', related_name='favorite_services', on_delete=fields.CASCADE
+    )
+    service_code: str = fields.CharField(max_length=50)
+    service_name: str = fields.CharField(max_length=255)
+
+    @classmethod
+    async def get_favorites(cls, user_id: int):
+        return await cls.filter(user_id=user_id).order_by('id').values('service_code', 'service_name')
+
+    @classmethod
+    async def is_favorite(cls, user_id: int, service_code: str) -> bool:
+        return await cls.filter(user_id=user_id, service_code=service_code).exists()
+
+    @classmethod
+    async def toggle(cls, user_id: int, service_code: str, service_name: str) -> bool:
+        """Добавляет или удаляет из избранного. Возвращает True если добавлено, False если удалено."""
+        fav = await cls.get_or_none(user_id=user_id, service_code=service_code)
+        if fav:
+            await fav.delete()
+            return False
+        else:
+            await cls.create(user_id=user_id, service_code=service_code, service_name=service_name)
+            return True
+
+
 class CountriesSmsActivate(Model):
     class Meta:
         table = "countries_sms_activate"

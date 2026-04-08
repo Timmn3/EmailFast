@@ -59,9 +59,74 @@ async def on_select_service(c: types.CallbackQuery, widget: Select, manager: Dia
             "USER_ACTION",
             f"Выбран сервис: {code}"
         )
+        # Получаем название сервиса для кнопки избранного в окне стран
+        service_obj = await models.ServicesSmsActivate.get_service(code=code)
+        if service_obj is None:
+            service_obj = await models.ServicesOnlinesim.get_service(code=code)
+        service_name = service_obj.name if service_obj else code
+        manager.dialog_data["selected_service_code"] = code
+        manager.dialog_data["selected_service_name"] = service_name
         await send_country_info(code, c, manager)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_select_service: {e}")
+
+
+@logger.catch()
+async def on_show_favorites(c: types.CallbackQuery, widget, manager: DialogManager):
+    """
+    Открывает окно избранных сервисов.
+    Если избранных нет — показывает всплывающее сообщение.
+    """
+    try:
+        user_id = c.from_user.id
+        user = await models.User.get_user(user_id)
+        has_favs = await models.FavoriteService.filter(user_id=user.id).exists()
+        if not has_favs:
+            from app.services import bot_texts as bt
+            await c.answer(bt.NO_FAVORITES_POPUP, show_alert=True)
+            return
+        await manager.switch_to(ServiceMenu.favorites)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_show_favorites: {e}")
+
+
+@logger.catch()
+async def on_back_to_services(c: types.CallbackQuery, widget, manager: DialogManager):
+    """
+    Возврат из окна избранных к полному списку сервисов.
+    """
+    try:
+        await manager.switch_to(ServiceMenu.select_service)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_back_to_services: {e}")
+
+
+@logger.catch()
+async def on_toggle_favorite(c: types.CallbackQuery, widget, manager: DialogManager):
+    """
+    Добавляет или удаляет сервис из избранного.
+    Вызывается из окна выбора страны.
+    """
+    try:
+        user_id = c.from_user.id
+        user = await models.User.get_user(user_id)
+        ctx = manager.current_context()
+        code = ctx.start_data.get("service_code")
+        # Получаем имя из БД
+        svc_obj = await models.ServicesSmsActivate.get_service(code=code)
+        if svc_obj is None:
+            svc_obj = await models.ServicesOnlinesim.get_service(code=code)
+        name = svc_obj.name if svc_obj else code
+        if not code:
+            return
+        added = await models.FavoriteService.toggle(user.id, code, name)
+        if added:
+            await c.answer(f"'{name}' добавлен в избранное")
+        else:
+            await c.answer(f"'{name}' удалён из избранных")
+        await manager.update({})
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_toggle_favorite: {e}")
 
 
 @logger.catch()

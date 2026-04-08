@@ -19,4 +19,5 @@ class ServiceMenu(StatesGroup):
     enter_service = State()
     enter_service_error = State()
     not_enough_balance = State()
+    favorites = State()
 

@@ -398,6 +398,8 @@ if __name__ == '__main__':
 
         asyncio.run(main(dp))
 
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен")
     except Exception as e:
         logger.opt(exception=e).critical(f'Критическая ошибка в main: {e}')
 
