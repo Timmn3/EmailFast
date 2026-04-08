@@ -2082,22 +2082,43 @@ async def sms_service_stat(message: types.Message) -> None:
         total_30d_all += int(total_30d)
         delivered_30d_all += int(delivered_30d)
 
-        rows.append([title, int(total), int(delivered), f"{pct:.1f}%", f"{pct_30d:.1f}%"])
+        rows.append([title, int(total), int(delivered), pct, int(total_30d), int(delivered_30d), pct_30d])
 
     pct_all = (delivered_all / total_all * 100.0) if total_all else 0.0
     pct_30d_all = (delivered_30d_all / total_30d_all * 100.0) if total_30d_all else 0.0
-    rows.append(["ИТОГО", int(total_all), int(delivered_all), f"{pct_all:.1f}%", f"{pct_30d_all:.1f}%"])
+    rows.append(["Итого", int(total_all), int(delivered_all), pct_all, int(total_30d_all), int(delivered_30d_all), pct_30d_all])
 
-    table = tabulate(
-        rows,
-        headers=["Провайдер", "Запрошено", "Доставлено", "Доставляемость", "За 30 дней"],
-        tablefmt="github",
-    )
+    # Транспонированная таблица: строки = метрики, колонки = провайдеры
+    # Сокращения заголовков колонок чтобы влезло в Telegram
+    col_abbr = {"SMSActivate": "SMSAct", "OnlineSim": "Online", "SMSFast": "SMSFst", "Итого": "Итого"}
+    col_w = 6  # ширина каждой колонки с данными
+    lbl_w = 5  # ширина колонки с названием метрики
+
+    headers = [col_abbr.get(r[0], r[0]) for r in rows]
+    sep = "─" * (lbl_w + 1 + len(rows) * (col_w + 1))
+
+    def row_line(label: str, values: list) -> str:
+        vals = " ".join(f"{v:>{col_w}}" for v in values)
+        return f"{label:<{lbl_w}} {vals}"
+
+    table_lines = [
+        row_line("", headers),
+        sep,
+        row_line("Запр", [r[1] for r in rows]),
+        row_line("Дост", [r[2] for r in rows]),
+        row_line("Д-сть", [f"{r[3]:.1f}%" for r in rows]),
+        "",
+        "За 30 дней:",
+        row_line("Запр", [r[4] for r in rows]),
+        row_line("Дост", [r[5] for r in rows]),
+        row_line("Д-сть", [f"{r[6]:.1f}%" for r in rows]),
+    ]
 
     await message.answer(
         text=(
-            f"📊 <b>SMS доставляемость по сервису</b> <code>{_html.escape(raw_service)}</code>\n"
-            f"<pre>{_html.escape(table)}</pre>"
+            f"📊 <b>SMS доставляемость · {_html.escape(raw_service)}</b>\n\n"
+            f"<code>{''.join(table_lines[0])}\n{table_lines[1]}\n"
+            + "\n".join(table_lines[2:]) + "</code>"
         ),
         parse_mode="HTML",
     )
