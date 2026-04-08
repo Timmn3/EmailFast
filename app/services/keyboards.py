@@ -19,7 +19,7 @@ def start_kb():
     builder.button(
         text="Принять SMS",
         callback_data="receive_sms",
-        icon_custom_emoji_id="5406809207947142040",
+        icon_custom_emoji_id="5258215846450305872",
     )
     builder.button(
         text="Длительная аренда",
@@ -29,7 +29,7 @@ def start_kb():
     builder.button(
         text="Принять Email",
         callback_data="receive_email",
-        icon_custom_emoji_id="5472239203590888751",
+        icon_custom_emoji_id="5258134813302332906",
     )
     builder.button(
         text="Личный кабинет",
