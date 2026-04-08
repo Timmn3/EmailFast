@@ -1976,9 +1976,14 @@ async def sms_service_stat(message: types.Message) -> None:
     smsactivate_ids, smsactivate_codes = await _resolve_smsactivate_service_ids()
     onlinesim_ids, onlinesim_codes = await _resolve_onlinesim_service_ids()
 
+    from datetime import timezone, timedelta
     rows: list[list[object]] = []
     total_all = 0
     delivered_all = 0
+    total_30d_all = 0
+    delivered_30d_all = 0
+
+    cutoff_30d = datetime.now(tz=timezone.utc) - timedelta(days=30)
 
     # Для наглядности покажем, что именно сматчилось в справочниках
     resolved_lines: list[str] = []
@@ -1995,6 +2000,8 @@ async def sms_service_stat(message: types.Message) -> None:
             if not ids:
                 total = 0
                 delivered = 0
+                total_30d = 0
+                delivered_30d = 0
             else:
                 total = await models.Activation.filter(
                     provider=provider,
@@ -2010,11 +2017,30 @@ async def sms_service_stat(message: types.Message) -> None:
                     .exclude(sms_text="")
                     .count()
                 )
+
+                total_30d = await models.Activation.filter(
+                    provider=provider,
+                    service_2_id__in=ids,
+                    created_at__gte=cutoff_30d,
+                ).count()
+
+                delivered_30d = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_2_id__in=ids,
+                        sms_text__isnull=False,
+                        created_at__gte=cutoff_30d,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
         else:
             ids = smsactivate_ids
             if not ids:
                 total = 0
                 delivered = 0
+                total_30d = 0
+                delivered_30d = 0
             else:
                 total = await models.Activation.filter(
                     provider=provider,
@@ -2031,19 +2057,40 @@ async def sms_service_stat(message: types.Message) -> None:
                     .count()
                 )
 
+                total_30d = await models.Activation.filter(
+                    provider=provider,
+                    service_id__in=ids,
+                    created_at__gte=cutoff_30d,
+                ).count()
+
+                delivered_30d = await (
+                    models.Activation.filter(
+                        provider=provider,
+                        service_id__in=ids,
+                        sms_text__isnull=False,
+                        created_at__gte=cutoff_30d,
+                    )
+                    .exclude(sms_text="")
+                    .count()
+                )
+
         pct = (delivered / total * 100.0) if total else 0.0
+        pct_30d = (delivered_30d / total_30d * 100.0) if total_30d else 0.0
 
         total_all += int(total)
         delivered_all += int(delivered)
+        total_30d_all += int(total_30d)
+        delivered_30d_all += int(delivered_30d)
 
-        rows.append([title, int(total), int(delivered), f"{pct:.1f}%"])
+        rows.append([title, int(total), int(delivered), f"{pct:.1f}%", f"{pct_30d:.1f}%"])
 
     pct_all = (delivered_all / total_all * 100.0) if total_all else 0.0
-    rows.append(["ИТОГО", int(total_all), int(delivered_all), f"{pct_all:.1f}%"])
+    pct_30d_all = (delivered_30d_all / total_30d_all * 100.0) if total_30d_all else 0.0
+    rows.append(["ИТОГО", int(total_all), int(delivered_all), f"{pct_all:.1f}%", f"{pct_30d_all:.1f}%"])
 
     table = tabulate(
         rows,
-        headers=["Провайдер", "Запрошено", "Доставлено", "Доставляемость"],
+        headers=["Провайдер", "Запрошено", "Доставлено", "Доставляемость", "За 30 дней"],
         tablefmt="github",
     )
 
