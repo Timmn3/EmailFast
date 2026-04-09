@@ -829,19 +829,21 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
 
     buttons.append([
         types.InlineKeyboardButton(
+            text=bt.REQUEST_ANOTHER_CODE,
+            callback_data="receive_sms_for_another_service",
+            icon_custom_emoji_id="5397916757333654639",
+        )
+    ])
+
+    buttons.append([
+        types.InlineKeyboardButton(
             text=bt.CANCEL_SERVICE_BTN,
             callback_data=f"cancel_service:{activation.id}",
             icon_custom_emoji_id="5215204871422093648",
         )
     ])
 
-    buttons.append([
-        types.InlineKeyboardButton(
-            text=bt.REQUEST_ANOTHER_CODE,
-            callback_data="receive_sms_for_another_service",
-            icon_custom_emoji_id="5397916757333654639",
-        )
-    ])
+
 
     mk = types.InlineKeyboardMarkup(inline_keyboard=buttons)
 
