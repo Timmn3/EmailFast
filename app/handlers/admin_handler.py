@@ -140,7 +140,7 @@ async def stat(message: types.Message):
             f'SELECT COUNT(*)::bigint AS total, '
             f'COUNT(DISTINCT user_id)::bigint AS uniq '
             f'FROM "{pay_table}" '
-            f'WHERE is_success = TRUE'
+            f"WHERE is_success = TRUE AND method != 'admin'"
         )
         total = int(rows[0].get("total") or 0) if rows else 0
         uniq = int(rows[0].get("uniq") or 0) if rows else 0
@@ -148,13 +148,13 @@ async def stat(message: types.Message):
         payments_repeat_count = max(total - uniq, 0)
     except Exception:
         # Fallback (всё равно без .all()): считаем уникальных плательщиков
-        payments_count = await models.Payment.filter(is_success=True).count()
-        payer_ids = await models.Payment.filter(is_success=True).distinct().values_list("user_id", flat=True)
+        payments_count = await models.Payment.filter(is_success=True, method__not=models.PaymentMethod.ADMIN).count()
+        payer_ids = await models.Payment.filter(is_success=True, method__not=models.PaymentMethod.ADMIN).distinct().values_list("user_id", flat=True)
         payments_repeat_count = max(payments_count - len(payer_ids), 0)
 
-    payments_count_today = await models.Payment.filter(is_success=True, created_at__gte=today_start).count()
+    payments_count_today = await models.Payment.filter(is_success=True, created_at__gte=today_start, method__not=models.PaymentMethod.ADMIN).count()
     payments_amount_today = await _sum_amount(
-        models.Payment.filter(is_success=True, created_at__gte=today_start)
+        models.Payment.filter(is_success=True, created_at__gte=today_start, method__not=models.PaymentMethod.ADMIN)
     )
 
     # --- Rent email ---
@@ -196,21 +196,23 @@ async def stat(message: types.Message):
     last_month_name = MONTHS_RU[calendar.month_name[last_month]]
     current_month_name = MONTHS_RU[calendar.month_name[utc_now.month]]
 
-    payments_count_month = await models.Payment.filter(is_success=True, created_at__gte=first_day_of_month).count()
+    payments_count_month = await models.Payment.filter(is_success=True, created_at__gte=first_day_of_month, method__not=models.PaymentMethod.ADMIN).count()
     payments_count_last_month = await models.Payment.filter(
         is_success=True,
         created_at__gte=first_day_of_last_month,
-        created_at__lt=first_day_of_month
+        created_at__lt=first_day_of_month,
+        method__not=models.PaymentMethod.ADMIN
     ).count()
 
     payments_amount_month = await _sum_amount(
-        models.Payment.filter(is_success=True, created_at__gte=first_day_of_month)
+        models.Payment.filter(is_success=True, created_at__gte=first_day_of_month, method__not=models.PaymentMethod.ADMIN)
     )
     payments_amount_last_month = await _sum_amount(
         models.Payment.filter(
             is_success=True,
             created_at__gte=first_day_of_last_month,
-            created_at__lt=first_day_of_month
+            created_at__lt=first_day_of_month,
+            method__not=models.PaymentMethod.ADMIN
         )
     )
 
