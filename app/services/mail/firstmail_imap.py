@@ -78,7 +78,9 @@ class FirstMailImapClient:
         if not raw_html:
             return ""
 
-        text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.IGNORECASE)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", raw_html, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"</p\s*>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
         text = html.unescape(text)
