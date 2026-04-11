@@ -120,7 +120,7 @@ def payment_method_window():
             Const(bt.METHOD_CRYPTO_BTN),
             id='crypto',
             on_click=switch_to_payment,
-            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5280862672131204613"),   # 💰 зелёная
+            style=Style(emoji_id="5280862672131204613"),   # 💰
         ),
         Button(
             Const(bt.BACK_BTN),
@@ -154,7 +154,7 @@ def payment_method_window_minimum_pay():
             Const(bt.METHOD_CRYPTO_BTN),
             id='crypto',
             on_click=switch_to_payment,
-            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5280862672131204613"),   # 💰 зелёная
+            style=Style(emoji_id="5280862672131204613"),   # 💰
         ),
         Button(
             Const(bt.BACK_BTN),
