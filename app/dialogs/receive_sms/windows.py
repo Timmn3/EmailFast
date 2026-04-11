@@ -13,7 +13,7 @@ from app.dialogs.receive_sms.getters import get_countries_service, get_services,
     get_services_2, get_show_smsfast_other_button, get_favorites
 from app.dialogs.receive_sms.selected import on_select_country_new, on_select_service, on_search_country, \
     on_result_country, \
-    on_search_service, on_result_service, back_country, on_smsfast_other_service, \
+    on_search_service, on_result_service, back_country, back_from_countries, on_smsfast_other_service, \
     on_show_favorites, on_back_to_services, on_toggle_favorite
 from app.services import bot_texts as bt
 from app.dialogs.personal_cabinet import keyboards
@@ -194,8 +194,10 @@ def select_country_window():
                 emoji_id="5224450179368767019",
             ),
         ),
-        Cancel(
+        Button(
             Const(bt.BACK_BTN),
+            id="back_from_countries",
+            on_click=back_from_countries,
             style=Style(
                 emoji_id="5258236805890710909",  # ⬅️
             ),

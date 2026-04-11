@@ -1113,6 +1113,16 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
 async def back_country(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     await manager.switch_to(CountryMenu.select_country)
 
+
+async def back_from_countries(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    """Назад из списка стран: если активен поиск — очищает фильтр и остаётся в списке; иначе — выходит в выбор сервисов."""
+    ctx = manager.current_context()
+    if ctx.dialog_data.get("search_name"):
+        ctx.dialog_data.pop("search_name", None)
+        await manager.switch_to(CountryMenu.select_country)
+    else:
+        await manager.done()
+
 def move_russia_first(country_list):
     for i, country_data in enumerate(country_list):
         if country_data.get("country") == "Россия":
