@@ -1,5 +1,6 @@
 from typing import Union
 from aiogram import types
+from aiogram.enums import ButtonStyle
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import TextInput
@@ -376,7 +377,12 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
     price = current_context.dialog_data.get('price')
 
     # Создаем кнопку, которая откроет веб-приложение
-    web_app_button = InlineKeyboardButton(text=f"Оплатить {price}₽", web_app=web_app)
+    is_green = button.widget_id in ('ckassa', 'crypto')
+    web_app_button = InlineKeyboardButton(
+        text=f"Оплатить {price}₽",
+        web_app=web_app,
+        style=ButtonStyle.SUCCESS if is_green else None,
+    )
 
     # Создаем экземпляр клавиатуры с кнопкой
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[web_app_button]])

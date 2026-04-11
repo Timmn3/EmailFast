@@ -289,7 +289,7 @@ def payment_method_window_country():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
                style=Style(emoji_id="5888993774540951956")),                              # ⭐️
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment,
-               style=Style(emoji_id="5280862672131204613")),                              # 💰
+               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5280862672131204613")),   # 💰 зелёная
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
         state=states.CountryMenu.payment_method
@@ -305,7 +305,7 @@ def payment_method_window_country_minimum_pay():
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
                style=Style(emoji_id="5888993774540951956")),                              # ⭐️
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment,
-               style=Style(emoji_id="5280862672131204613")),                              # 💰
+               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5280862672131204613")),   # 💰 зелёная
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
         state=states.CountryMenu.payment_method_minimum_pay
