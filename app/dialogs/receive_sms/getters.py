@@ -254,8 +254,8 @@ async def get_need_balance(dialog_manager: DialogManager, **middleware_data):
     user = await models.User.get_user(dialog_manager.event.from_user.id)
     # Формируем словарь с данными о стоимости и балансе
     data = {
-        "cost": service_cost,
-        "balance": user.balance
+        "cost": int(service_cost) if service_cost is not None else service_cost,
+        "balance": int(user.balance)
     }
     return data
 

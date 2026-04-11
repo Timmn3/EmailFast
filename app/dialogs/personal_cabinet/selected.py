@@ -379,7 +379,7 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
     # Создаем кнопку, которая откроет веб-приложение
     is_green = button.widget_id in ('ckassa', 'crypto')
     web_app_button = InlineKeyboardButton(
-        text=f"Оплатить {price}₽",
+        text=f"Оплатить {int(price)}₽",
         web_app=web_app,
         style=ButtonStyle.SUCCESS if is_green else None,
     )

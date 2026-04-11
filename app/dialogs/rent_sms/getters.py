@@ -99,7 +99,7 @@ async def get_country_details(dialog_manager: DialogManager, **kwargs):
             return {"country": "Неизвестно", "tariffs": []}
 
         tariffs = sorted(
-            [{"days": get_day_string(int(days)), "price": price} for days, price in selected_country["tariffs"].items()],
+            [{"days": get_day_string(int(days)), "price": int(round(float(price)))} for days, price in selected_country["tariffs"].items()],
             key=lambda x: x["price"]
         )
 

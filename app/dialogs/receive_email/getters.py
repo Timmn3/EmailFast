@@ -117,9 +117,10 @@ async def get_balance(dialog_manager: DialogManager, **middleware_data):
             f"Текущий баланс: {user.balance}, стоимость услуги: {ctx.dialog_data.get('cost')}"
         )
 
+        cost = ctx.dialog_data.get('cost')
         return {
-            'balance': user.balance,
-            'cost': ctx.dialog_data.get('cost')
+            'balance': int(user.balance),
+            'cost': int(cost) if cost is not None else cost
         }
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в get_balance: {e}")
@@ -150,7 +151,7 @@ async def get_rent_info(dialog_manager: DialogManager, **middleware_data):
 
         return {
             'rent_days': rent_days,
-            'cost': cost
+            'cost': int(cost) if cost is not None else cost
         }
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в get_rent_info: {e}")
