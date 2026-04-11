@@ -234,8 +234,10 @@ def enter_country_error_window():
     return Window(
         Const(bt.ENTER_COUNTRY_ERROR),
         Button(Const(bt.ENTER_AGAIN_BTN), id="enter_again", on_click=on_search_country),
-        Cancel(
+        Button(
             Const(bt.BACK_BTN),
+            id="back_to_countries",
+            on_click=back_country,
             style=Style(
                 emoji_id="5258236805890710909",  # ⬅️
             ),
