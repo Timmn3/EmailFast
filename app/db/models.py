@@ -98,6 +98,10 @@ class User(Model):
         index=True,
         description="Автоблокировка при расхождении: расходы+баланс > пополнений",
     )
+    fraud_suspect_since: datetime = fields.DatetimeField(
+        null=True,
+        description="Момент первого подозрения на фрод (бан только на 2-й проверке)",
+    )
 
     @classmethod
     async def add_user(

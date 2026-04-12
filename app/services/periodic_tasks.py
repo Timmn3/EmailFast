@@ -2013,7 +2013,9 @@ async def check_fraud_balance_discrepancy() -> None:
         )
 
         now = timezone.now()
+        pending_cutoff = now - datetime.timedelta(minutes=10)
         banned_count = 0
+        suspect_count = 0
 
         for user in candidates:
             d = user_data.get(user.id, {})
@@ -2027,13 +2029,47 @@ async def check_fraud_balance_discrepancy() -> None:
             diff = (total_spent + balance) - total_paid
 
             if diff <= FRAUD_DIFF_THRESHOLD:
+                # Дисбаланс пропал — снимаем подозрение если было
+                if user.fraud_suspect_since is not None:
+                    user.fraud_suspect_since = None
+                    await user.save(update_fields=["fraud_suspect_since"])
+                    logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").info(
+                        f"Подозрение снято (diff={diff:.2f} ≤ порога)"
+                    )
                 continue
 
-            # --- баним ---
-            user.fraud_banned = True
-            update_fields = ["fraud_banned"]
+            # --- Вариант A: платёж в процессе? ---
+            # Если у пользователя есть незакрытый платёж за последние 10 минут —
+            # пропускаем итерацию: payment webhook ещё не записал is_success=True.
+            has_pending = await models.Payment.filter(
+                user_id=user.id,
+                is_success=False,
+                created_at__gte=pending_cutoff,
+            ).exists()
 
-            # эти поля могут отсутствовать — ставим только если реально есть в модели
+            if has_pending:
+                logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").info(
+                    f"Fraud skip: есть pending-платёж за последние 10 мин, diff={diff:.2f}"
+                )
+                continue
+
+            # --- Вариант B: двойная проверка ---
+            # Первое срабатывание → ставим флаг подозрения, не баним.
+            # Второе срабатывание (следующий запуск) → баним.
+            if user.fraud_suspect_since is None:
+                user.fraud_suspect_since = now
+                await user.save(update_fields=["fraud_suspect_since"])
+                suspect_count += 1
+                logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").warning(
+                    f"Fraud suspect: первое срабатывание, diff={diff:.2f}. Бан — на следующей проверке."
+                )
+                continue
+
+            # --- Второе+ срабатывание: баним ---
+            user.fraud_banned = True
+            user.fraud_suspect_since = None
+            update_fields = ["fraud_banned", "fraud_suspect_since"]
+
             if hasattr(user, "fraud_banned_reason"):
                 user.fraud_banned_reason = f"auto: (spent+balance)-paid > {FRAUD_DIFF_THRESHOLD}"
                 update_fields.append("fraud_banned_reason")
@@ -2050,8 +2086,6 @@ async def check_fraud_balance_discrepancy() -> None:
             banned_count += 1
 
             username = getattr(user, "username", None) or "-"
-            first_name = getattr(user, "first_name", None) or "-"
-            last_name = getattr(user, "last_name", None) or "-"
 
             msg = (
                 "🚨 AUTO-FRAUD BAN\n"
@@ -2079,7 +2113,6 @@ async def check_fraud_balance_discrepancy() -> None:
             except Exception as e:
                 logger.warning(f"Не удалось отправить AUTO-FRAUD BAN PM={PROJECT_MANAGER}: {e}")
 
-            # опционально: уведомим пользователя (мягко)
             try:
                 await bot.send_message(
                     chat_id=user.telegram_id,
@@ -2097,7 +2130,9 @@ async def check_fraud_balance_discrepancy() -> None:
                 f"Пользователь fraud_banned=True, diff={diff:.2f}"
             )
 
-        logger.bind(action="check_fraud_balance_discrepancy").info(f"Готово. Забанено: {banned_count}")
+        logger.bind(action="check_fraud_balance_discrepancy").info(
+            f"Готово. Забанено: {banned_count}, новых подозреваемых: {suspect_count}"
+        )
 
     except Exception as e:
         logger.opt(exception=e).error("Ошибка в check_fraud_balance_discrepancy")
