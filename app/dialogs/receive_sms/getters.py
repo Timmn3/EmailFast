@@ -169,7 +169,8 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
         # Сортировка: приоритетные первыми, Telegram первым на 2-й странице (позиция 11)
         PAGE_SIZE = 10
         priority_codes = {"google", "vkcom", "whatsapp"}
-        all_services = services_db["services"]
+        hidden_codes = {"samokat", "x5id", "magnit"}
+        all_services = [s for s in services_db["services"] if s["code"] not in hidden_codes]
 
         priority_services = [s for s in all_services if s["code"] in priority_codes]
         telegram_services = [s for s in all_services if s["code"] == "telegram"]

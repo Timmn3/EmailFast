@@ -169,10 +169,12 @@ async def on_result_service(m: types.Message, widget: TextInput, manager: Dialog
         else:
             services = await models.ServicesOnlinesim.search_service(service_name.lower())
 
-        # Убираем из поиска псевдо-сервис "Любой другой"
+        # Убираем из поиска псевдо-сервис "Любой другой" и скрытые сервисы
+        hidden_codes = {"samokat", "x5id", "magnit"}
         services = [
             s for s in services
             if (getattr(s, "name", None) or "").strip() != "Любой другой"
+            and (getattr(s, "code", None) or "").strip().lower() not in hidden_codes
         ]
 
         if not services:
