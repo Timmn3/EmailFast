@@ -139,8 +139,8 @@ async def receive_sms_for_another_service(call: types.CallbackQuery, dialog_mana
     try:
         user_id = call.from_user.id
         logger.bind(user_id=user_id, action="receive_sms_for_another_service").log("USER_ACTION", "Принять SMS для другого сервиса")
-        await dialog_manager.reset_stack()
-        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.NORMAL)
+        await call.answer()
+        await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.NEW_STACK)
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms_for_another_service: {e}")
 
