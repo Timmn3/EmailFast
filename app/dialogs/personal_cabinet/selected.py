@@ -19,7 +19,7 @@ from app.services.keyboards import send_main_menu
 from app.services.payments.anypay import AnypayAPI
 from app.services.bot_texts import FOLLOW_THE_LINK_TO_PAY
 from app.services.payments.ckassa import create_invoice_ckassa
-from app.services.payments.cryptomus import link_to_cryptomus
+from app.services.payments.cryptomus import link_to_heleket
 from app.services.payments.freekassa import generate_fk_link
 from app.services.payments.lava import LavaApi
 from app.services.payments.streampay import create_payment_streampay
@@ -248,7 +248,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         continue_data=continue_data
     )
     # формируем ссылку на оплату cryptomus
-    cryptomus_url = link_to_cryptomus(price, payment_cryptomus.id)
+    cryptomus_url = link_to_heleket(price, payment_cryptomus.id)
 
     # payment_yoomoney = await models.Payment.create_payment(
     #     user=user,

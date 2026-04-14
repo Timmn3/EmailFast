@@ -3,6 +3,10 @@ from app.dependencies import CRYPTOMUS_API_KEY, CRYPTOMUS_MERCHANT_ID, CRYPTOMUS
 from datetime import datetime, timedelta
 from pyCryptomusAPI import pyCryptomusAPI
 import pytz
+import json
+import hashlib
+import base64
+import requests
 
 from app.services.payments.cryptomus_payout_api import CryptomusPayoutAPI, CryptomusPayoutAPIException
 
@@ -13,6 +17,39 @@ client = pyCryptomusAPI(
 )
 
 url_bot = "https://t.me/emailfastbot"
+
+HELEKET_API_URL = "https://api.heleket.com/v1/payment"
+
+
+def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
+    """Создание ссылки на оплату через Heleket (прямой HTTP-запрос)"""
+    try:
+        payload = {
+            "amount": str(int(amount)) if amount == int(amount) else str(amount),
+            "currency": currency,
+            "order_id": str(order_id),
+            "url_return": url_bot,
+            "url_success": url_bot,
+        }
+        payload_json = json.dumps(payload)
+        sign_raw = base64.b64encode(payload_json.encode("ascii")).decode() + CRYPTOMUS_API_KEY
+        sign = hashlib.md5(sign_raw.encode("ascii")).hexdigest()
+        headers = {
+            "merchant": CRYPTOMUS_MERCHANT_ID,
+            "sign": sign,
+            "Content-Type": "application/json",
+        }
+        resp = requests.post(HELEKET_API_URL, data=payload_json, headers=headers, timeout=15)
+        data = resp.json()
+        if data.get("state") == 0:
+            return data["result"]["url"]
+        else:
+            logger.error(f"Heleket вернул ошибку: {data}")
+            return None
+    except Exception as e:
+        logger.error(f"Ошибка при создании инвойса Heleket: {e}")
+        return None
+
 
 def link_to_cryptomus(amount: float, order_id: str, currency: str = "RUB"):
     """Создание ссылки на оплату через Cryptomus"""
