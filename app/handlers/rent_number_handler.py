@@ -555,17 +555,31 @@ async def extend_rent(callback_query: types.CallbackQuery, dialog_manager: Dialo
         # Извлекаем тарифы для выбранной страны
         data = await api_client.get_tariffs()
         try:
-            tariffs = data.get(str(rent_country_code), {})
+            tariffs = data.get(str(rent_country_code), {}) if data else {}
         except Exception as e:
-            tariffs = None
-            logger.error(e)
+            tariffs = {}
+            logger.error(f"Ошибка получения тарифов: {e}")
+        logger.bind(user_id=user_id, action='extend_rent').debug(
+            "get_tariffs() keys (первые 10): {keys}, rent_country_code={code}, tariffs_count={count}, tariffs_periods={periods}",
+            keys=list(data.keys())[:10] if data else "None",
+            code=rent_country_code,
+            count=len(tariffs),
+            periods=list(tariffs.keys()),
+        )
         # Преобразуем тарифы: умножаем цены на DOLLAR_RATE
-        if tariffs:  # Проверяем, есть ли данные
+        if tariffs:
             updated_tariffs = {days: round(price * DOLLAR_ONLINESIM) for days, price in tariffs.items()}
         else:
-            days = rented.days
-            cost = rented.cost
-            updated_tariffs = {str(days): cost}
+            # Fallback: пробуем взять периоды из поля extend ответа getRentState
+            extend_data = rent_state["list"][0].get("extend")
+            logger.bind(user_id=user_id, action='extend_rent').warning(
+                f"get_tariffs() не вернул тарифы для страны {rent_country_code}, "
+                f"extend из getRentState: {extend_data}"
+            )
+            if isinstance(extend_data, dict) and extend_data:
+                updated_tariffs = {str(k): round(float(v) * DOLLAR_ONLINESIM) for k, v in extend_data.items()}
+            else:
+                updated_tariffs = {str(rented.days): rented.cost}
 
         context_data = {
             "selected_country": {
