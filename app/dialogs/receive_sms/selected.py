@@ -471,12 +471,14 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
         # Проверяем баланс пользователя
         if float(user.balance or 0.0) < float(price):
             missing_amount = max(float(price) - float(user.balance or 0.0), 50.0)
+            svc_name = manager.current_context().start_data.get('service_name', service_code) if manager else service_code
             manager.current_context().dialog_data.update({
                 'country_id': country_id,
                 'service_code': service_code,
                 'retail_price': retail_price,
                 'service_price': price,
-                'price': missing_amount
+                'price': missing_amount,
+                'selected_service_name': svc_name,
             })
             from app.dialogs.personal_cabinet.selected import send_payment_keyboard
             await send_payment_keyboard(m=c, manager=manager, price=missing_amount)
@@ -1102,10 +1104,13 @@ async def send_country_info(service_code: str, c: types.CallbackQuery, manager: 
         # print(f'sorted_countries_with_prices {sorted_countries_with_prices}')
 
         # Передаем данные в диалог выбора страны
+        service_name_for_start = ''
+        if manager:
+            service_name_for_start = manager.current_context().dialog_data.get('selected_service_name', service_code)
         await manager.start(
             CountryMenu.select_country,
             mode=StartMode.NORMAL,
-            data={"countries_with_prices": sorted_countries_with_prices, "service_code": service_code}
+            data={"countries_with_prices": sorted_countries_with_prices, "service_code": service_code, "service_name": service_name_for_start}
         )
 
     except Exception as e:

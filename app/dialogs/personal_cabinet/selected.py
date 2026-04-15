@@ -306,29 +306,35 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     selected_country = ''
     day_index = ''
     retail_price = ''
+    service_name = ''
 
     if state == 'CountryMenu':
         country_id = ctx.dialog_data.get('country_id', '')
         service_code = ctx.dialog_data.get('service_code', '')
         service_price = ctx.dialog_data.get('service_price')
         retail_price = ctx.dialog_data.get('retail_price', '')
+        service_name = ctx.dialog_data.get('selected_service_name', '')
+        display_data = {'service_name': service_name, 'balance': int(user.balance), 'price': int(price)}
         if price >= 300:
-            await manager.start(CountryMenu.payment_method, mode=StartMode.NORMAL, data={})
+            await manager.start(CountryMenu.payment_method, mode=StartMode.NORMAL, data=display_data)
         else:
-            await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
+            await manager.start(CountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data=display_data)
     elif state == 'RentCountryMenu':
         if ctx and 'rent_country_code' in ctx.dialog_data:
             rent_country_code = ctx.dialog_data.get('rent_country_code', '')
             selected_country = ctx.dialog_data.get('selected_country', '')
             day_index = ctx.dialog_data.get('day_index', '')
+            sc = ctx.dialog_data.get('selected_country', {})
+            service_name = sc.get('country', '') if isinstance(sc, dict) else ''
         else:
             rent_country_code = ''
             selected_country = ''
             day_index = ''
+        display_data = {'service_name': service_name, 'balance': int(user.balance), 'price': int(price)}
         if price >= 300:
-            await manager.start(RentCountryMenu.payment_method, mode=StartMode.NORMAL, data={})
+            await manager.start(RentCountryMenu.payment_method, mode=StartMode.NORMAL, data=display_data)
         else:
-            await manager.start(RentCountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data={})
+            await manager.start(RentCountryMenu.payment_method_minimum_pay, mode=StartMode.NORMAL, data=display_data)
     else:
         if price >= 300:
             await manager.start(PersonalMenu.payment_method, mode=StartMode.NORMAL, data={})
@@ -351,7 +357,9 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'selected_country': selected_country,
         'day_index': day_index,
         'retail_price': retail_price,
-        'service_price': service_price
+        'service_price': service_price,
+        'service_name': service_name,
+        'balance': int(user.balance),
     })
 
     # await create_payment_keyboard(m, price, lava_url, sbp_url, other_url)
@@ -447,21 +455,24 @@ async def send_payment_keyboard_anypay(c: types.CallbackQuery, button: Button, m
         country_id = ''
         service_code = ''
         service_price = ''
+        service_name = ctx.dialog_data.get('service_name', ctx.start_data.get('service_name', ''))
         url_pattern = re.compile(r'https?://[^\s]+')
 
         if state == 'CountryMenu':
             country_id = ctx.dialog_data['country_id']
             service_code = ctx.dialog_data['service_code']
             service_price = ctx.dialog_data['service_price']
+            display_data = {'service_name': service_name, 'balance': int(user.balance), 'price': int(price)}
             if url_pattern.match(url_sbp):
-                await manager.start(CountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+                await manager.start(CountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data=display_data)
             else:
-                await manager.start(CountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
+                await manager.start(CountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data=display_data)
         elif state == 'RentCountryMenu':
+            display_data = {'service_name': service_name, 'balance': int(user.balance), 'price': int(price)}
             if url_pattern.match(url_sbp):
-                await manager.start(RentCountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
+                await manager.start(RentCountryMenu.payment_method_anypay, mode=StartMode.NORMAL, data=display_data)
             else:
-                await manager.start(RentCountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data={})
+                await manager.start(RentCountryMenu.payment_method_anypay_min, mode=StartMode.NORMAL, data=display_data)
         else:
             if url_pattern.match(url_sbp):
                 await manager.start(PersonalMenu.payment_method_anypay, mode=StartMode.NORMAL, data={})
@@ -475,7 +486,9 @@ async def send_payment_keyboard_anypay(c: types.CallbackQuery, button: Button, m
             'price': price,
             'country_id': country_id,
             'service_code': service_code,
-            'service_price': service_price
+            'service_price': service_price,
+            'service_name': service_name,
+            'balance': int(user.balance),
         })
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в send_payment_keyboard_anypay: {e}")

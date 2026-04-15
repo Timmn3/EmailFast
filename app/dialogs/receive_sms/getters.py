@@ -261,6 +261,17 @@ async def get_need_balance(dialog_manager: DialogManager, **middleware_data):
     return data
 
 
+async def get_payment_method_info(dialog_manager: DialogManager, **middleware_data):
+    ctx = dialog_manager.current_context()
+    start = ctx.start_data or {}
+    data = ctx.dialog_data or {}
+    return {
+        'balance': start.get('balance', data.get('balance', 0)),
+        'service_name': start.get('service_name', data.get('service_name', '')),
+        'needed_amount': start.get('price', data.get('price', 0)),
+    }
+
+
 async def get_all_services(dialog_manager: DialogManager, **middleware_data):
     """
     Получает список всех доступных услуг в определенной стране.

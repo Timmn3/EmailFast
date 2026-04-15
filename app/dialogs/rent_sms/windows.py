@@ -9,7 +9,7 @@ from app.dialogs.personal_cabinet import keyboards
 from aiogram_dialog.widgets.kbd import Cancel, Back, Button, ScrollingGroup, Select
 from aiogram_dialog.widgets.style import Style
 from app.dialogs.rent_sms import states
-from app.dialogs.rent_sms.getters import get_rent_countries, get_country_details, cancel_btn
+from app.dialogs.rent_sms.getters import get_rent_countries, get_country_details, cancel_btn, get_payment_method_info
 from app.dialogs.rent_sms.selected import rent_on_result_country, rent_on_select_country_new, \
     rent_back_country, on_search_rent_country, rent_number_in_days, rent_on_deposit
 from app.services import bot_texts as bt
@@ -155,12 +155,16 @@ def enter_amount_window_country():
     )
 
 
+_PAYMENT_METHOD_TEXT = Format(
+    'На вашем балансе сейчас {balance} ₽ для аренды номера {service_name} необходимо {needed_amount} ₽.'
+    ' Выберите способ оплаты<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+)
+
 # Функция для нового окна выбора метода оплаты
 def payment_method_window_country():
     from app.dialogs.personal_cabinet.selected import switch_to_payment
-    from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
                style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
         Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment,
@@ -171,14 +175,15 @@ def payment_method_window_country():
                style=Style(emoji_id="5280862672131204613")),                              # 💰
         Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
-        state=states.RentCountryMenu.payment_method
+        state=states.RentCountryMenu.payment_method,
+        getter=get_payment_method_info,
     )
 
 # Функция для выбора метода оплаты с платежем менее 300 руб
 def payment_method_window_country_minimum_pay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
                style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
@@ -187,14 +192,15 @@ def payment_method_window_country_minimum_pay():
                style=Style(emoji_id="5280862672131204613")),                              # 💰
         Button(Const(bt.BACK_BTN), id='back', on_click=rent_on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
-        state=states.RentCountryMenu.payment_method_minimum_pay
+        state=states.RentCountryMenu.payment_method_minimum_pay,
+        getter=get_payment_method_info,
     )
 
 # Функция для нового окна выбора метода оплаты AnyPay
 def payment_method_window_anypay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_payment_method
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_BANK_CARD), id='card', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_SBP), id='sbp', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
@@ -202,15 +208,17 @@ def payment_method_window_anypay():
             style=Style(
                 emoji_id="5258236805890710909",  # ⬅️
             ),),
-        state=states.RentCountryMenu.payment_method_anypay
+        state=states.RentCountryMenu.payment_method_anypay,
+        getter=get_payment_method_info,
     )
 
 # Функция для нового окна выбора метода оплаты AnyPay с непроходящим по сумме патежем
 def payment_method_window_anypay_min():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_payment_method
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
-        state=states.RentCountryMenu.payment_method_anypay_min
+        state=states.RentCountryMenu.payment_method_anypay_min,
+        getter=get_payment_method_info,
     )

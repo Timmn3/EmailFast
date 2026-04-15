@@ -10,7 +10,7 @@ from aiogram import F
 from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay, on_payment_method
 from app.dialogs.receive_sms import states
 from app.dialogs.receive_sms.getters import get_countries_service, get_services, get_need_balance, get_other_service, \
-    get_services_2, get_show_smsfast_other_button, get_favorites
+    get_services_2, get_show_smsfast_other_button, get_favorites, get_payment_method_info
 from app.dialogs.receive_sms.selected import on_select_country_new, on_select_service, on_search_country, \
     on_result_country, \
     on_search_service, on_result_service, back_country, back_from_countries, on_smsfast_other_service, \
@@ -279,11 +279,16 @@ def enter_amount_window_country():
     )
 
 
+_PAYMENT_METHOD_TEXT = Format(
+    'На вашем балансе сейчас {balance} ₽ для аренды номера {service_name} необходимо {needed_amount} ₽.'
+    ' Выберите способ оплаты<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+)
+
 # Функция для нового окна выбора метода оплаты
 def payment_method_window_country():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_deposit
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
                style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
         Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment,
@@ -294,14 +299,15 @@ def payment_method_window_country():
                style=Style(emoji_id="5280862672131204613")),                              # 💰
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
-        state=states.CountryMenu.payment_method
+        state=states.CountryMenu.payment_method,
+        getter=get_payment_method_info,
     )
 
 # Функция для выбора метода оплаты с платежем менее 300 руб
 def payment_method_window_country_minimum_pay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, on_deposit
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
                style=Style(style=ButtonStyle.SUCCESS, emoji_id="5472250091332993630")),   # 💳 зелёная
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
@@ -310,14 +316,15 @@ def payment_method_window_country_minimum_pay():
                style=Style(emoji_id="5280862672131204613")),                              # 💰
         Button(Const(bt.BACK_BTN), id='back', on_click=on_deposit,
                style=Style(emoji_id="5258236805890710909")),                              # ⬅️
-        state=states.CountryMenu.payment_method_minimum_pay
+        state=states.CountryMenu.payment_method_minimum_pay,
+        getter=get_payment_method_info,
     )
 
 # Функция для нового окна выбора метода оплаты AnyPay
 def payment_method_window_anypay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_BANK_CARD), id='card', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_SBP), id='sbp', on_click=switch_to_payment),
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
@@ -325,15 +332,17 @@ def payment_method_window_anypay():
             style=Style(
                 emoji_id="5258236805890710909",  # ⬅️
             ),),
-        state=states.CountryMenu.payment_method_anypay
+        state=states.CountryMenu.payment_method_anypay,
+        getter=get_payment_method_info,
     )
 
 # Функция для нового окна выбора метода оплаты AnyPay с непроходящим по сумме патежем
 def payment_method_window_anypay_min():
     from app.dialogs.personal_cabinet.selected import switch_to_payment
     return Window(
-        Const(bt.SELECT_DEPOSIT_METHOD),
+        _PAYMENT_METHOD_TEXT,
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
-        state=states.CountryMenu.payment_method_anypay_min
+        state=states.CountryMenu.payment_method_anypay_min,
+        getter=get_payment_method_info,
     )
