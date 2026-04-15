@@ -55,6 +55,10 @@ async def on_order_history(c: types.CallbackQuery, widget: Button, manager: Dial
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в on_order_history: {e}")
 
+
+async def on_back_from_order_history(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    await manager.switch_to(PersonalMenu.user_info)
+
 async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик кнопки "Партнерская программа".

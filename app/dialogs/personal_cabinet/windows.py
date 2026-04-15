@@ -7,7 +7,7 @@ from app import dependencies
 from app.dialogs.personal_cabinet import states, keyboards
 from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices, get_order_history
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
-    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main, on_order_history
+    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main, on_order_history, on_back_from_order_history
 from app.handlers.affiliate_program import affiliate_program
 from app.services import bot_texts as bt
 from app.services.bot_texts import LINK_TO_BUTTON
@@ -40,6 +40,7 @@ def personal_cabinet_window():
             Const(bt.ORDER_HISTORY_BTN),
             id='order_history',
             on_click=on_order_history,
+            style=Style(emoji_id="5886223731088431288"),
         ),
         Url(
             Const(bt.INSTRUCTIONS),
@@ -197,8 +198,10 @@ def payment_method_window_anypay_min():
 def order_history_window():
     return Window(
         Format('{order_history_text}'),
-        Back(
-            Const('⬅️Назад'),
+        Button(
+            Const('Назад'),
+            id='back_from_order_history',
+            on_click=on_back_from_order_history,
             style=Style(
                 emoji_id="5258236805890710909",
             ),
