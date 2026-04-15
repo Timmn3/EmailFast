@@ -1004,6 +1004,20 @@ class RentalEmailLease(Model):
         description="Когда для этой аренды снова разрешена смена FirstMail-ящика",
     )
 
+    # Счётчик смен в текущие сутки (МСК). Сбрасывается при новых сутках.
+    daily_changes_count: int = fields.IntField(
+        default=0,
+        description="Количество смен ящика за текущие сутки (МСК)",
+    )
+
+    # Дата (МСК), к которой относится daily_changes_count.
+    # NULL означает, что счётчик ещё не инициализирован.
+    daily_changes_date: Optional[str] = fields.CharField(
+        max_length=10,
+        null=True,
+        description="Дата (YYYY-MM-DD, МСК) последнего обновления счётчика смен",
+    )
+
     # Служебные даты
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
 

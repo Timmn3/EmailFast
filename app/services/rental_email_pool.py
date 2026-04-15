@@ -95,7 +95,29 @@ def build_firstmail_change_cooldown_message(remaining: timedelta) -> str:
     total_seconds = max(0, int(remaining.total_seconds()))
     total_minutes = max(1, (total_seconds + 59) // 60)
     hours, minutes = divmod(total_minutes, 60)
-    return f"Сменить ящик можно не чаще 1 раза в 24 часа. Осталось: {hours} ч {minutes} мин."
+    return f"Лимит смен на сегодня исчерпан (2 раза в сутки). Новые сутки начнутся через: {hours} ч {minutes} мин."
+
+
+def _get_next_midnight_moscow() -> datetime:
+    """
+    Возвращает datetime следующих 00:00 по московскому времени (aware UTC).
+    """
+    import zoneinfo
+    msk = zoneinfo.ZoneInfo("Europe/Moscow")
+    now_msk = datetime.now(tz=msk)
+    next_midnight_msk = (now_msk + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return next_midnight_msk.astimezone(zoneinfo.ZoneInfo("UTC"))
+
+
+def _today_moscow() -> str:
+    """
+    Возвращает сегодняшнюю дату по МСК в формате YYYY-MM-DD.
+    """
+    import zoneinfo
+    msk = zoneinfo.ZoneInfo("Europe/Moscow")
+    return datetime.now(tz=msk).strftime("%Y-%m-%d")
 
 
 async def get_firstmail_change_cooldown_remaining(user: models.User) -> Optional[timedelta]:
@@ -739,11 +761,11 @@ async def change_rental_email_lease(
 
     Важно:
     - mail.tm здесь НЕ используется;
-    - cooldown 24 часа хранится на конкретной аренде в RentalEmailLease.change_available_at;
-    - чтобы защититься от гонок, жёсткая проверка cooldown выполняется
-      внутри транзакции под блокировкой текущей active lease;
+    - лимит: 2 смены в сутки (МСК); после 2-й смены cooldown до 00:00 МСК;
+    - счётчик смен (daily_changes_count / daily_changes_date) переносится на новую аренду;
+    - чтобы защититься от гонок, проверка лимита выполняется внутри транзакции
+      под блокировкой текущей active lease;
     - старая аренда временно деактивируется до инициализации нового ящика;
-    - новый lease создаётся уже с собственным cooldown now + 24h;
     - если новый ящик не удалось подготовить, выполняется откат на старую аренду;
     - expire_at, days, владелец и признак бесплатной недели сохраняются;
     - reuse-лимит аккаунтов НЕ трогаем.
@@ -770,10 +792,26 @@ async def change_rental_email_lease(
             raise ValueError("Арендованный ящик не найден.")
 
         now = timezone.now()
+        today_msk = _today_moscow()
 
+        # Определяем, сколько смен уже сделано сегодня
+        if old_lease.daily_changes_date == today_msk:
+            todays_count = old_lease.daily_changes_count
+        else:
+            # Новые сутки — счётчик сбрасывается
+            todays_count = 0
+
+        # Жёсткий cooldown (устанавливается после 2-й смены) проверяем в первую очередь
         if old_lease.change_available_at and old_lease.change_available_at > now:
             remaining = old_lease.change_available_at - now
             raise RuntimeError(build_firstmail_change_cooldown_message(remaining))
+
+        # Мягкая проверка: не превышен ли суточный лимит (на случай рассинхрона)
+        if todays_count >= 2:
+            remaining = _get_next_midnight_moscow() - now
+            raise RuntimeError(build_firstmail_change_cooldown_message(remaining))
+
+        new_todays_count = todays_count + 1
 
         old_account = (
             await models.RentalEmailAccount
@@ -803,6 +841,12 @@ async def change_rental_email_lease(
         old_lease.is_active = False
         await old_lease.save(using_db=conn, update_fields=["is_active"])
 
+        # После 2-й смены за сутки — замораживаем до 00:00 МСК
+        if new_todays_count >= 2:
+            new_change_available_at = _get_next_midnight_moscow()
+        else:
+            new_change_available_at = None
+
         new_lease = await models.RentalEmailLease.create(
             using_db=conn,
             user=locked_user,
@@ -818,7 +862,9 @@ async def change_rental_email_lease(
             days=old_lease.days,
             expire_at=old_lease.expire_at,
             free_week_expires_at=old_lease.free_week_expires_at,
-            change_available_at=now + timedelta(hours=24),
+            change_available_at=new_change_available_at,
+            daily_changes_count=new_todays_count,
+            daily_changes_date=today_msk,
         )
 
     init_ok = await initialize_rental_email_lease(new_lease.id)
