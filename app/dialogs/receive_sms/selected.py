@@ -856,12 +856,16 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
     flag = country_flags.get(country, "")
     flag_and_country = f"{flag} {country}"
 
+    msk_tz = pytz.timezone("Europe/Moscow")
+    active_until = (datetime.now(tz=msk_tz) + timedelta(minutes=15)).strftime("%H:%M")
+
     if service != "Telegram":
         sent = await message.answer(
             text=bt.SERVICE_INFO.format(
                 country=flag_and_country,
                 service=service,
                 phone=activation.phone_number,
+                active_until=active_until,
             ),
             reply_markup=mk
         )
@@ -871,6 +875,7 @@ async def send_service_info_with_keyboard(message: types.Message, activation, se
                 country=flag_and_country,
                 service=service,
                 phone=activation.phone_number,
+                active_until=active_until,
             ),
             reply_markup=mk
         )
