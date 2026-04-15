@@ -13,7 +13,7 @@ def personal_cabinet_dialogs():
             windows.payment_method_window_minimum_pay(),
             windows.payment_method_window_anypay(),
             windows.payment_method_window_anypay_min(),
-
+            windows.order_history_window(),
         )
     ]
 

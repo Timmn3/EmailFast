@@ -439,6 +439,7 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
                 user=user,
                 days=rent_days,
                 is_free_week=is_free_week,
+                cost=float(cost),
             )
         except RuntimeError:
             logger.bind(user_id=user_id, action='on_confirm_rent_email').log(

@@ -1018,6 +1018,12 @@ class RentalEmailLease(Model):
         description="Дата (YYYY-MM-DD, МСК) последнего обновления счётчика смен",
     )
 
+    # Фактическая стоимость этой аренды (0 = бесплатная неделя, 199/599/999 = платная)
+    cost: float = fields.FloatField(default=0, null=True)
+
+    # True = запись создана при смене ящика, а не при покупке — не показывать в истории заказов
+    is_change: bool = fields.BooleanField(default=False)
+
     # Служебные даты
     created_at: datetime = fields.DatetimeField(auto_now_add=True)
 

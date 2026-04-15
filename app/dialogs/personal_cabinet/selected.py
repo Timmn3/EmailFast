@@ -48,6 +48,13 @@ async def on_back_to_main(callback: CallbackQuery, button: Button, manager: Dial
     await callback.message.delete()  # ← удаляем сообщение с личным кабинетом
     await send_main_menu(callback.message, bt.MAIN_MENU, parse_mode="HTML")
 
+
+async def on_order_history(c: types.CallbackQuery, widget: Button, manager: DialogManager):
+    try:
+        await manager.switch_to(PersonalMenu.order_history)
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в on_order_history: {e}")
+
 async def affiliate(c: types.CallbackQuery, widget: Button, manager: DialogManager):
     """
     Обработчик кнопки "Партнерская программа".

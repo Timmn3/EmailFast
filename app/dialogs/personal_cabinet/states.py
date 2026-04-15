@@ -10,5 +10,6 @@ class PersonalMenu(StatesGroup):
     payment_method_anypay_min = State()
     deposit_choose_method = State()
     enter_amount = State()
+    order_history = State()
 
 

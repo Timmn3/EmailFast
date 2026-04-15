@@ -345,6 +345,7 @@ RENT_NUMBER = '📞Длительная аренда'
 RECEIVE_EMAIL_BTN = '📩Принять Email'
 PERSONAL_CABINET_BTN = '👤Личный кабинет'
 AFFILIATE_PROGRAM_BTN = 'Партнерская программа'
+ORDER_HISTORY_BTN = 'История заказов'
 
 # Country menu
 SEARCH_COUNTRY_BTN = 'Поиск страны'

@@ -341,6 +341,7 @@ async def issue_rental_email(
     days: int,
     is_free_week: bool = False,
     initial_old_messages_id: Optional[list] = None,
+    cost: float = 0.0,
 ) -> models.RentalEmailLease:
     """
     Подготавливает пользователю следующий свободный почтовый ящик из пула.
@@ -389,6 +390,7 @@ async def issue_rental_email(
             days=days,
             expire_at=expire_at,
             free_week_expires_at=free_week_expires_at,
+            cost=cost,
         )
 
     await lease.fetch_related("account", "user")
@@ -865,6 +867,8 @@ async def change_rental_email_lease(
             change_available_at=new_change_available_at,
             daily_changes_count=new_todays_count,
             daily_changes_date=today_msk,
+            cost=0.0,
+            is_change=True,
         )
 
     init_ok = await initialize_rental_email_lease(new_lease.id)

@@ -5,9 +5,9 @@ from aiogram_dialog.widgets.kbd import Back, Button, Url, Cancel
 from aiogram_dialog.widgets.text import Const, Format
 from app import dependencies
 from app.dialogs.personal_cabinet import states, keyboards
-from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices
+from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices, get_order_history
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
-    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main
+    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main, on_order_history
 from app.handlers.affiliate_program import affiliate_program
 from app.services import bot_texts as bt
 from app.services.bot_texts import LINK_TO_BUTTON
@@ -35,6 +35,11 @@ def personal_cabinet_window():
             style=Style(
                 emoji_id="5357080225463149588",
             ),
+        ),
+        Button(
+            Const(bt.ORDER_HISTORY_BTN),
+            id='order_history',
+            on_click=on_order_history,
         ),
         Url(
             Const(bt.INSTRUCTIONS),
@@ -186,4 +191,18 @@ def payment_method_window_anypay_min():
         Button(Const(bt.METHOD_BANK_CRYPTOCURRENCY), id='btc', on_click=switch_to_payment),
         Button(Const(bt.BACK_BTN), id='back', on_click=on_payment_method),
         state=states.PersonalMenu.payment_method_anypay_min
+    )
+
+
+def order_history_window():
+    return Window(
+        Format('{order_history_text}'),
+        Back(
+            Const('⬅️Назад'),
+            style=Style(
+                emoji_id="5258236805890710909",
+            ),
+        ),
+        state=states.PersonalMenu.order_history,
+        getter=get_order_history
     )
