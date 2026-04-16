@@ -54,7 +54,9 @@ def _build_free_firstmail_text(
     text = (
         '<b>Ваш Email <tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji></b>\n'
         f"{email_text}\n\n"
-        f"<i>Ожидаем письмо...</i>\n\n"
+        '<tg-emoji emoji-id="5258258882022612173">⏲</tg-emoji>Срок действия Email неограничен\n\n'
+        'Аренда Email позволяет бесплатно менять адрес почты 2 раза в сутки.\n'
+        'Подходит для регистрации во множестве сервисов. В отличие от временной почты, вероятность приёма писем выше'
     )
 
     if new_messages_count is not None:
