@@ -56,6 +56,18 @@ async def send_invoice_handler_stars(c: types.CallbackQuery, button: Button, man
 
     prices = [LabeledPrice(label="XTR", amount=stars)]
 
+    # Если пользователь шёл через флоу аренды — запускаем планировщик автоаренды
+    state_group = ctx.state.group.__name__
+    if state_group == 'RentCountryMenu':
+        day_index = ctx.dialog_data.get('day_index')
+        selected_country = ctx.dialog_data.get('selected_country')
+        rent_price = ctx.dialog_data.get('price')
+        if day_index and selected_country and rent_price:
+            from app.dialogs.rent_sms.scheduler_balance import start_balance_check_rent
+            await start_balance_check_rent(
+                c.from_user.id, float(rent_price), day_index, selected_country, c, manager
+            )
+
     try:
         await c.message.answer_invoice(
             title=PAYMENT,
