@@ -259,13 +259,13 @@ async def pull_rental_email_messages(
         if update_fields:
             await lease.save(update_fields=update_fields)
 
-        logger.bind(
-            user_id=getattr(getattr(lease, "user", None), "telegram_id", None),
-            action="pull_rental_email_messages",
-        ).log(
-            "USER_ACTION",
-            f"FirstMail pull | lease_id={lease.id} initialized={lease.is_initialized} new_messages={len(messages)}"
-        )
+        # logger.bind(
+        #     user_id=getattr(getattr(lease, "user", None), "telegram_id", None),
+        #     action="pull_rental_email_messages",
+        # ).log(
+        #     "USER_ACTION",
+        #     f"FirstMail pull | lease_id={lease.id} initialized={lease.is_initialized} new_messages={len(messages)}"
+        # )
 
         return lease, messages
 
@@ -1055,14 +1055,14 @@ async def pull_free_firstmail_messages(
         if update_fields:
             await assignment.save(update_fields=update_fields)
 
-        logger.bind(
-            user_id=getattr(getattr(assignment, "user", None), "telegram_id", None),
-            action="pull_free_firstmail_messages",
-        ).log(
-            "USER_ACTION",
-            f"Free FirstMail pull | assignment_id={assignment.id} "
-            f"initialized={assignment.is_initialized} new_messages={len(messages)}"
-        )
+        # logger.bind(
+        #     user_id=getattr(getattr(assignment, "user", None), "telegram_id", None),
+        #     action="pull_free_firstmail_messages",
+        # ).log(
+        #     "USER_ACTION",
+        #     f"Free FirstMail pull | assignment_id={assignment.id} "
+        #     f"initialized={assignment.is_initialized} new_messages={len(messages)}"
+        # )
 
         return assignment, messages
 

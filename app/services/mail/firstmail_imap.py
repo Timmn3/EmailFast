@@ -147,12 +147,12 @@ class FirstMailImapClient:
         """
         Подключается к IMAP и открывает INBOX.
         """
-        logger.info(
-            "IMAP FirstMail connect | host=%s port=%s email=%s",
-            self.imap_host,
-            self.imap_port,
-            self.email_addr,
-        )
+        # logger.info(
+        #     "IMAP FirstMail connect | host=%s port=%s email=%s",
+        #     self.imap_host,
+        #     self.imap_port,
+        #     self.email_addr,
+        # )
 
         self.imap = imaplib.IMAP4_SSL(self.imap_host, self.imap_port, timeout=30)
         self.imap.login(self.email_addr, self.password)
