@@ -625,9 +625,9 @@ async def check_sms():
                 # загружаем нужные отношения
                 try:
                     if provider == "onlinesim":
-                        await activation.fetch_related("user", "service_2")
+                        await activation.fetch_related("user", "service_2", "country")
                     else:
-                        await activation.fetch_related("user", "service")
+                        await activation.fetch_related("user", "service", "country")
                 except Exception:
                     pass
 
@@ -659,6 +659,49 @@ async def check_sms():
                         text=msg_text,
                         parse_mode="HTML",
                     )
+
+                    # Редактируем оригинальное сообщение "Ожидаем SMS..." -> "СМС доставлено"
+                    service_msg_id = getattr(activation, "service_msg_id", None)
+                    if service_msg_id:
+                        try:
+                            import pytz as _pytz
+                            _msk_tz = _pytz.timezone("Europe/Moscow")
+                            expire_at = getattr(activation, "activation_expire_at", None)
+                            _active_until = expire_at.astimezone(_msk_tz).strftime("%H:%M") if expire_at else "--:--"
+
+                            _country_obj = getattr(activation, "country", None)
+                            _country_name = (_country_obj.name if _country_obj else "") or ""
+                            _flag = bt.country_flags.get(_country_name, "")
+                            _flag_and_country = f"{_flag} {_country_name}".strip()
+
+                            _service_name = str(name) if name else ""
+                            if _service_name == "Telegram":
+                                _edit_text = bt.SERVICE_INFO_TELEGRAM_SMS_RECEIVED.format(
+                                    phone=activation.phone_number,
+                                    country=_flag_and_country,
+                                    service=_service_name,
+                                    active_until=_active_until,
+                                    sms_text=safe_code,
+                                )
+                            else:
+                                _edit_text = bt.SERVICE_INFO_SMS_RECEIVED.format(
+                                    phone=activation.phone_number,
+                                    country=_flag_and_country,
+                                    service=_service_name,
+                                    active_until=_active_until,
+                                    sms_text=safe_code,
+                                )
+
+                            await bot.edit_message_text(
+                                chat_id=activation.user.telegram_id,
+                                message_id=service_msg_id,
+                                text=_edit_text,
+                                parse_mode="HTML",
+                            )
+                        except Exception as _edit_err:
+                            logger.opt(exception=_edit_err).warning(
+                                f"Не удалось отредактировать service_msg (id={service_msg_id}): {_edit_err}"
+                            )
 
                     await notice_of_arraignment("Получение смс", activation, name)
                     logger.bind(
