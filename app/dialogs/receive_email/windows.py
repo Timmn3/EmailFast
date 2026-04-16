@@ -2,7 +2,7 @@ import operator
 from app.dependencies import FREE_EMAIL_PROVIDER
 from aiogram import F
 from aiogram_dialog import Window
-from aiogram_dialog.widgets.kbd import Cancel, Back, Button
+from aiogram_dialog.widgets.kbd import Cancel, Back, Button, Group
 from aiogram_dialog.widgets.text import Const, Format
 
 from app.dialogs.personal_cabinet.selected import on_back_to_main
@@ -208,12 +208,20 @@ def rent_email_no_discount_window():
     - это окно должно корректно работать и из сценария free FirstMail -> аренда;
     - добавляем явную кнопку "Назад", чтобы пользователь мог вернуться
       в основное меню почтовых ящиков.
+    - кнопка бесплатной недели показывается динамически: только если
+      пользователь ещё не использовал бесплатную неделю (is_free_week из геттера).
 
     :return: Объект Window для выбора периода аренды без скидки.
     """
     return Window(
         Const(RENT_EMAIL_NO_DISCOUNT),
-        rent_email_kb(on_rent_email_item, is_free_week=True),
+        Group(
+            Button(Const(bt.RENT_EMAIL_WEEK_BTN), id='rent_email_week',
+                   on_click=on_rent_email_item, when=~F['is_free_week']),
+            Button(Const(bt.RENT_EMAIL_MONTH_BTN), id='rent_email_month', on_click=on_rent_email_item),
+            Button(Const(bt.RENT_EMAIL_SIX_MONTHS_BTN), id='rent_email_six_months', on_click=on_rent_email_item),
+            Button(Const(bt.RENT_EMAIL_YEAR_BTN), id='rent_email_year', on_click=on_rent_email_item),
+        ),
         Button(Const(bt.BACK_BTN), id='back_rent', on_click=on_back_mail,
                style=Style(emoji_id="5258236805890710909")),
         state=states.ReceiveEmailMenu.rent_email_no_discount,
