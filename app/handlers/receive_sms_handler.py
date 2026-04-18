@@ -33,7 +33,6 @@ SMSFAST_SERVICE_MAP = {
     "vkcom":    "vk",
     "google":   "go",
     "tiktok":   "tt",
-    "amazon":   "am",
     "claude":   "cl",
     "ot":       "ot",   # "Любой другой"
 }

@@ -157,6 +157,5 @@ dp = Dispatcher(storage=storage)
 SMSFAST_SERVICE_MAP = {
     "paypal":   "ts",
     "tiktok":   "lf",
-    "amazon":   "am",
     "ot":       "ot",   # "Любой другой"
 }
