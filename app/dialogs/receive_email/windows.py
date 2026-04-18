@@ -133,7 +133,8 @@ def confirm_rent_email_window():
 
     return Window(
         Format(bt.CONFIRM_RENT_EMAIL),
-        Button(Const(bt.CONFIRM_BTN), id='confirm_btn', on_click=on_confirm_rent_email),
+        Button(Const(bt.CONFIRM_BTN), id='confirm_btn', on_click=on_confirm_rent_email,
+               style=Style(emoji_id="5411197345968701560")),
         Back(Const(bt.BACK_BTN),
             style=Style(
                 emoji_id="5258236805890710909",  # ⬅️

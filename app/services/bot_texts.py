@@ -369,7 +369,7 @@ SUBSCRIBE_CHANNEL = """
 # ========================= Buttons =========================
 
 # Default
-CONFIRM_BTN = '<tg-emoji emoji-id="5411197345968701560">✅</tg-emoji>Подтвердить'
+CONFIRM_BTN = 'Подтвердить'
 DECLINE_BTN = '❌Отклонить'
 CONTINUE_BTN = '🔁Продолжить'
 BACK_BTN = 'Назад'
