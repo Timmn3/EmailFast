@@ -114,15 +114,23 @@ async def get_order_history(dialog_manager: DialogManager, **middleware_data):
             .exclude(sms_text='')
             .order_by('-created_at')
             .limit(10)
+            .select_related('service', 'service_2')
             .all()
         )
         for a in activations:
+            if a.service and hasattr(a.service, 'name'):
+                svc_name = a.service.name
+            elif a.service_2 and hasattr(a.service_2, 'name'):
+                svc_name = a.service_2.name
+            else:
+                svc_name = '—'
             orders.append({
                 'created_at': a.created_at,
                 'type': 'Принять СМС',
                 'cost': int(a.cost),
                 'detail_label': 'Номер',
                 'detail_value': a.phone_number,
+                'service_name': svc_name,
             })
 
         # Email-аренды (RentalEmailLease) — все записи включая смены ящика
@@ -156,9 +164,10 @@ async def get_order_history(dialog_manager: DialogManager, **middleware_data):
             dt_msk = o['created_at'].astimezone(msk)
             date_str = dt_msk.strftime('%d.%m.%Y')
 
+            service_line = f"\nСервис: {o['service_name']}" if o.get('service_name') else ''
             block = (
                 f"Дата заказа: {date_str}\n"
-                f"Тип: {o['type']}\n"
+                f"Тип: {o['type']}{service_line}\n"
                 f"Сумма: {o['cost']} ₽\n"
                 f"{o['detail_label']}: {o['detail_value']}"
             )
