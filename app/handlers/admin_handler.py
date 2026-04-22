@@ -1416,11 +1416,16 @@ async def users_with_discrepancy(message: types.Message):
         user_data.setdefault(a["user_id"], {"total_paid": 0, "total_spent": 0})
         user_data[a["user_id"]]["total_spent"] += a["total_activation"]
 
-    # Получаем баланс всех этих пользователей
+    # Получаем баланс всех этих пользователей (батчами, т.к. asyncpg лимит 32767 параметров)
     user_ids = list(user_data.keys())
-    users = await models.User.filter(id__in=user_ids).values(
-        "id", "telegram_id", "full_name", "username", "balance", "mention"
-    )
+    chunk_size = 10000
+    users = []
+    for i in range(0, len(user_ids), chunk_size):
+        chunk = user_ids[i:i + chunk_size]
+        chunk_users = await models.User.filter(id__in=chunk).values(
+            "id", "telegram_id", "full_name", "username", "balance", "mention"
+        )
+        users.extend(chunk_users)
 
     user_info_map = {u["id"]: u for u in users}
 
