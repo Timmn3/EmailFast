@@ -339,7 +339,7 @@ class MissedJobLogFilter(logging.Filter):
 # === Обработка SIGTERM ===
 def shutdown_scheduler(scheduler):
     logger.info("Остановка планировщика...")
-    scheduler.shutdown()
+    scheduler.shutdown(wait=False)
 
 
 signal.signal(signal.SIGTERM, lambda *args: shutdown_scheduler(scheduler))
@@ -400,6 +400,8 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt:
         logger.info("Бот остановлен")
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
     except Exception as e:
         logger.opt(exception=e).critical(f'Критическая ошибка в main: {e}')
 
