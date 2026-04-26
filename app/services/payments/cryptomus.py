@@ -40,9 +40,9 @@ def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
             "sign": sign,
             "Content-Type": "application/json",
         }
-        print(f"[Heleket] Запрос | URL: {HELEKET_API_URL} | payload: {payload_json} | headers: {headers}")
+        logger.info(f"[Heleket] Запрос | URL: {HELEKET_API_URL} | payload: {payload_json} | headers: {headers}")
         resp = requests.post(HELEKET_API_URL, data=payload_json, headers=headers, timeout=15)
-        print(f"[Heleket] Ответ | status: {resp.status_code} | body: {resp.text}")
+        logger.info(f"[Heleket] Ответ | status: {resp.status_code} | body: {resp.text}")
         data = resp.json()
         if data.get("state") == 0:
             return data["result"]["url"]
@@ -50,7 +50,7 @@ def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
             logger.error(f"Heleket вернул ошибку: {data}")
             return None
     except Exception as e:
-        print(f"[Heleket] Ошибка при создании инвойса | payload: {payload_json} | error: {e}")
+        logger.info(f"[Heleket] Ошибка при создании инвойса | payload: {payload_json} | error: {e}")
         return None
 
 
