@@ -40,17 +40,21 @@ def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
             "sign": sign,
             "Content-Type": "application/json",
         }
-        logger.info(f"[Heleket] Запрос | URL: {HELEKET_API_URL} | payload: {payload_json} | headers: {headers}")
+        logger.info("[Heleket] Запрос | URL: {} | payload: {} | headers: {}", HELEKET_API_URL, payload_json, headers)
         resp = requests.post(HELEKET_API_URL, data=payload_json, headers=headers, timeout=15)
-        logger.info(f"[Heleket] Ответ | status: {resp.status_code} | body: {resp.text}")
+        logger.info("[Heleket] Ответ | status: {} | body: {}", resp.status_code, resp.text)
         data = resp.json()
         if data.get("state") == 0:
-            return data["result"]["url"]
+            result = data["result"]
+            if result.get("is_final") and result.get("payment_status") == "cancel":
+                logger.error("[Heleket] Инвойс для order_id {} уже финальный/отменён (создан {}), новый не создан", order_id, result.get("created_at"))
+                return None
+            return result["url"]
         else:
-            logger.error(f"Heleket вернул ошибку: {data}")
+            logger.error("[Heleket] вернул ошибку: {}", data)
             return None
     except Exception as e:
-        logger.info(f"[Heleket] Ошибка при создании инвойса | payload: {payload_json} | error: {e}")
+        logger.info("[Heleket] Ошибка при создании инвойса | payload: {} | error: {}", payload_json, e)
         return None
 
 
