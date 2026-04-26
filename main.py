@@ -336,6 +336,18 @@ class MissedJobLogFilter(logging.Filter):
         return "Job" not in record.getMessage() or "was missed" not in record.getMessage()
 
 
+class CancelledErrorFilter(logging.Filter):
+    """Подавляет трейсбеки CancelledError при штатном завершении."""
+    def filter(self, record):
+        if record.exc_info and record.exc_info[0] is not None:
+            if issubclass(record.exc_info[0], asyncio.CancelledError):
+                return False
+        msg = record.getMessage()
+        if "Executor shutdown has been called" in msg:
+            return False
+        return True
+
+
 # === Обработка SIGTERM ===
 def shutdown_scheduler(scheduler):
     logger.info("Остановка планировщика...")
@@ -390,10 +402,13 @@ if __name__ == '__main__':
         # Подавление лишних логов apscheduler
         aps_logger = logging.getLogger('apscheduler')
         aps_logger.setLevel(logging.WARNING)
-        logging.getLogger('apscheduler.executors.default').setLevel(logging.WARNING)
+        executors_logger = logging.getLogger('apscheduler.executors.default')
+        executors_logger.setLevel(logging.WARNING)
+        executors_logger.addFilter(CancelledErrorFilter())
         handler = logging.StreamHandler()
         handler.addFilter(SkipSpecificLogFilter())
         handler.addFilter(MissedJobLogFilter())
+        handler.addFilter(CancelledErrorFilter())
         aps_logger.addHandler(handler)
 
         asyncio.run(main(dp))
