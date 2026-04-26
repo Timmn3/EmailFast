@@ -1,6 +1,7 @@
 from loguru import logger
 import sys
 import os
+import asyncio
 import traceback
 from aiogram import BaseMiddleware
 from aiogram.types import Update
@@ -18,6 +19,17 @@ logger.remove()
 # === Кастомные уровни логгирования ===
 logger.level("USER_ACTION", no=38, color="<yellow>")
 logger.level("REFERRAL_BONUS", no=39, color="<cyan>")
+
+
+# === Фильтр для подавления шума при завершении ===
+def _shutdown_noise_filter(record):
+    msg = record["message"]
+    if "Executor shutdown has been called" in msg:
+        return False
+    exc = record.get("exception")
+    if exc and exc[0] is not None and issubclass(exc[0], asyncio.CancelledError):
+        return False
+    return True
 
 
 # === Форматтеры ===
@@ -80,7 +92,8 @@ logger.add(
     format=formatter,
     backtrace=True,
     diagnose=True,
-    colorize=True
+    colorize=True,
+    filter=_shutdown_noise_filter,
 )
 
 # === Логирование действий пользователей ===
