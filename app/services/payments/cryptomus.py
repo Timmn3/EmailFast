@@ -40,21 +40,22 @@ def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
             "sign": sign,
             "Content-Type": "application/json",
         }
-        logger.info("[Heleket] Запрос | URL: {} | payload: {} | headers: {}", HELEKET_API_URL, payload_json, headers)
+        logger.info("[Heleket] Запрос | order_id={} | amount={} | currency={} | merchant={}", order_id, payload["amount"], currency, CRYPTOMUS_MERCHANT_ID)
         resp = requests.post(HELEKET_API_URL, data=payload_json, headers=headers, timeout=15)
-        logger.info("[Heleket] Ответ | status: {} | body: {}", resp.status_code, resp.text)
         data = resp.json()
+        result = data.get("result") or {}
+        logger.info("[Heleket] Ответ | http={} | state={} | payment_status={} | is_final={} | url={}",
+                    resp.status_code, data.get("state"), result.get("payment_status"), result.get("is_final"), result.get("url"))
         if data.get("state") == 0:
-            result = data["result"]
             if result.get("is_final") and result.get("payment_status") == "cancel":
-                logger.error("[Heleket] Инвойс для order_id {} уже финальный/отменён (создан {}), новый не создан", order_id, result.get("created_at"))
+                logger.error("[Heleket] order_id={} — инвойс уже финальный/отменён (создан {}), новый не создан", order_id, result.get("created_at"))
                 return None
             return result["url"]
         else:
-            logger.error("[Heleket] вернул ошибку: {}", data)
+            logger.error("[Heleket] Ошибка | order_id={} | state={} | message={}", order_id, data.get("state"), data.get("message"))
             return None
     except Exception as e:
-        logger.info("[Heleket] Ошибка при создании инвойса | payload: {} | error: {}", payload_json, e)
+        logger.info("[Heleket] Исключение | order_id={} | error={}", order_id, e)
         return None
 
 
