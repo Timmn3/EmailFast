@@ -37,7 +37,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 22.04.2026"
+msg_text = "Версия 26.04.2026"
 
 from contextlib import suppress
 from aiogram.types import Message, CallbackQuery
@@ -176,7 +176,13 @@ async def main(dp: Dispatcher):
     logger.info(DB_NAME)
     # Прочие задачи перед polling
     await userbot_ping()
-    await send_coder(msg_text)
+    startup_msg = (
+        f"🚀 <b>{msg_text}</b>\n"
+        f"──────────────\n"
+        f"📋 <b>ON_SCHEDULE:</b> {'✅ включён' if ON_SCHEDULE else '❌ выключен'}\n"
+        f"🗄 <b>БД:</b> <code>{DB_NAME}</code>"
+    )
+    await send_coder(startup_msg)
 
     # Старт polling
     await dp.start_polling(bot)
