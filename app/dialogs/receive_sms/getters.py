@@ -1,4 +1,6 @@
 import time
+import datetime
+import pytz
 
 from aiogram_dialog import DialogManager
 from app.db import models
@@ -82,6 +84,19 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
             if svc_obj:
                 service_name = svc_obj.name
         is_fav = await models.FavoriteService.is_favorite(user.id, service_code) if service_code else False
+
+        # Скидка 15%: применяем к ценам и добавляем пометку в заголовок
+        now = datetime.datetime.now(pytz.utc)
+        discount_active = (
+            getattr(user, "inactivity_discount_end_at", None) is not None
+            and user.inactivity_discount_end_at.replace(tzinfo=pytz.utc) > now
+        )
+        if discount_active:
+            filtered_countries = [
+                {"id": item["id"], "country": item["country"], "price": round(item["price"] * 0.85)}
+                for item in filtered_countries
+            ]
+            select_country_text += "\n\n🏷 Скидка 15% активна на все номера!"
 
         data = {
             "countries": filtered_countries,

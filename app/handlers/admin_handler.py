@@ -52,6 +52,15 @@ async def test_notifications_cmd(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
     from app.services.periodic_tasks import notify_inactive_users, notify_unpaid_sms_payments
+
+    # Middleware обновляет last_active_at до текущего времени раньше этой команды,
+    # поэтому принудительно откатываем его назад чтобы задача нашла пользователя.
+    user = await models.User.get_user(message.from_user.id)
+    user.last_active_at = datetime.now(pytz.utc) - timedelta(days=31)
+    user.inactivity_notified_at = None
+    user.inactivity_discount_end_at = None
+    await user.save(update_fields=["last_active_at", "inactivity_notified_at", "inactivity_discount_end_at"])
+
     await message.answer("⏳ Запускаю задачи уведомлений…")
     await notify_inactive_users()
     await notify_unpaid_sms_payments()
