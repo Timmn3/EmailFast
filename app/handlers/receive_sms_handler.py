@@ -65,6 +65,13 @@ async def receive_sms(message: Union[types.Message, types.CallbackQuery], dialog
     - команду /get_sms.
     """
     try:
+        # Сразу отвечаем на callback — до любых async операций, иначе query протухает за ~30 сек
+        if isinstance(message, types.CallbackQuery):
+            try:
+                await message.answer()
+            except Exception:
+                pass
+
         user_id = message.from_user.id
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Пользователь запросил получение SMS")
 
@@ -75,8 +82,6 @@ async def receive_sms(message: Union[types.Message, types.CallbackQuery], dialog
         )
 
         if not user:
-            if isinstance(message, types.CallbackQuery):
-                await message.answer()
             return
 
         logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Проверка активации")
@@ -87,15 +92,10 @@ async def receive_sms(message: Union[types.Message, types.CallbackQuery], dialog
             if not sub:
                 logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Подписка неактивна, отправляем сообщение")
                 await send_subscribe_msg(user)
-                if isinstance(message, types.CallbackQuery):
-                    await message.answer()
                 return
 
             logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Запуск диалога выбора сервиса")
             await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
-
-            if isinstance(message, types.CallbackQuery):
-                await message.answer()
         else:
             logger.bind(user_id=user_id, action="receive_sms").log("USER_ACTION", "Получение информации о текущей активации")
             await activation.fetch_related('country')
@@ -120,9 +120,6 @@ async def receive_sms(message: Union[types.Message, types.CallbackQuery], dialog
                 service=service,
                 country=country
             )
-
-            if isinstance(message, types.CallbackQuery):
-                await message.answer()
 
     except Exception as e:
         logger.opt(exception=e).error(f"Ошибка в хэндлере /receive_sms: {e}")
