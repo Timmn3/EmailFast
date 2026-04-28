@@ -54,6 +54,15 @@ async def refund_and_cleanup_expired_sms() -> None:
     - Внутри транзакции повторно проверяем status/expiry/sms_text
     - Переводим в CANCEL и возвращаем деньги строго один раз
     """
+    try:
+        await _refund_and_cleanup_expired_sms_impl()
+    except (TimeoutError, asyncio.TimeoutError):
+        logger.warning("refund_and_cleanup_expired_sms: timeout при подключении к БД, пропускаем итерацию")
+    except asyncio.CancelledError:
+        pass
+
+
+async def _refund_and_cleanup_expired_sms_impl() -> None:
     now = timezone.now()
 
     # Берём только ID (чтобы не тащить user relation и не работать со "старыми" объектами)
@@ -711,9 +720,6 @@ async def check_sms():
                         "USER_ACTION",
                         f"Получено новое SMS для номера {activation.phone_number}, код: {sms_from_status_raw}"
                     )
-
-        # после обхода делаем авто-рефанд просроченных активаций
-        await refund_and_cleanup_expired_sms()
 
     except asyncio.CancelledError:
         pass

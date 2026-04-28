@@ -122,18 +122,23 @@ class User(Model):
         :param referral_link_code: Код персональной реферальной ссылки, если пришёл по ней.
         :return: Созданный объект пользователя.
         """
-        current_time = datetime.now()                      # Текущее время
-        new_user = await cls.create(
-            telegram_id=user.id,
-            full_name=user.full_name,
-            username=user.username,
-            mention=f'@{user.username}' if user.username else user.full_name,
-            refer_id=refer.id if refer else None,
-            referral_link_code=referral_link_code,         # ✨ сохраняем код
-            last_request_time=current_time,
-            channel_gate_enabled=False
-        )
-        return new_user
+        from tortoise.exceptions import IntegrityError as TortoiseIntegrityError
+        current_time = datetime.now()
+        try:
+            new_user = await cls.create(
+                telegram_id=user.id,
+                full_name=user.full_name,
+                username=user.username,
+                mention=f'@{user.username}' if user.username else user.full_name,
+                refer_id=refer.id if refer else None,
+                referral_link_code=referral_link_code,
+                last_request_time=current_time,
+                channel_gate_enabled=False
+            )
+            return new_user
+        except TortoiseIntegrityError:
+            # race condition: пользователь уже создан параллельным запросом
+            return await cls.get_or_none(telegram_id=user.id)
 
     @classmethod
     async def get_user(cls, telegram_id: int):

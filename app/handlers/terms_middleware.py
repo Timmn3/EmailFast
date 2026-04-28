@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from app import dependencies
 
 from aiogram import BaseMiddleware, types
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
 
 from app.db import models
@@ -113,6 +114,8 @@ class TermsMiddleware(BaseMiddleware):
                     parse_mode="HTML",
                     disable_web_page_preview=True,
                 )
+        except TelegramForbiddenError:
+            logging.warning("TermsMiddleware: бот заблокирован пользователем %s", user_tg.id)
         except Exception:
             logging.exception("TermsMiddleware: failed to send terms message")
 
