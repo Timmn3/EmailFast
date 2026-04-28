@@ -47,6 +47,17 @@ _stat_cache_expires_at: datetime | None = None
 _stat_cache_text: str | None = None
 _stat_cache_kb: types.InlineKeyboardMarkup | None = None
 
+@router.message(Command("test_notifications"))
+async def test_notifications_cmd(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    from app.services.periodic_tasks import notify_inactive_users, notify_unpaid_sms_payments
+    await message.answer("⏳ Запускаю задачи уведомлений…")
+    await notify_inactive_users()
+    await notify_unpaid_sms_payments()
+    await message.answer("✅ Задачи выполнены. Проверяй Telegram.")
+
+
 @router.message(Command("update_price_smsfast"))
 async def update_price_smsfast_cmd(message: types.Message):
     logger.bind(user_id=message.from_user.id, action="update_price_smsfast").log(

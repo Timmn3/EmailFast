@@ -2403,10 +2403,11 @@ _INACTIVITY_TEXT = (
     f"Жми на кнопку и получи скидку 15% на сутки{_EMOJI_DOWN}"
 )
 
-_UNPAID_SMS_TEXT = (
-    f"{_EMOJI_PHONE}Тебе остался всего один шаг, чтобы получить номер\n\n"
-    f"Нажми кнопку ниже чтобы продолжить{_EMOJI_DOWN}"
-)
+def _unpaid_sms_text(service_name: str) -> str:
+    return (
+        f"{_EMOJI_PHONE}Тебе остался всего один шаг, чтобы получить номер для {service_name}\n\n"
+        f"Нажми кнопку ниже чтобы продолжить{_EMOJI_DOWN}"
+    )
 
 
 async def notify_inactive_users() -> None:
@@ -2503,13 +2504,14 @@ async def notify_unpaid_sms_payments() -> None:
                 continue
             seen_users.add(uid)
 
+            service_name = cd.get("service_name") or cd.get("service_code") or "сервис"
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="Получить номер", callback_data="resume_sms_payment")
             ]])
             try:
                 await bot.send_message(
                     chat_id=payment.user.telegram_id,
-                    text=_UNPAID_SMS_TEXT,
+                    text=_unpaid_sms_text(service_name),
                     reply_markup=kb,
                     parse_mode="HTML",
                 )
