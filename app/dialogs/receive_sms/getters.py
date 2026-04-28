@@ -1,8 +1,20 @@
+import time
+
 from aiogram_dialog import DialogManager
 from app.db import models
 from app.services import bot_texts as bt
 from app.services.sms_receive import SmsReceive
 from loguru import logger
+
+# ── in-memory TTL-кэш ──────────────────────────────────────────────────────
+_smsactivate_cache: bool | None = None
+_smsactivate_ts: float = 0.0
+_SMSACTIVATE_TTL = 60.0  # настройка меняется редко, кэшируем на 1 мин
+
+_services_db_cache: dict | None = None
+_services_db_ts: float = 0.0
+_SERVICES_DB_TTL = 300.0  # список сервисов обновляется раз в сутки, TTL 5 мин
+# ───────────────────────────────────────────────────────────────────────────
 
 
 async def get_countries_service(dialog_manager: DialogManager, **middleware_data):
@@ -137,8 +149,15 @@ async def get_services(dialog_manager: DialogManager, **middleware_data):
     return data
 
 
-async def service_is_smsactivate():
-    return await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Activate"
+async def service_is_smsactivate() -> bool:
+    global _smsactivate_cache, _smsactivate_ts
+    now = time.monotonic()
+    if _smsactivate_cache is not None and now - _smsactivate_ts < _SMSACTIVATE_TTL:
+        return _smsactivate_cache
+    result = await models.AdminSettings.get_setting_value("sms_rental_service") == "SMS_Activate"
+    _smsactivate_cache = result
+    _smsactivate_ts = now
+    return result
 
 
 async def get_services_2(dialog_manager: DialogManager, **middleware_data):
@@ -156,33 +175,38 @@ async def get_services_2(dialog_manager: DialogManager, **middleware_data):
     services_data = ctx.dialog_data.get('services', [])
     if services_data:
         return services_data
+
+    global _services_db_cache, _services_db_ts
+    now = time.monotonic()
+    if _services_db_cache is not None and now - _services_db_ts < _SERVICES_DB_TTL:
+        return _services_db_cache
+
+    if await service_is_smsactivate():
+        services_db = await models.ServicesSmsActivate.get_services()
     else:
-        if await service_is_smsactivate():
-            services_db = await models.ServicesSmsActivate.get_services()
-        else:
-            services_db = await models.PriceOnlinesim.get_all_services()
-            services_db["services"].extend([
-                # {"code": "ts", "name": "PayPal"},
-                {"code": "ot", "name": "Любой другой"}
-            ])
+        services_db = await models.PriceOnlinesim.get_all_services()
+        services_db["services"].extend([
+            {"code": "ot", "name": "Любой другой"}
+        ])
 
-        # Сортировка: приоритетные первыми, Telegram первым на 2-й странице (позиция 11)
-        PAGE_SIZE = 10
-        priority_codes = {"google", "vkcom", "whatsapp"}
-        hidden_codes = {"samokat", "x5id", "magnit"}
-        all_services = [s for s in services_db["services"] if s["code"] not in hidden_codes]
+    PAGE_SIZE = 10
+    priority_codes = {"google", "vkcom", "whatsapp"}
+    hidden_codes = {"samokat", "x5id", "magnit"}
+    all_services = [s for s in services_db["services"] if s["code"] not in hidden_codes]
 
-        priority_services = [s for s in all_services if s["code"] in priority_codes]
-        telegram_services = [s for s in all_services if s["code"] == "telegram"]
-        other_services = [s for s in all_services if s["code"] not in priority_codes and s["code"] != "telegram"]
+    priority_services = [s for s in all_services if s["code"] in priority_codes]
+    telegram_services = [s for s in all_services if s["code"] == "telegram"]
+    other_services = [s for s in all_services if s["code"] not in priority_codes and s["code"] != "telegram"]
 
-        # Заполняем 1-ю страницу до PAGE_SIZE, потом Telegram, потом остальные
-        fill_count = PAGE_SIZE - len(priority_services)
-        first_page_others = other_services[:fill_count]
-        rest_others = other_services[fill_count:]
+    fill_count = PAGE_SIZE - len(priority_services)
+    first_page_others = other_services[:fill_count]
+    rest_others = other_services[fill_count:]
 
-        services_db["services"] = priority_services + first_page_others + telegram_services + rest_others
-        return services_db
+    services_db["services"] = priority_services + first_page_others + telegram_services + rest_others
+
+    _services_db_cache = services_db
+    _services_db_ts = now
+    return services_db
 
 
 async def get_favorites(dialog_manager: DialogManager, **middleware_data):
