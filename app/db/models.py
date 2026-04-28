@@ -103,6 +103,20 @@ class User(Model):
         description="Момент первого подозрения на фрод (бан только на 2-й проверке)",
     )
 
+    # === Уведомления / скидки ===
+    last_active_at: datetime = fields.DatetimeField(
+        null=True,
+        description="Последняя активность пользователя в боте",
+    )
+    inactivity_discount_end_at: datetime = fields.DatetimeField(
+        null=True,
+        description="До этого момента действует скидка 15% за возврат (неактивность 30 дней)",
+    )
+    inactivity_notified_at: datetime = fields.DatetimeField(
+        null=True,
+        description="Когда было отправлено последнее уведомление о неактивности",
+    )
+
     @classmethod
     async def add_user(
         cls,
@@ -1436,6 +1450,7 @@ class Payment(Model):
     continue_data: dict = fields.JSONField(null=True)  # Дополнительные данные для продолжения платежа (JSON)
     is_success: bool = fields.BooleanField(default=False)  # Флаг успешности платежа
     processed: bool = fields.BooleanField(default=False)
+    reminder_sent: bool = fields.BooleanField(default=False)  # Напоминание об незавершённой оплате уже отправлено
     created_at: datetime = fields.DatetimeField(
         auto_now_add=True)  # Дата и время создания записи (автоматически устанавливается при создании)
 

@@ -2387,3 +2387,145 @@ async def auto_fix_users_balance_discrepancy() -> None:
 
     except Exception as e:
         logger.opt(exception=e).error("Ошибка в auto_fix_users_balance_discrepancy")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Уведомление 1: пользователь неактивен 30+ дней → скидка 15%
+# ──────────────────────────────────────────────────────────────────────────────
+
+_EMOJI_LETTER = "<tg-emoji emoji-id='5472239203590888751'>📩</tg-emoji>"
+_EMOJI_DOWN   = "<tg-emoji emoji-id='5197474438970363734'>⤵️</tg-emoji>"
+_EMOJI_PHONE  = "<tg-emoji emoji-id='5819099456745770209'>📱</tg-emoji>"
+
+_INACTIVITY_TEXT = (
+    f"{_EMOJI_LETTER}Вижу ты давно не использовал EmailFast\n\n"
+    "Специально для тебя сегодня скидка на все наши номера и электронные почты\n\n"
+    f"Жми на кнопку и получи скидку 15% на сутки{_EMOJI_DOWN}"
+)
+
+_UNPAID_SMS_TEXT = (
+    f"{_EMOJI_PHONE}Тебе остался всего один шаг, чтобы получить номер\n\n"
+    f"Нажми кнопку ниже чтобы продолжить{_EMOJI_DOWN}"
+)
+
+
+async def notify_inactive_users() -> None:
+    """
+    Ищет пользователей, неактивных 30+ дней, и отправляет им предложение скидки 15%.
+    Отправляет только если скидка сейчас не активна и уведомление в эту волну ещё не слали.
+    """
+    try:
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        now = datetime.datetime.now(pytz.utc)
+        threshold = now - datetime.timedelta(days=30)
+
+        candidates = await models.User.filter(
+            last_active_at__lt=threshold,
+            last_active_at__isnull=False,
+        ).all()
+
+        sent = 0
+        for user in candidates:
+            # Скидка уже активна — не отправляем
+            if (
+                user.inactivity_discount_end_at is not None
+                and user.inactivity_discount_end_at.replace(tzinfo=pytz.utc) > now
+            ):
+                continue
+
+            # Уже уведомляли после последней активности — не дублируем
+            if (
+                user.inactivity_notified_at is not None
+                and user.last_active_at is not None
+                and user.inactivity_notified_at.replace(tzinfo=pytz.utc)
+                    > user.last_active_at.replace(tzinfo=pytz.utc)
+            ):
+                continue
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Получить скидку", callback_data="get_inactivity_discount")
+            ]])
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=_INACTIVITY_TEXT,
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+                user.inactivity_notified_at = now
+                await user.save(update_fields=["inactivity_notified_at"])
+                sent += 1
+            except Exception as e:
+                logger.bind(user_id=user.telegram_id).warning(
+                    f"notify_inactive_users: не удалось отправить: {e}"
+                )
+
+        logger.bind(action="notify_inactive_users").info(f"Отправлено уведомлений о неактивности: {sent}")
+
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка в notify_inactive_users")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Уведомление 2: пользователь создал счёт на номер, но не оплатил — через 3 часа
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def notify_unpaid_sms_payments() -> None:
+    """
+    Ищет неоплаченные Payment-записи с continue_data (покупка SMS-номера),
+    созданные 3–24 часа назад, и отправляет напоминание.
+    """
+    try:
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        now = datetime.datetime.now(pytz.utc)
+        window_start = now - datetime.timedelta(hours=24)
+        window_end   = now - datetime.timedelta(hours=3)
+
+        payments = await models.Payment.filter(
+            is_success=False,
+            reminder_sent=False,
+            created_at__gte=window_start,
+            created_at__lte=window_end,
+        ).prefetch_related("user").all()
+
+        # Оставляем только те, у которых есть continue_data с service_code
+        # (признак покупки SMS-номера, а не просто пополнение баланса)
+        seen_users: set[int] = set()
+        sent = 0
+
+        for payment in payments:
+            cd = payment.continue_data
+            if not cd or "service_code" not in cd:
+                continue
+
+            uid = payment.user_id
+            if uid in seen_users:
+                continue
+            seen_users.add(uid)
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Получить номер", callback_data="resume_sms_payment")
+            ]])
+            try:
+                await bot.send_message(
+                    chat_id=payment.user.telegram_id,
+                    text=_UNPAID_SMS_TEXT,
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+                # Помечаем все незавершённые платежи этого пользователя как notified
+                await models.Payment.filter(
+                    user_id=uid,
+                    is_success=False,
+                    reminder_sent=False,
+                ).update(reminder_sent=True)
+                sent += 1
+            except Exception as e:
+                logger.bind(user_id=payment.user.telegram_id).warning(
+                    f"notify_unpaid_sms_payments: не удалось отправить: {e}"
+                )
+
+        logger.bind(action="notify_unpaid_sms_payments").info(f"Отправлено напоминаний об оплате: {sent}")
+
+    except Exception as e:
+        logger.opt(exception=e).error("Ошибка в notify_unpaid_sms_payments")

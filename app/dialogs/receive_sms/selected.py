@@ -373,6 +373,14 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
         user.last_request_time = current_time.astimezone(pytz.utc)
         await user.save(update_fields=['last_request_time'])
 
+        # Скидка 15% за возврат: применяется если inactivity_discount_end_at активна
+        _now_utc = datetime.now(pytz.utc)
+        _discount_active = (
+            getattr(user, "inactivity_discount_end_at", None) is not None
+            and user.inactivity_discount_end_at.replace(tzinfo=pytz.utc) > _now_utc
+        )
+        effective_price = round(float(price) * 0.85, 2) if _discount_active else float(price)
+
         # Проверяем глобальный флаг основного провайдера
         is_smsactivate = await service_is_smsactivate()
 
@@ -399,8 +407,8 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
         provider_is_smsfast = smsfast_condition
         provider_is_smsactivate = (free_price_map is not None) and not smsfast_condition
 
-        # Флаг достаточности баланса пользователя
-        has_enough_balance = float(user.balance or 0.0) >= float(price)
+        # Флаг достаточности баланса пользователя (с учётом скидки 15% если активна)
+        has_enough_balance = float(user.balance or 0.0) >= effective_price
 
         # Предварительная проверка наличия номеров у провайдера
         if provider_is_smsfast:
@@ -468,9 +476,9 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                 await _reply(text=NOT_NUMBERS_ALERT)
                 return
 
-        # Проверяем баланс пользователя
-        if float(user.balance or 0.0) < float(price):
-            missing_amount = max(float(price) - float(user.balance or 0.0), 50.0)
+        # Проверяем баланс пользователя (с учётом скидки 15% если активна)
+        if float(user.balance or 0.0) < effective_price:
+            missing_amount = max(effective_price - float(user.balance or 0.0), 50.0)
             svc_name = manager.current_context().start_data.get('service_name', service_code) if manager else service_code
             manager.current_context().dialog_data.update({
                 'country_id': country_id,
@@ -712,7 +720,7 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
             user_locked = await models.User.filter(id=user.id).using_db(conn).select_for_update().first()
             if not user_locked:
                 raise RuntimeError("Пользователь не найден при блокировке")
-            if float(user_locked.balance or 0.0) < float(price):
+            if float(user_locked.balance or 0.0) < effective_price:
                 raise RuntimeError("Недостаточно средств после блокировки пользователя")
 
             if provider_is_smsfast:
@@ -722,7 +730,7 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                     activation_id=activation_id,
                     country=country_obj,
                     service=service_obj,
-                    cost=float(price),
+                    cost=effective_price,
                     phone_number=phone_number,
                     activation_expire_at=expire_at,
                     using_db=conn,
@@ -736,7 +744,7 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                     activation_id=activation_id,
                     country=country_obj,
                     service=service_obj,
-                    cost=float(price),
+                    cost=effective_price,
                     phone_number=phone_number,
                     activation_expire_at=expire_at,
                     using_db=conn,
@@ -750,15 +758,15 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
                     activation_id=activation_id,
                     country=country_obj,
                     service_2=service_obj,
-                    cost=float(price),
+                    cost=effective_price,
                     phone_number=phone_number,
                     activation_expire_at=expire_at,
                     using_db=conn,
                 )
                 service_name = service_obj.name if service_obj else str(service_code)
 
-            # Списываем баланс
-            user_locked.balance = float(user_locked.balance or 0.0) - float(price)
+            # Списываем баланс (со скидкой 15% если активна)
+            user_locked.balance = float(user_locked.balance or 0.0) - effective_price
             await user_locked.save(using_db=conn, update_fields=["balance"])
 
         # Обновляем объект user (актуальный баланс)

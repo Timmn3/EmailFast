@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone as dt_timezone
 from typing import Any, Awaitable, Callable, Dict, Optional
 from app import dependencies
 
@@ -7,6 +8,8 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
 
 from app.db import models
+
+_ACTIVE_UPDATE_INTERVAL_SEC = 3600  # обновляем last_active_at не чаще раза в час
 
 TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie-EmailFast-01-21"
 TERMS_TEXT_HTML = (
@@ -59,6 +62,17 @@ class TermsMiddleware(BaseMiddleware):
 
         # --- получаем/создаём пользователя ---
         user = await models.User.get_user(user_tg.id)
+
+        # --- обновляем last_active_at не чаще раза в час ---
+        now_utc = datetime.now(dt_timezone.utc)
+        last_active = getattr(user, "last_active_at", None)
+        if last_active is None or (now_utc - last_active.replace(tzinfo=dt_timezone.utc)).total_seconds() > _ACTIVE_UPDATE_INTERVAL_SEC:
+            try:
+                user.last_active_at = now_utc
+                await user.save(update_fields=["last_active_at"])
+            except Exception:
+                pass
+
         # --- fraud-ban гейт (аналогично terms gate) ---
         if getattr(user, "fraud_banned", False) and user_tg.id not in dependencies.ADMINS:
             banned_text = (

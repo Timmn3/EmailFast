@@ -11,6 +11,7 @@ from app.handlers import (
     get_email_handler, receive_sms_handler, rent_number_handler, report, create_links,
     terms_handler
 )
+from app.handlers import notifications_handler
 from app.handlers.health_check_router import health_check_router
 from app.handlers.terms_middleware import TermsMiddleware
 from app.services.keyboards import start_kb, send_main_menu
@@ -23,7 +24,7 @@ from app.services.periodic_tasks import (
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
     refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
-    check_free_firstmail
+    check_free_firstmail, notify_inactive_users, notify_unpaid_sms_payments
 )
 from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
@@ -130,6 +131,7 @@ async def main(dp: Dispatcher):
         receive_sms_handler.router,
         rent_number_handler.router,
         create_links.router,
+        notifications_handler.router,
         health_check_router,
     ]
 
@@ -323,6 +325,26 @@ def set_scheduled_jobs(scheduler):
 
             # Проверка незавершенных аренд
             scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
+
+            # Уведомление неактивным пользователям (30+ дней без активности → скидка 15%)
+            scheduler.add_job(
+                notify_inactive_users,
+                "interval",
+                hours=6,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=300,
+            )
+
+            # Напоминание о незавершённой оплате SMS-номера (через 3 часа после создания счёта)
+            scheduler.add_job(
+                notify_unpaid_sms_payments,
+                "interval",
+                minutes=30,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=60,
+            )
         else:
             logger.info(f"ON_SCHEDULE выключен ({ON_SCHEDULE})")
 
