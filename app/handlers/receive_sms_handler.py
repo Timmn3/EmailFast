@@ -369,6 +369,12 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
 
     user_id = call.from_user.id
 
+    # Сразу отвечаем на callback — до транзакции, иначе query протухает за ~30 сек
+    try:
+        await call.answer()
+    except Exception:
+        pass
+
     try:
         activation_pk = int(call.data.split(':', 1)[1])
 
@@ -419,9 +425,9 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                         delta = now - created_at
                         if delta < timedelta(minutes=2):
                             seconds_left = int((timedelta(minutes=2) - delta).total_seconds())
-                            await call.answer(
-                                f"Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.",
-                                show_alert=True
+                            await bot.send_message(
+                                chat_id=user_id,
+                                text=f"⏳ Нельзя отменить в первые 2 минуты. Осталось ~{seconds_left} сек.",
                             )
                             return
 
@@ -473,8 +479,6 @@ async def cancel_service(call: types.CallbackQuery, **kwargs):
                             need_provider_cancel = bool(provider_activation_id)
                             provider_action = "cancel"
 
-        # ✅ Сразу отвечаем на callback (чтобы не висел "часик")
-        await call.answer()
         if answer_text:
             await bot.send_message(chat_id=user_id, text=answer_text, parse_mode="HTML")
 
