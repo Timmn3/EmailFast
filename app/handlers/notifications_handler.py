@@ -11,6 +11,8 @@ from loguru import logger
 
 from app.db import models
 from app.dialogs.personal_cabinet.states import PersonalMenu
+from app.services.keyboards import send_main_menu
+from app.services import bot_texts as bt
 
 router = Router()
 
@@ -45,6 +47,8 @@ async def handle_get_inactivity_discount(c: CallbackQuery) -> None:
         await c.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
+
+    await send_main_menu(c.message, bt.MAIN_MENU, parse_mode="HTML")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
