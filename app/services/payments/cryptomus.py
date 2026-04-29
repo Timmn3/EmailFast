@@ -138,6 +138,8 @@ def get_invoices_last_hour():
         invoices_dict = {
             item["order_id"]: handle_payment_status(item["payment_status"]) for item in items
         }
+        logger.info("[Heleket] Поллинг: {} инвойсов за час, paid={}", len(items),
+                    sum(1 for s in invoices_dict.values() if s == "paid"))
         return invoices_dict
 
     except Exception as e:
