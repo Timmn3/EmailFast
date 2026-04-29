@@ -19,6 +19,7 @@ client = pyCryptomusAPI(
 url_bot = "https://t.me/emailfastbot"
 
 HELEKET_API_URL = "https://api.heleket.com/v1/payment"
+HELEKET_LIST_URL = "https://api.heleket.com/v1/payment/list"
 
 
 def link_to_heleket(amount: float, order_id: str, currency: str = "RUB"):
@@ -110,21 +111,33 @@ moscow_tz = pytz.timezone('Europe/Moscow')
 
 def get_invoices_last_hour():
     try:
-        # Получаем текущее время в Москве
         now_moscow = datetime.now(moscow_tz)
-
-        # Получаем время за последний час в Москве
         date_from = now_moscow - timedelta(hours=1)
-        date_to = now_moscow
 
-        # Получаем историю платежей за последний час
-        invoice_history = client.payment_history(date_from=date_from, date_to=date_to)
-
-        # Формируем словарь, где ключ - order_id, а значение - статус
-        invoices_dict = {
-            invoice.order_id: handle_payment_status(invoice.payment_status) for invoice in invoice_history.items
+        payload = {
+            "date_from": date_from.strftime("%Y-%m-%d %H:%M:%S"),
+            "date_to": now_moscow.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        payload_json = json.dumps(payload)
+        sign_raw = base64.b64encode(payload_json.encode("ascii")).decode() + CRYPTOMUS_API_KEY
+        sign = hashlib.md5(sign_raw.encode("ascii")).hexdigest()
+        headers = {
+            "merchant": CRYPTOMUS_MERCHANT_ID,
+            "sign": sign,
+            "Content-Type": "application/json",
         }
 
+        resp = requests.post(HELEKET_LIST_URL, data=payload_json, headers=headers, timeout=15)
+        data = resp.json()
+
+        if data.get("state") != 0:
+            logger.error("[Heleket] Ошибка при получении списка инвойсов: {}", data.get("message"))
+            return {}
+
+        items = data.get("result", {}).get("items", [])
+        invoices_dict = {
+            item["order_id"]: handle_payment_status(item["payment_status"]) for item in items
+        }
         return invoices_dict
 
     except Exception as e:
