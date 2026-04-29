@@ -8,7 +8,7 @@ from loguru import logger
 
 
 # Асинхронная функция для проверки баланса и отправки сервиса
-async def check_balance_and_send_service(user_id, job_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
+async def check_balance_and_send_service(user_id, job_id, price, retail_price, free_price_map, country_id, country_name, service_code, c, manager):
     try:
         # Получаем информацию о пользователе из базы данных
         user = await models.User.get_user(user_id)
@@ -22,6 +22,7 @@ async def check_balance_and_send_service(user_id, job_id, price, retail_price, f
 
             await send_service_on_country(
                 country_id=country_id,
+                country_name=country_name,
                 service_code=service_code,
                 price=price,
                 retail_price=retail_price,
@@ -46,7 +47,7 @@ async def check_balance_and_send_service(user_id, job_id, price, retail_price, f
 
 
 # Асинхронная функция для запуска проверки баланса
-async def start_balance_check(user_id, price, retail_price, free_price_map, country_id, service_code, c, manager):
+async def start_balance_check(user_id, price, retail_price, free_price_map, country_id, country_name, service_code, c, manager):
     if price is None:
         return
 
@@ -64,7 +65,7 @@ async def start_balance_check(user_id, price, retail_price, free_price_map, coun
         scheduler.add_job(
             check_balance_and_send_service,
             IntervalTrigger(seconds=5),
-            args=[user_id, job_id, price, retail_price, free_price_map, country_id, service_code, c, manager],
+            args=[user_id, job_id, price, retail_price, free_price_map, country_id, country_name, service_code, c, manager],
             id=job_id,
             replace_existing=True
         )

@@ -482,6 +482,7 @@ async def send_service_on_country(country_id: int, country_name: str, service_co
             svc_name = manager.current_context().start_data.get('service_name', service_code) if manager else service_code
             manager.current_context().dialog_data.update({
                 'country_id': country_id,
+                'country_name': country_name,
                 'service_code': service_code,
                 'retail_price': retail_price,
                 'service_price': price,

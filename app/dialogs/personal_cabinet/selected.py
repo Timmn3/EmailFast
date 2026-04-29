@@ -408,14 +408,15 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
 
     if manager.current_context().state.group.__name__ == 'CountryMenu':
         country_id = current_context.dialog_data.get('country_id')
+        country_name = current_context.dialog_data.get('country_name', '')
         service_code = current_context.dialog_data.get('service_code')
         service_price = current_context.dialog_data.get('service_price')
         free_price_map = current_context.dialog_data.get('free_price_map')
         retail_price = current_context.dialog_data.get('retail_price')
 
         # Запускаем проверку баланса
-        await start_balance_check(c.from_user.id, service_price, retail_price, free_price_map, country_id, service_code,
-                                  c, manager)
+        await start_balance_check(c.from_user.id, service_price, retail_price, free_price_map, country_id, country_name,
+                                  service_code, c, manager)
 
     if manager.current_context().state.group.__name__ == 'RentCountryMenu':
         day_index = current_context.dialog_data.get('day_index')

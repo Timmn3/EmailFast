@@ -568,6 +568,11 @@ async def check_sms():
                     if e.__class__.__name__ == "TryAgainLater":
                         continue
 
+                    # 5xx / HTML вместо JSON — onlinesim временно недоступен
+                    err_str = str(e)
+                    if any(code in err_str for code in ("503", "502", "500", "unexpected mimetype")):
+                        continue
+
                     raise
                 try:
                     name = await activation.get_service_2_name()
