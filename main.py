@@ -340,7 +340,7 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(
                 notify_unpaid_sms_payments,
                 "interval",
-                minutes=30,
+                minutes=5,
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=60,
