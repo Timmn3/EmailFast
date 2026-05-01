@@ -46,7 +46,9 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
         service_code = ctx.start_data.get("service_code")
         search_name = ctx.dialog_data.get("search_name") if ctx.dialog_data else None
 
-        # Текст предупреждения показываем только для Telegram
+        # Текст заголовка с названием сервиса
+        service_name_for_text = ctx.start_data.get("service_name") or service_code or ""
+
         if service_code == "telegram":
             select_country_text = (
                 "Алгоритмы сервисов могут опознать подозрительную активность, "
@@ -56,7 +58,10 @@ async def get_countries_service(dialog_manager: DialogManager, **middleware_data
                 'как минимизировать риски и выберите страну<tg-emoji emoji-id="5197474438970363734">\u2935\ufe0f</tg-emoji>'
             )
         else:
-            select_country_text = bt.SELECT_COUNTRY
+            select_country_text = (
+                f'Выберите страну для сервиса {service_name_for_text}'
+                '<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
+            )
 
         # Фильтровать страны по поисковому имени, если оно существует
         if countries_with_prices is not None:

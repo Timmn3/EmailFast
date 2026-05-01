@@ -70,7 +70,26 @@ async def handle_resume_sms_payment(c: CallbackQuery, dialog_manager: DialogMana
     )
 
     if not payment or not payment.continue_data or "service_code" not in payment.continue_data:
-        await c.answer("Активных счетов не найдено. Выбери номер заново.", show_alert=True)
+        service_code = None
+        if payment and payment.continue_data:
+            service_code = payment.continue_data.get("service_code")
+
+        if not service_code:
+            any_payment = (
+                await models.Payment.filter(user_id=user.id)
+                .order_by("-created_at")
+                .first()
+            )
+            if any_payment and any_payment.continue_data:
+                service_code = any_payment.continue_data.get("service_code")
+
+        await c.answer()
+        if service_code:
+            from app.dialogs.receive_sms.selected import send_country_info
+            await send_country_info(service_code, c, dialog_manager)
+        else:
+            from app.dialogs.receive_sms.states import ServiceMenu
+            await dialog_manager.start(ServiceMenu.select_service, mode=StartMode.RESET_STACK)
         return
 
     amount = float(payment.amount)
