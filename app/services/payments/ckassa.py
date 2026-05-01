@@ -38,7 +38,8 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
 
     from app.services.coder_notify import send_coder
     if payer_id == str(CODER):
-        await send_coder(invoice_id)
+        # await send_coder(invoice_id)
+        print(invoice_id)
 
     url = "https://api2.ckassa.ru/api-shop/rs/open/invoice/create2"
 
