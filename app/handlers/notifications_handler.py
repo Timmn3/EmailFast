@@ -77,6 +77,7 @@ async def handle_resume_sms_payment(c: CallbackQuery, dialog_manager: DialogMana
         if not service_code:
             any_payment = (
                 await models.Payment.filter(user_id=user.id)
+                .exclude(continue_data=None)
                 .order_by("-created_at")
                 .first()
             )

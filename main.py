@@ -9,7 +9,7 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXEC
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
     get_email_handler, receive_sms_handler, rent_number_handler, report, create_links,
-    terms_handler
+    terms_handler, test_sbp_handler
 )
 from app.handlers import notifications_handler
 from app.handlers.health_check_router import health_check_router
@@ -127,6 +127,7 @@ async def main(dp: Dispatcher):
         terms_handler.router,
         start_handler.router,
         affiliate_program.router,
+        test_sbp_handler.router,
         get_email_handler.router,
         receive_sms_handler.router,
         rent_number_handler.router,

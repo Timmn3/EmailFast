@@ -19,6 +19,8 @@ from app.services.keyboards import send_main_menu
 from app.services.payments.anypay import AnypayAPI
 from app.services.bot_texts import FOLLOW_THE_LINK_TO_PAY
 from app.services.payments.ckassa import create_invoice_ckassa
+from app.services.payments.ckassa_sbp import create_sbp_payment as create_sbp_ckassa
+from uuid import uuid4
 from app.services.payments.cryptomus import link_to_heleket
 from app.services.payments.freekassa import generate_fk_link
 from app.services.payments.lava import LavaApi
@@ -307,6 +309,31 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     else:
         ckassa_url = ''
 
+    # СБП через Shop API CKassa (анонимный платёж, url-кнопка, без WebApp)
+    if price >= 50:
+        sbp_order_id = f"{str(user.telegram_id)}_{uuid4().hex[:16]}"
+        if len(sbp_order_id) > 40:
+            sbp_order_id = sbp_order_id[:40]
+        try:
+            sbp_result = await create_sbp_ckassa(amount_rub=price, order_id=sbp_order_id)
+            if sbp_result and sbp_result.get('payUrl'):
+                sbp_payment = await models.Payment.create_payment(
+                    user=user,
+                    method=models.PaymentMethod.CKASSA,
+                    amount=price,
+                    continue_data=continue_data
+                )
+                sbp_payment.invoice_id = sbp_order_id
+                await sbp_payment.save()
+                sbp_ckassa_url = sbp_result['payUrl']
+            else:
+                sbp_ckassa_url = ''
+        except Exception as e:
+            logger.warning("CKassa SBP недоступен: {}", e)
+            sbp_ckassa_url = ''
+    else:
+        sbp_ckassa_url = ''
+
     state = manager.current_context().state.group.__name__
 
     # Передаем URL-адреса в контекстное состояние
@@ -355,6 +382,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     ctx = manager.current_context()
     ctx.dialog_data.update({
         'ckassa_url': ckassa_url,
+        'sbp_ckassa_url': sbp_ckassa_url,
         'bank_card_url': streampay_url,
         'SBP': lava_url if lava_url is not None else other_url,
         'yoomoney_url': other_url,
@@ -428,6 +456,48 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
         await manager.reset_stack()
 
     # Отправляем сообщение с клавиатурой или редактируем существующее сообщение
+    await c.message.edit_text(text=FOLLOW_THE_LINK_TO_PAY, reply_markup=keyboard)
+
+
+async def switch_to_ckassa_sbp_payment(c: types.CallbackQuery, button: Button, manager: DialogManager):
+    user_id = c.from_user.id
+    current_context = manager.current_context()
+    url = current_context.dialog_data.get('sbp_ckassa_url')
+    url_pattern = re.compile(r'https?://[^\s]+')
+
+    logger.bind(user_id=user_id, action='switch_to_ckassa_sbp_payment').log(
+        "USER_ACTION", f"Переход к оплате CKassa СБП {url}"
+    )
+
+    if not url or not url_pattern.match(url):
+        await c.answer(text=bt.ERROR_PAYMENT_METHOD, show_alert=True)
+        return
+
+    price = current_context.dialog_data.get('price')
+    sbp_button = InlineKeyboardButton(
+        text=f"Оплатить {int(price)}₽ через СБП",
+        url=url,
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[sbp_button]])
+
+    if manager.current_context().state.group.__name__ == 'CountryMenu':
+        country_id = current_context.dialog_data.get('country_id')
+        country_name = current_context.dialog_data.get('country_name', '')
+        service_code = current_context.dialog_data.get('service_code')
+        service_price = current_context.dialog_data.get('service_price')
+        free_price_map = current_context.dialog_data.get('free_price_map')
+        retail_price = current_context.dialog_data.get('retail_price')
+        await start_balance_check(c.from_user.id, service_price, retail_price, free_price_map, country_id, country_name,
+                                  service_code, c, manager)
+
+    if manager.current_context().state.group.__name__ == 'RentCountryMenu':
+        day_index = current_context.dialog_data.get('day_index')
+        selected_country = current_context.dialog_data.get('selected_country')
+        await start_balance_check_rent(c.from_user.id, price, day_index, selected_country, c, manager)
+
+    if manager:
+        await manager.reset_stack()
+
     await c.message.edit_text(text=FOLLOW_THE_LINK_TO_PAY, reply_markup=keyboard)
 
 

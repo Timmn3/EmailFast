@@ -7,7 +7,7 @@ from app import dependencies
 from app.dialogs.personal_cabinet import states, keyboards
 from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices, get_order_history
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
-    switch_to_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main, on_order_history, on_back_from_order_history
+    switch_to_payment, switch_to_ckassa_sbp_payment, send_payment_keyboard_anypay, on_payment_method, affiliate, on_back_to_main, on_order_history, on_back_from_order_history
 from app.handlers.affiliate_program import affiliate_program
 from app.services import bot_texts as bt
 from app.services.bot_texts import LINK_TO_BUTTON
@@ -102,6 +102,12 @@ def payment_method_window():
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
         Button(
+            Const(bt.METHOD_BANK_SBP),
+            id='sbp_ckassa',
+            on_click=switch_to_ckassa_sbp_payment,
+            style=Style(emoji_id="5265074015868822600"),
+        ),
+        Button(
             Const(bt.METHOD_CKASSA),
             id='ckassa',
             on_click=switch_to_payment,
@@ -141,6 +147,12 @@ def payment_method_window():
 def payment_method_window_minimum_pay():
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
+        Button(
+            Const(bt.METHOD_BANK_SBP),
+            id='sbp_ckassa',
+            on_click=switch_to_ckassa_sbp_payment,
+            style=Style(emoji_id="5265074015868822600"),
+        ),
         Button(
             Const(bt.METHOD_CKASSA),
             id='ckassa',
