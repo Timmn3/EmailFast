@@ -424,7 +424,7 @@ async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: Dia
     price = current_context.dialog_data.get('price')
 
     # Создаем кнопку, которая откроет веб-приложение
-    is_green = button.widget_id in ('ckassa', 'crypto')
+    is_green = button.widget_id in ('sbp_ckassa', 'crypto')
     web_app_button = InlineKeyboardButton(
         text=f"Оплатить {int(price)}₽",
         web_app=web_app,

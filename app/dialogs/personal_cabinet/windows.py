@@ -105,16 +105,13 @@ def payment_method_window():
             Const(bt.METHOD_BANK_SBP),
             id='sbp_ckassa',
             on_click=switch_to_ckassa_sbp_payment,
-            style=Style(emoji_id="5265074015868822600"),
+            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600"),   # зелёная
         ),
         Button(
             Const(bt.METHOD_CKASSA),
             id='ckassa',
             on_click=switch_to_payment,
-            style=Style(
-                style=ButtonStyle.SUCCESS,        # зелёная
-                emoji_id="5472250091332993630",   # 💳
-            ),
+            style=Style(emoji_id="5472250091332993630"),   # 💳
         ),
         Button(
             Const(bt.METHOD_STREAMPAY),
@@ -151,16 +148,13 @@ def payment_method_window_minimum_pay():
             Const(bt.METHOD_BANK_SBP),
             id='sbp_ckassa',
             on_click=switch_to_ckassa_sbp_payment,
-            style=Style(emoji_id="5265074015868822600"),
+            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600"),   # зелёная
         ),
         Button(
             Const(bt.METHOD_CKASSA),
             id='ckassa',
             on_click=switch_to_payment,
-            style=Style(
-                style=ButtonStyle.SUCCESS,        # зелёная
-                emoji_id="5472250091332993630",   # 💳
-            ),
+            style=Style(emoji_id="5472250091332993630"),   # 💳
         ),
         Button(
             Const(bt.METHOD_STARS_BTN),
