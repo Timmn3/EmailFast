@@ -1,18 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import Message
-from aiogram.filters.command import Command
 
 from app.dependencies import CODER
 
 health_check_router = Router()
-
-
-@health_check_router.message(Command("ping"))
-async def ping_handler(message: Message) -> None:
-    """
-    Технический хэндлер для проверки доступности бота.
-    """
-    await message.answer("OK")
 
 
 @health_check_router.message(

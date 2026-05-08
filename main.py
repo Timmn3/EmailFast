@@ -26,7 +26,6 @@ from app.services.periodic_tasks import (
     refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
     check_free_firstmail, notify_inactive_users, notify_unpaid_sms_payments
 )
-from app.services.ping_scheduler import userbot_ping
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
 from app.services.sms_fast.smsfast_price_loader import update_smsfast_prices
@@ -176,8 +175,6 @@ async def main(dp: Dispatcher):
         scheduler.start()
 
     logger.info(DB_NAME)
-    # Прочие задачи перед polling
-    await userbot_ping()
     startup_msg = (
         f"🚀 <b>{msg_text}</b>\n"
         f"──────────────\n"
@@ -307,9 +304,6 @@ def set_scheduled_jobs(scheduler):
 
             # Добавление\обновление сервисов
             scheduler.add_job(add_services, "cron", hour=3, minute=0)
-
-            # Пинг userbot
-            scheduler.add_job(userbot_ping, "interval", seconds=300, max_instances=3)
 
             # Проверка арендованных SMS
             scheduler.add_job(check_rent_sms, "interval", seconds=55, max_instances=10)
