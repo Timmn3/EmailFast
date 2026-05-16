@@ -457,6 +457,35 @@ async def on_confirm_rent_email(c: types.CallbackQuery, widget: Button, manager:
             )
             return
 
+        # Инициализируем ящик через IMAP сразу после выдачи: текущие письма
+        # фиксируются как "старые". Без этого шага первое же письмо, пришедшее
+        # до первого тика check_rental_email, проглатывается отложенной
+        # инициализацией в pull_rental_email_messages и не доходит до пользователя.
+        try:
+            init_ok = await initialize_rental_email_lease(lease.id)
+        except Exception as e:
+            logger.opt(exception=e).error(
+                f"Ошибка инициализации арендованной почты lease_id={lease.id}: {e}"
+            )
+            init_ok = False
+
+        if not init_ok:
+            logger.bind(user_id=user_id, action='on_confirm_rent_email').warning(
+                f"IMAP-инициализация аренды не удалась, откат: "
+                f"lease_id={lease.id} email={lease.email}"
+            )
+            try:
+                await release_rental_email_lease(lease.id)
+            except Exception as e:
+                logger.opt(exception=e).error(
+                    f"Ошибка отката аренды lease_id={lease.id}: {e}"
+                )
+            await c.answer(
+                "Не удалось подготовить почтовый ящик. Попробуйте ещё раз.",
+                show_alert=True,
+            )
+            return
+
         low_balance = await check_low_balance(user, cost)
 
         if cost > 0:

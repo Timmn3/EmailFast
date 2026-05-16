@@ -5,7 +5,7 @@ import asyncio
 from aiogram import Dispatcher, F
 from app.db.database import init_db
 from app.dependencies import bot, ON_SCHEDULE, DB_NAME, FREE_EMAIL_PROVIDER
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_EXECUTED
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from app.handlers import (
     start_handler, affiliate_program, admin_handler, bot_handler,
     get_email_handler, receive_sms_handler, rent_number_handler, report, create_links,
@@ -101,15 +101,22 @@ async def on_unknown_state(
 # === Слушатель задач планировщика ===
 def job_listener(event):
     """
-    Listener для обработки ошибок, выполнения и пропусков задач.
+    Listener для фоновых задач APScheduler.
+
+    Логируем только проблемы: исключения (EVENT_JOB_ERROR) и пропуски
+    (EVENT_JOB_MISSED). Успешные запуски не логируем — десятки задач
+    раз в минуту засорили бы логи и скрыли реальные ошибки.
     """
-    pass
-    # if event.code == EVENT_JOB_ERROR:
-    #     logger.error(f"Задача {event.job_id} вызвала исключение: {event.exception}")
-    # elif event.code == EVENT_JOB_MISSED:
-    #     logger.warning(f"Задача {event.job_id} была пропущена в {event.scheduled_run_time}")
-    # elif event.code == EVENT_JOB_EXECUTED:
-    #     logger.log("SUCCESS", f"Задача {event.job_id} успешно выполнена в {event.scheduled_run_time}")
+    if event.code == EVENT_JOB_ERROR:
+        logger.error(
+            f"Фоновая задача '{event.job_id}' завершилась с ошибкой: "
+            f"{event.exception!r}\n{event.traceback}"
+        )
+    elif event.code == EVENT_JOB_MISSED:
+        logger.warning(
+            f"Фоновая задача '{event.job_id}' пропущена "
+            f"(scheduled_run_time={event.scheduled_run_time})"
+        )
 
 
 # === Основной запуск бота ===
@@ -170,7 +177,7 @@ async def main(dp: Dispatcher):
 
     # Планировщик задач
     set_scheduled_jobs(scheduler)
-    scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_EXECUTED)
+    scheduler.add_listener(job_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     if not scheduler.running:
         scheduler.start()
 
