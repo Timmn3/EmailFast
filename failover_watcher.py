@@ -36,14 +36,16 @@ SANITY_TIMEOUT_SEC = 3
 SUPERVISOR_PROGRAM = "emailfast"
 SUPERVISOR_TIMEOUT_SEC = 30
 
-CONFIG_YAML_PATH = Path(__file__).resolve().parent / "app" / "config.yaml"
-LOG_PATH = "/var/log/emailfast_watcher.log"
+_BASE_DIR = Path(__file__).resolve().parent
+CONFIG_YAML_PATH = _BASE_DIR / "app" / "config.yaml"
+LOG_PATH = _BASE_DIR / "logs" / "emailfast_watcher.log"
 
 
 def _build_logger() -> logging.Logger:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     try:
-        handlers.append(logging.FileHandler(LOG_PATH))
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(str(LOG_PATH)))
     except (OSError, PermissionError):
         pass
     logging.basicConfig(
