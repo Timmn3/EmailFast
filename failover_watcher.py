@@ -22,7 +22,6 @@ import aiohttp
 import yaml
 
 PRIMARY_HOST = "72.56.100.74"
-BACKUP_HOST = "REDACTED"
 HEALTH_URL = f"http://{PRIMARY_HOST}:8080/health"
 
 PROBE_INTERVAL_SEC = 10
@@ -68,21 +67,17 @@ def detect_self_ip() -> str:
         s.close()
 
 
-def ensure_backup_role() -> None:
+def ensure_backup_role() -> str:
     try:
         ip = detect_self_ip()
     except OSError as e:
         log.warning(f"Cannot detect self IP ({e}), assuming backup")
-        return
+        return "unknown"
     log.info(f"Self IP: {ip}")
     if ip == PRIMARY_HOST:
         log.info("Running on primary host, watcher not needed, exiting")
         sys.exit(0)
-    if ip != BACKUP_HOST:
-        log.warning(
-            f"Self IP {ip} matches neither primary ({PRIMARY_HOST}) "
-            f"nor backup ({BACKUP_HOST}); proceeding as backup"
-        )
+    return ip
 
 
 def load_config() -> tuple[str, list[int]]:
@@ -102,7 +97,7 @@ async def sanity_internet_ok() -> bool:
     for host, port in SANITY_HOSTS:
         try:
             fut = asyncio.open_connection(host, port)
-            reader, writer = await asyncio.wait_for(fut, timeout=SANITY_TIMEOUT_SEC)
+            _, writer = await asyncio.wait_for(fut, timeout=SANITY_TIMEOUT_SEC)
             writer.close()
             try:
                 await writer.wait_closed()
@@ -167,22 +162,27 @@ async def notify_admins(token: str, admins: list[int], text: str) -> None:
                 log.error(f"notify {admin_id} failed: {e}")
 
 
-FAILOVER_TEXT = (
-    f"\U0001F534 <b>Failover</b>\n\n"
-    f"Основной сервер <code>{PRIMARY_HOST}</code> недоступен.\n"
-    f"Бот запущен на резервном <code>{BACKUP_HOST}</code>."
-)
-
-RECOVERY_TEXT = (
-    f"\U0001F7E2 <b>Восстановление</b>\n\n"
-    f"Основной сервер <code>{PRIMARY_HOST}</code> снова работает.\n"
-    f"Резервный <code>{BACKUP_HOST}</code> отключён, бот вернулся на основной."
-)
+def failover_text(self_ip: str) -> str:
+    return (
+        f"\U0001F534 <b>Failover</b>\n\n"
+        f"Основной сервер <code>{PRIMARY_HOST}</code> недоступен.\n"
+        f"Бот запущен на резервном <code>{self_ip}</code>."
+    )
 
 
-async def run() -> None:
+def recovery_text(self_ip: str) -> str:
+    return (
+        f"\U0001F7E2 <b>Восстановление</b>\n\n"
+        f"Основной сервер <code>{PRIMARY_HOST}</code> снова работает.\n"
+        f"Резервный <code>{self_ip}</code> отключён, бот вернулся на основной."
+    )
+
+
+async def run(self_ip: str) -> None:
     token, admins = load_config()
     log.info(f"Loaded config: {len(admins)} admin(s)")
+    fo_text = failover_text(self_ip)
+    rec_text = recovery_text(self_ip)
 
     async with aiohttp.ClientSession() as session:
         initial_ok = await probe_primary(session)
@@ -204,7 +204,7 @@ async def run() -> None:
                     state = "backup"
                     fail_count = 0
                     ok_count = 0
-                    await notify_admins(token, admins, FAILOVER_TEXT)
+                    await notify_admins(token, admins, fo_text)
                 else:
                     log.error(
                         "supervisorctl start failed at startup, "
@@ -248,7 +248,7 @@ async def run() -> None:
                             if await supervisor("start"):
                                 state = "backup"
                                 ok_count = 0
-                                await notify_admins(token, admins, FAILOVER_TEXT)
+                                await notify_admins(token, admins, fo_text)
                             else:
                                 log.error(
                                     "supervisorctl start failed, will retry"
@@ -265,7 +265,7 @@ async def run() -> None:
                         if await supervisor("stop"):
                             state = "primary"
                             fail_count = 0
-                            await notify_admins(token, admins, RECOVERY_TEXT)
+                            await notify_admins(token, admins, rec_text)
                         else:
                             log.error("supervisorctl stop failed, will retry")
                             ok_count = RECOVERY_THRESHOLD - 1
@@ -276,9 +276,9 @@ async def run() -> None:
 
 
 def main() -> None:
-    ensure_backup_role()
+    self_ip = ensure_backup_role()
     try:
-        asyncio.run(run())
+        asyncio.run(run(self_ip))
     except KeyboardInterrupt:
         log.info("Interrupted")
 
