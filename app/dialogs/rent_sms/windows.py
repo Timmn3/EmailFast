@@ -156,7 +156,7 @@ def enter_amount_window_country():
 
 
 _PAYMENT_METHOD_TEXT = Format(
-    'На вашем балансе сейчас {balance} ₽ для аренды номера {service_name} необходимо {needed_amount} ₽.'
+    'На вашем балансе сейчас {balance} ₽ для аренды номера {service_name} необходимо ещё {needed_amount} ₽.'
     ' Выберите способ оплаты<tg-emoji emoji-id="5197474438970363734">⤵️</tg-emoji>'
 )
 
