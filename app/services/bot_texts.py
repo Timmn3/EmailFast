@@ -332,9 +332,9 @@ ADMIN_STAT = """
 <b>💳 Пополнения:</b>
 <b>Всего:</b> {payments_count}
 <b>Повторные оплаты:</b> {payments_repeat_count}
-<b>За сегодня:</b> {payments_count_today} (<b>{payments_amount_today} руб.</b>)
-<b>За {month_name}:</b> {payments_count_month} (<b>{payments_amount_month} руб.</b>)
-<b>За {last_month_name}:</b> {payments_count_last_month} (<b>{payments_amount_last_month} руб.</b>)
+<b>За сегодня:</b> {payments_count_today} (<b>{payments_amount_today:.0f} руб.</b>)
+<b>За {month_name}:</b> {payments_count_month} (<b>{payments_amount_month:.0f} руб.</b>)
+<b>За {last_month_name}:</b> {payments_count_last_month} (<b>{payments_amount_last_month:.0f} руб.</b>)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <b>⭐️ Статистика STARS:</b>
