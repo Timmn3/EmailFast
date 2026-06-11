@@ -21,7 +21,23 @@ from pathlib import Path
 import aiohttp
 import yaml
 
-PRIMARY_HOST = "72.56.100.74"
+_BASE_DIR = Path(__file__).resolve().parent
+CONFIG_YAML_PATH = _BASE_DIR / "app" / "config.yaml"
+LOG_PATH = _BASE_DIR / "logs" / "emailfast_watcher.log"
+
+
+def _read_primary_host() -> str:
+    """IP основного (боевого) сервера берём из config.yaml (ключ PRIMARY_HOST),
+    чтобы git-деплой не перетирал его. Fallback — на исторический IP."""
+    default = "72.56.100.74"
+    try:
+        cfg = yaml.safe_load(CONFIG_YAML_PATH.read_text(encoding="utf-8")) or {}
+        return str(cfg.get("PRIMARY_HOST", default)).strip() or default
+    except Exception:
+        return default
+
+
+PRIMARY_HOST = _read_primary_host()
 HEALTH_URL = f"http://{PRIMARY_HOST}:8080/health"
 
 PROBE_INTERVAL_SEC = 10
@@ -34,10 +50,6 @@ SANITY_TIMEOUT_SEC = 3
 
 SUPERVISOR_PROGRAM = "emailfast"
 SUPERVISOR_TIMEOUT_SEC = 30
-
-_BASE_DIR = Path(__file__).resolve().parent
-CONFIG_YAML_PATH = _BASE_DIR / "app" / "config.yaml"
-LOG_PATH = _BASE_DIR / "logs" / "emailfast_watcher.log"
 
 
 def _build_logger() -> logging.Logger:
