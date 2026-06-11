@@ -19,7 +19,8 @@ celery_app = Celery(
 # Настройки Celery
 celery_app.conf.update(
     task_routes={"celery_worker.tasks.send_message_batch": {"queue": "broadcast"}},
-    worker_pool=worker_pool  # Автоматическое переключение режима работы
+    worker_pool=worker_pool,  # Автоматическое переключение режима работы
+    broker_connection_retry_on_startup=True,  # сохраняем ретраи коннекта при старте (Celery 6.0+)
 )
 
 # Функция для избежания циклического импорта
