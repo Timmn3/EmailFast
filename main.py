@@ -1,4 +1,5 @@
 # === Импорты ===
+import socket
 from aiogram.filters import ExceptionTypeFilter
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
 import asyncio
@@ -182,11 +183,19 @@ async def main(dp: Dispatcher):
         scheduler.start()
 
     logger.info(DB_NAME)
+    try:
+        _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        _s.connect(("8.8.8.8", 80))
+        _server_ip = _s.getsockname()[0]
+        _s.close()
+    except Exception:
+        _server_ip = "unknown"
     startup_msg = (
         f"🚀 <b>{msg_text}</b>\n"
         f"──────────────\n"
         f"📋 <b>ON_SCHEDULE:</b> {'✅ включён' if ON_SCHEDULE else '❌ выключен'}\n"
-        f"🗄 <b>БД:</b> <code>{DB_NAME}</code>"
+        f"🗄 <b>БД:</b> <code>{DB_NAME}</code>\n"
+        f"🖥 <b>Сервер:</b> <code>{_server_ip}</code>"
     )
     await send_coder(startup_msg)
 
