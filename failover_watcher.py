@@ -1,7 +1,7 @@
 """failover_watcher.py — failover daemon для EmailFast bot.
 
 Запускается на резервном сервере s4 (REDACTED). Пингует health endpoint
-основного сервера s3 (72.56.100.74:8080/health) каждые 10 секунд. При 30 сек
+основного сервера s3 (REDACTED:8080/health) каждые 10 секунд. При 30 сек
 недоступности (3 подряд fail) + sanity-check пройден → стартует локальный
 emailfast через supervisorctl и шлёт уведомление админам. При 3 минутах
 стабильной работы основного (18 подряд ok) → останавливает локальный emailfast
@@ -29,7 +29,7 @@ LOG_PATH = _BASE_DIR / "logs" / "emailfast_watcher.log"
 def _read_primary_host() -> str:
     """IP основного (боевого) сервера берём из config.yaml (ключ PRIMARY_HOST),
     чтобы git-деплой не перетирал его. Fallback — на исторический IP."""
-    default = "72.56.100.74"
+    default = "REDACTED"
     try:
         cfg = yaml.safe_load(CONFIG_YAML_PATH.read_text(encoding="utf-8")) or {}
         return str(cfg.get("PRIMARY_HOST", default)).strip() or default
