@@ -21,11 +21,8 @@ from loguru import logger
 from app.dependencies import FREE_EMAIL_PROVIDER
 
 from app.services.rental_email_pool import (
-    build_firstmail_change_cooldown_message,
     change_free_firstmail_assignment,
-    change_rental_email_lease,
     get_active_free_firstmail_for_user,
-    get_firstmail_change_cooldown_remaining,
     get_free_firstmail_assignment_for_user,
     issue_free_firstmail,
     pull_free_firstmail_messages,
@@ -738,109 +735,6 @@ def get_extend_email_kb(mail_id: int, is_free_week: bool):
 
     builder.adjust(1)
     return builder.as_markup()
-
-@router.callback_query(F.data.startswith("change_rental_email:"))
-async def change_rental_email(call: types.CallbackQuery):
-    """
-    Меняет именно арендованный FirstMail-ящик на новый аккаунт из пула.
-
-    Важно:
-    - mail.tm здесь не используется;
-    - cooldown 24 часа действует глобально на пользователя;
-    - если cooldown ещё не закончился, сразу показываем понятный alert;
-    - новый аккаунт инициализируется внутри сервисного слоя;
-    - если инициализация не удалась, старая аренда восстанавливается.
-    """
-    try:
-        user_id = call.from_user.id
-        lease_id = int(call.data.split(":", 1)[1])
-
-        logger.bind(user_id=user_id, action="change_rental_email").log(
-            "USER_ACTION",
-            f"Запрос смены FirstMail lease_id={lease_id}"
-        )
-
-        user = await models.User.get_user(user_id)
-        if not user:
-            await call.answer()
-            return
-
-        lease = await models.RentalEmailLease.get_or_none(
-            id=lease_id,
-            user=user,
-            is_active=True,
-        )
-
-        if not lease:
-            await call.answer("Арендованный ящик не найден.", show_alert=True)
-            return
-
-        # Сначала мягкая UX-проверка cooldown в хэндлере,
-        # чтобы пользователь сразу получил понятное сообщение.
-        cooldown_remaining = await get_firstmail_change_cooldown_remaining(user)
-        if cooldown_remaining:
-            cooldown_message = build_firstmail_change_cooldown_message(cooldown_remaining)
-
-            logger.bind(user_id=user_id, action="change_rental_email").log(
-                "USER_ACTION",
-                f"Смена FirstMail заблокирована cooldown: lease_id={lease_id} "
-                f"remaining_seconds={int(cooldown_remaining.total_seconds())}"
-            )
-
-            await call.answer(cooldown_message, show_alert=True)
-            return
-
-        new_lease = await change_rental_email_lease(
-            lease_id=lease.id,
-            user=user,
-        )
-
-        msg_text = bt.PAID_EMAIL_INFO.format(
-            email=new_lease.email,
-            expire_at=new_lease.expire_at.strftime("%d.%m.%Y")
-        )
-        mk = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text="Продлить аренду",
-                        callback_data=f"extend_rental_email:{new_lease.id}",
-                        icon_custom_emoji_id="5397916757333654639",
-                        style="success",
-                    )
-                ],
-                [
-                    types.InlineKeyboardButton(
-                        text="Сменить Email",
-                        callback_data=f"change_rental_email:{new_lease.id}",
-                        icon_custom_emoji_id="5390863029464213754",
-                    )
-                ],
-                [
-                    types.InlineKeyboardButton(
-                        text=bt.BACK_BTN,
-                        callback_data="my_rent_emails"
-                    )
-                ],
-            ]
-        )
-
-        await call.message.edit_text(text=msg_text, reply_markup=mk)
-        await call.answer("✅ Почта успешно изменена", show_alert=False)
-
-    except ValueError as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
-        await call.answer(str(e), show_alert=True)
-    except RuntimeError as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
-        await call.answer(str(e), show_alert=True)
-    except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
-        try:
-            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
-        except Exception:
-            pass
-
 
 @router.callback_query(F.data.startswith('extend_email_'))
 async def extend_email_confirm(call: types.CallbackQuery, state: FSMContext):
