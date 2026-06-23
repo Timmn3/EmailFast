@@ -38,7 +38,7 @@ import signal
 import logging
 
 # Версия для отображения/отладки
-msg_text = "Версия 26.04.2026"
+msg_text = "Версия 24.06.2026"
 
 from contextlib import suppress
 from aiogram.types import Message, CallbackQuery
