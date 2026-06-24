@@ -583,14 +583,12 @@ async def confirm_extend_rental_email(call: types.CallbackQuery):
 @router.callback_query(F.data.startswith("change_rental_email:"))
 async def change_rental_email(call: types.CallbackQuery):
     """
-    Меняет именно арендованный FirstMail-ящик на новый аккаунт из пула.
+    Показывает подтверждение перед сменой арендованного FirstMail-ящика.
 
     Важно:
-    - mail.tm здесь не используется;
-    - cooldown 24 часа действует отдельно для каждой активной аренды;
-    - если cooldown ещё не закончился у конкретной аренды, сразу показываем понятный alert;
-    - новый аккаунт инициализируется внутри сервисного слоя;
-    - если инициализация не удалась, старая аренда восстанавливается.
+    - сама смена выполняется в confirm_change_rental_email после подтверждения;
+    - cooldown проверяем уже здесь, чтобы не показывать вопрос впустую;
+    - «Отмена» возвращает карточку через существующий хендлер mail:{lease_id}.
     """
     lease_id: int | None = None
 
@@ -600,7 +598,7 @@ async def change_rental_email(call: types.CallbackQuery):
 
         logger.bind(user_id=user_id, action="change_rental_email").log(
             "USER_ACTION",
-            f"Запрос смены FirstMail lease_id={lease_id}"
+            f"Запрос подтверждения смены FirstMail lease_id={lease_id}"
         )
 
         user = await models.User.get_user(user_id)
@@ -619,12 +617,93 @@ async def change_rental_email(call: types.CallbackQuery):
             return
 
         # Мягкая UX-проверка cooldown по конкретной active lease,
-        # чтобы пользователь сразу получил понятное сообщение.
+        # чтобы не показывать вопрос, если сменить всё равно нельзя.
         cooldown_remaining = await get_firstmail_change_cooldown_remaining_for_lease(lease)
         if cooldown_remaining:
             cooldown_message = build_firstmail_change_cooldown_message(cooldown_remaining)
 
             logger.bind(user_id=user_id, action="change_rental_email").log(
+                "USER_ACTION",
+                f"Смена FirstMail заблокирована cooldown: lease_id={lease_id} "
+                f"remaining_seconds={int(cooldown_remaining.total_seconds())}"
+            )
+
+            await call.answer(cooldown_message, show_alert=True)
+            return
+
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text="Сменить Email",
+                        callback_data=f"confirm_change_rental_email:{lease.id}",
+                        icon_custom_emoji_id="5390863029464213754",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text="Отмена",
+                        callback_data=f"mail:{lease.id}",
+                    )
+                ],
+            ]
+        )
+
+        await call.message.edit_text(text=bt.CONFIRM_CHANGE_EMAIL, reply_markup=mk)
+        await call.answer()
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("confirm_change_rental_email:"))
+async def confirm_change_rental_email(call: types.CallbackQuery):
+    """
+    Меняет именно арендованный FirstMail-ящик на новый аккаунт из пула.
+
+    Важно:
+    - mail.tm здесь не используется;
+    - cooldown 24 часа действует отдельно для каждой активной аренды;
+    - cooldown перепроверяем здесь повторно (защита от устаревшей кнопки);
+    - новый аккаунт инициализируется внутри сервисного слоя;
+    - если инициализация не удалась, старая аренда восстанавливается.
+    """
+    lease_id: int | None = None
+
+    try:
+        user_id = call.from_user.id
+        lease_id = int(call.data.split(":", 1)[1])
+
+        logger.bind(user_id=user_id, action="confirm_change_rental_email").log(
+            "USER_ACTION",
+            f"Подтверждена смена FirstMail lease_id={lease_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        lease = await models.RentalEmailLease.get_or_none(
+            id=lease_id,
+            user=user,
+            is_active=True,
+        )
+
+        if not lease:
+            await call.answer("Арендованный ящик не найден.", show_alert=True)
+            return
+
+        # Повторная проверка cooldown на случай устаревшей кнопки подтверждения.
+        cooldown_remaining = await get_firstmail_change_cooldown_remaining_for_lease(lease)
+        if cooldown_remaining:
+            cooldown_message = build_firstmail_change_cooldown_message(cooldown_remaining)
+
+            logger.bind(user_id=user_id, action="confirm_change_rental_email").log(
                 "USER_ACTION",
                 f"Смена FirstMail заблокирована cooldown: lease_id={lease_id} "
                 f"remaining_seconds={int(cooldown_remaining.total_seconds())}"
@@ -672,7 +751,7 @@ async def change_rental_email(call: types.CallbackQuery):
         await call.answer("✅ Почта успешно изменена", show_alert=False)
 
     except ValueError as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_rental_email: {e}")
         await call.answer(str(e), show_alert=True)
 
     except RuntimeError as e:
@@ -682,7 +761,7 @@ async def change_rental_email(call: types.CallbackQuery):
         if error_text.startswith("Сменить ящик можно не чаще 1 раза в 24 часа."):
             logger.bind(
                 user_id=call.from_user.id,
-                action="change_rental_email",
+                action="confirm_change_rental_email",
             ).log(
                 "USER_ACTION",
                 f"Смена FirstMail заблокирована сервисным cooldown: lease_id={lease_id}"
@@ -690,18 +769,138 @@ async def change_rental_email(call: types.CallbackQuery):
             await call.answer(error_text, show_alert=True)
             return
 
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_rental_email: {e}")
         await call.answer(error_text, show_alert=True)
 
     except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_rental_email: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_rental_email: {e}")
         try:
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
 
+def _build_legacy_mail_card(mail) -> tuple[str, types.InlineKeyboardMarkup]:
+    """
+    Строит карточку legacy mail.tm арендованного ящика.
+
+    Используется и после смены, и при отмене подтверждения, чтобы
+    не дублировать разметку.
+    """
+    msg_text = bt.PAID_EMAIL_INFO.format(
+        email=mail.email,
+        expire_at=mail.expire_at.strftime("%d.%m.%Y")
+    )
+    mk = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=bt.EXTEND_EMAIL_BTN,
+                    callback_data=f"extend_email:{mail.id}",
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=bt.CHANGE_EMAIL_BTN,
+                    callback_data=f"change_email:{mail.id}",
+                )
+            ],
+            [
+                types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data="my_rent_emails")
+            ],
+        ]
+    )
+    return msg_text, mk
+
+
 @router.callback_query(F.data.startswith("change_email:"))
 async def change_email(call: types.CallbackQuery):
+    """
+    Показывает подтверждение перед сменой legacy mail.tm-ящика.
+
+    Сама смена выполняется в confirm_change_email после подтверждения,
+    «Отмена» возвращает карточку через cancel_change_email.
+    """
+    try:
+        user_id = call.from_user.id
+        mail_id = int(call.data.split(":", 1)[1])
+
+        logger.bind(user_id=user_id, action="change_email").log(
+            "USER_ACTION",
+            f"Запрос подтверждения смены почты: mail_id={mail_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        # Проверяем, что почта существует и принадлежит пользователю.
+        old_mail = await models.Mail.get_or_none(id=mail_id, user=user, is_paid_mail=True, is_active=True)
+        if not old_mail:
+            await call.answer("Почта не найдена.", show_alert=True)
+            return
+
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text="Сменить Email",
+                        callback_data=f"confirm_change_email:{mail_id}",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text="Отмена",
+                        callback_data=f"cancel_change_email:{mail_id}",
+                    )
+                ],
+            ]
+        )
+
+        await call.message.edit_text(text=bt.CONFIRM_CHANGE_EMAIL, reply_markup=mk)
+        await call.answer()
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_email: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("cancel_change_email:"))
+async def cancel_change_email(call: types.CallbackQuery):
+    """
+    Возвращает карточку legacy mail.tm-ящика после отмены подтверждения.
+    """
+    try:
+        user_id = call.from_user.id
+        mail_id = int(call.data.split(":", 1)[1])
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        mail = await models.Mail.get_or_none(id=mail_id, user=user, is_paid_mail=True, is_active=True)
+        if not mail:
+            await call.answer("Почта не найдена.", show_alert=True)
+            return
+
+        msg_text, mk = _build_legacy_mail_card(mail)
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+        await call.answer()
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере cancel_change_email: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("confirm_change_email:"))
+async def confirm_change_email(call: types.CallbackQuery):
     """
     Меняет арендованный почтовый ящик на новый:
     - старый ящик деактивируется (is_active=False)
@@ -720,9 +919,9 @@ async def change_email(call: types.CallbackQuery):
         user_id = call.from_user.id
         mail_id = int(call.data.split(":", 1)[1])
 
-        logger.bind(user_id=user_id, action="change_email").log(
+        logger.bind(user_id=user_id, action="confirm_change_email").log(
             "USER_ACTION",
-            f"Запрос смены почты: mail_id={mail_id}"
+            f"Подтверждена смена почты: mail_id={mail_id}"
         )
 
         user = await models.User.get_user(user_id)
@@ -733,7 +932,7 @@ async def change_email(call: types.CallbackQuery):
         # Берём текущую почту пользователя (обязательно проверяем владельца!)
         old_mail = await models.Mail.get_or_none(id=mail_id, user=user, is_paid_mail=True, is_active=True)
         if not old_mail:
-            logger.bind(user_id=user_id, action="change_email").log(
+            logger.bind(user_id=user_id, action="confirm_change_email").log(
                 "USER_ACTION",
                 f"Почта не найдена или не принадлежит пользователю: mail_id={mail_id}"
             )
@@ -749,7 +948,7 @@ async def change_email(call: types.CallbackQuery):
         try:
             email, token = await create_mail()
         except Exception as e:
-            logger.opt(exception=e).error(f"Ошибка create_mail() в change_email: {e}")
+            logger.opt(exception=e).error(f"Ошибка create_mail() в confirm_change_email: {e}")
             await call.answer("Сервис временно недоступен, попробуйте позже🙎‍♂️", show_alert=True)
             return
 
@@ -781,40 +980,18 @@ async def change_email(call: types.CallbackQuery):
                 notification_sent=old_mail_locked.notification_sent,
             )
 
-        logger.bind(user_id=user_id, action="change_email").log(
+        logger.bind(user_id=user_id, action="confirm_change_email").log(
             "USER_ACTION",
             f"Почта изменена: old_mail_id={mail_id} -> new_mail_id={new_mail.id}, email={new_mail.email}"
         )
 
-        msg_text = bt.PAID_EMAIL_INFO.format(
-            email=new_mail.email,
-            expire_at=new_mail.expire_at.strftime("%d.%m.%Y")
-        )
-        mk = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text=bt.EXTEND_EMAIL_BTN,
-                        callback_data=f"extend_email:{new_mail.id}",
-                    )
-                ],
-                [
-                    types.InlineKeyboardButton(
-                        text=bt.CHANGE_EMAIL_BTN,
-                        callback_data=f"change_email:{new_mail.id}",
-                    )
-                ],
-                [
-                    types.InlineKeyboardButton(text=bt.BACK_BTN, callback_data="my_rent_emails")
-                ],
-            ]
-        )
+        msg_text, mk = _build_legacy_mail_card(new_mail)
 
         await call.message.edit_text(text=msg_text, reply_markup=mk)
         await call.answer("✅ Почта успешно изменена", show_alert=False)
 
     except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_email: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_email: {e}")
         try:
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:

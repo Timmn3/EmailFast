@@ -410,6 +410,7 @@ LINK_TO_BUTTON = "https://telegra.ph/Rekomendacii-dlya-priema-SMS-11-14"
 SUPPORT_BTN = 'Поддержка'
 
 # Receive email
+CONFIRM_CHANGE_EMAIL = "Вы действительно хотите сменить Email?"
 CHANGE_EMAIL_BTN = 'Сменить почтовый ящик'
 RENT_EMAIL_BTN = 'Арендовать почтовый ящик'
 MY_RENT_EMAILS_BTN = 'Мои арендованные ящики'

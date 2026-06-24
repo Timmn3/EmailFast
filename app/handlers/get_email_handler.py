@@ -320,7 +320,107 @@ async def receive_my_free_firstmail(call: types.CallbackQuery):
         await call.answer("Не удалось получить письма. Попробуйте ещё раз позже.", show_alert=True)
 
 @router.callback_query(F.data.startswith("change_free_firstmail:"))
-async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: DialogManager):
+async def change_free_firstmail(call: types.CallbackQuery):
+    """
+    Показывает подтверждение перед платной сменой бесплатного FirstMail-ящика.
+
+    Сама смена выполняется в confirm_change_free_firstmail после подтверждения,
+    «Отмена» возвращает карточку через cancel_change_free_firstmail.
+    """
+    try:
+        user_id = call.from_user.id
+        assignment_id = int(call.data.split(":", 1)[1])
+
+        logger.bind(user_id=user_id, action="change_free_firstmail").log(
+            "USER_ACTION",
+            f"Запрос подтверждения платной смены бесплатного FirstMail: assignment_id={assignment_id}"
+        )
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        assignment = await get_free_firstmail_assignment_for_user(
+            assignment_id=assignment_id,
+            user=user,
+        )
+
+        if not assignment or not assignment.is_active:
+            await call.answer("Бесплатный почтовый ящик не найден.", show_alert=True)
+            return
+
+        mk = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text="Сменить Email",
+                        callback_data=f"confirm_change_free_firstmail:{assignment_id}",
+                        icon_custom_emoji_id="5390863029464213754",
+                    )
+                ],
+                [
+                    types.InlineKeyboardButton(
+                        text="Отмена",
+                        callback_data=f"cancel_change_free_firstmail:{assignment_id}",
+                    )
+                ],
+            ]
+        )
+
+        await call.message.edit_text(text=bt.CONFIRM_CHANGE_EMAIL, reply_markup=mk)
+        await call.answer()
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере change_free_firstmail: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("cancel_change_free_firstmail:"))
+async def cancel_change_free_firstmail(call: types.CallbackQuery):
+    """
+    Возвращает карточку бесплатного FirstMail-ящика после отмены подтверждения.
+    """
+    try:
+        user_id = call.from_user.id
+        assignment_id = int(call.data.split(":", 1)[1])
+
+        user = await models.User.get_user(user_id)
+        if not user:
+            await call.answer()
+            return
+
+        assignment = await get_free_firstmail_assignment_for_user(
+            assignment_id=assignment_id,
+            user=user,
+        )
+
+        if not assignment or not assignment.is_active:
+            await call.answer("Бесплатный почтовый ящик не найден.", show_alert=True)
+            return
+
+        msg_text = _build_free_firstmail_text(assignment)
+        mk = _build_free_firstmail_markup(
+            assignment_id=assignment.id,
+            show_back=True,
+        )
+
+        await call.message.edit_text(text=msg_text, reply_markup=mk)
+        await call.answer()
+
+    except Exception as e:
+        logger.opt(exception=e).error(f"Ошибка в хэндлере cancel_change_free_firstmail: {e}")
+        try:
+            await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("confirm_change_free_firstmail:"))
+async def confirm_change_free_firstmail(call: types.CallbackQuery, dialog_manager: DialogManager):
     """
     Меняет бесплатный FirstMail-ящик пользователя.
 
@@ -340,9 +440,9 @@ async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: Dialo
         assignment_id = int(call.data.split(":", 1)[1])
         change_cost = 50.0
 
-        logger.bind(user_id=user_id, action="change_free_firstmail").log(
+        logger.bind(user_id=user_id, action="confirm_change_free_firstmail").log(
             "USER_ACTION",
-            f"Запрос платной смены бесплатного FirstMail: assignment_id={assignment_id}"
+            f"Подтверждена платная смена бесплатного FirstMail: assignment_id={assignment_id}"
         )
 
         user = await models.User.get_user(user_id)
@@ -420,15 +520,15 @@ async def change_free_firstmail(call: types.CallbackQuery, dialog_manager: Dialo
         await call.answer("✅ Почтовый ящик успешно изменён", show_alert=False)
 
     except ValueError as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_free_firstmail: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_free_firstmail: {e}")
         await call.answer(str(e), show_alert=True)
 
     except RuntimeError as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_free_firstmail: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_free_firstmail: {e}")
         await call.answer(str(e), show_alert=True)
 
     except Exception as e:
-        logger.opt(exception=e).error(f"Ошибка в хэндлере change_free_firstmail: {e}")
+        logger.opt(exception=e).error(f"Ошибка в хэндлере confirm_change_free_firstmail: {e}")
         try:
             await call.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
