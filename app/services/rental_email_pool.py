@@ -1181,7 +1181,9 @@ async def issue_free_firstmail(
             await active_assignment_locked.fetch_related("account", "user")
             return active_assignment_locked
 
-        history_exists = await models.FreeFirstMailAssignment.filter(user_id=locked_user.id).using_db(conn).exists()
+        history_exists = await models.FreeFirstMailAssignment.filter(
+            user_id=locked_user.id, is_initialized=True
+        ).using_db(conn).exists()
         if history_exists:
             raise RuntimeError(
                 "Бесплатная FirstMail-почта уже выдавалась ранее. Для нового ящика используйте платную смену за 50 ₽."

@@ -1411,8 +1411,11 @@ class FreeFirstMailAssignment(Model):
     async def has_ever_received_free_firstmail(cls, user_id: int) -> bool:
         """
         Проверяет, выдавался ли пользователю бесплатный FirstMail хотя бы один раз.
+
+        Учитываем только успешные выдачи (is_initialized=True): мусорные записи
+        от неудачных выдач с откатом (is_initialized=False) блокировать не должны.
         """
-        return await cls.filter(user_id=user_id).exists()
+        return await cls.filter(user_id=user_id, is_initialized=True).exists()
 
     @classmethod
     async def deactivate_active_for_user(cls, user_id: int) -> int:
