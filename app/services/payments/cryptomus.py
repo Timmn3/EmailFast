@@ -16,7 +16,7 @@ client = pyCryptomusAPI(
     payout_api_key=CRYPTOMUS_API_KEY_PAYOUT
 )
 
-url_bot = "https://t.me/emailfastbot"
+url_bot = "https://telegram.me/emailfastbot"
 
 HELEKET_API_URL = "https://api.heleket.com/v1/payment"
 HELEKET_LIST_URL = "https://api.heleket.com/v1/payment/list"

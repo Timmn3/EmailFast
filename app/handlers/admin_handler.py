@@ -591,7 +591,7 @@ async def free_money(message: types.Message):
 <b>Сумма:</b> {amount} руб.
 <b>Количество активаций:</b> {limit}
 
-https://t.me/{me.username}?start={word}
+https://telegram.me/{me.username}?start={word}
 """
 
     await message.answer(text=msg_text, disable_web_page_preview=True)

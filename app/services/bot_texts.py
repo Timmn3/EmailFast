@@ -71,7 +71,7 @@ SERVICE_INFO_TELEGRAM = """
 - Если СМС не поступит, деньги вернутся на баланс в боте
 - После истечения аренды повторно использовать номер невозможно</i>
 
-<b>- Если аккаунт защищен облачным паролем - обязательно отправляйте скриншот в <a href="https://t.me/emailfastsupport_bot">@emailfastsupport_bot</a></b>
+<b>- Если аккаунт защищен облачным паролем - обязательно отправляйте скриншот в <a href="https://telegram.me/emailfastsupport_bot">@emailfastsupport_bot</a></b>
 """
 
 SERVICE_INFO_SMS_RECEIVED = """
@@ -105,7 +105,7 @@ SERVICE_INFO_TELEGRAM_SMS_RECEIVED = """
 - Если СМС не поступит, деньги вернутся на баланс в боте
 - После истечения аренды повторно использовать номер невозможно</i>
 
-<b>- Если аккаунт защищен облачным паролем - обязательно отправляйте скриншот в <a href="https://t.me/emailfastsupport_bot">@emailfastsupport_bot</a></b>
+<b>- Если аккаунт защищен облачным паролем - обязательно отправляйте скриншот в <a href="https://telegram.me/emailfastsupport_bot">@emailfastsupport_bot</a></b>
 """
 
 NUMBER_INFO = """
@@ -513,7 +513,7 @@ prices_data = [
     {'id': 4, 'price': 5000}
 ]
 
-CHANNEL_LINK = 'https://t.me/neuronbo'
+CHANNEL_LINK = 'https://telegram.me/neuronbo'
 
 # процент, который накидывает сервис
 INTEREST = 1.5

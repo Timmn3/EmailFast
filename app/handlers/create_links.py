@@ -59,7 +59,7 @@ async def _show_links(
     lines: list[str] = []
 
     for link in links:
-        url = f"https://t.me/{bot_username}?start={link.link_code}"
+        url = f"https://telegram.me/{bot_username}?start={link.link_code}"
         total_sum = f"{(link.total_payment_amount or 0):.2f}₽"
         lines.append(
             f"<b>Ссылка:</b> <code>{url}</code>\n"
