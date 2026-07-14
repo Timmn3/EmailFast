@@ -2,7 +2,7 @@
 
 Сервис на базе **Aiogram 3** для приёма SMS/кодов подтверждения и аренды временных e‑mail‑ящиков. Есть пополнение баланса через платёжные системы, партнёрская программа, планировщик фоновых задач и удобная админ‑статистика.
 
-> Демо/связь: [@emailfastbot](https://telegram.me/emailfastbot) • Доп. бот: [@NeuronAgentBot](https://telegram.me/NeuronAgentBot)
+> Демо/связь: [@emailfastbot](https://t.me/emailfastbot) • Доп. бот: [@NeuronAgentBot](https://t.me/NeuronAgentBot)
 
 ---
 
@@ -125,7 +125,7 @@ API_KEY_ONLINESIM: ""
 # Прочее
 REF_BONUS: 10
 WITHDRAW_CHAT_ID: ""
-SUPPORT_URL: "https://telegram.me/your_support_bot"
+SUPPORT_URL: "https://t.me/your_support_bot"
 ADMINS: [123456789]
 CHANNEL_ID: ""
 CHECK_CHANNEL: false
@@ -208,4 +208,4 @@ MIT.
 
 ---
 
-**Автор/контакты:** TG: [@Timmn3](https://telegram.me/emailfastbot)
+**Автор/контакты:** TG: [@Timmn3](https://t.me/emailfastbot)

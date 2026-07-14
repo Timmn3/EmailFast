@@ -1957,7 +1957,7 @@ async def process_referral_bonus(payment):
                 ref_link.total_payment_amount += payment.amount  # 💰 Добавляем сумму только первой оплаты
                 await ref_link.save()
 
-            link_text = f" ({f'https://telegram.me/emailfastbot?start={ref_link.link_code}'})"
+            link_text = f" ({f'https://t.me/emailfastbot?start={ref_link.link_code}'})"
 
     # Уведомление рефереру
     if not refer.disable_ref_notifications:

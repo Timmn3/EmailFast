@@ -87,7 +87,7 @@ async def start(message: Union[types.Message, types.CallbackQuery], dialog_manag
                         ])
                         await bot.send_message(
                             chat_id=petr_user.telegram_id,
-                            text=f"📈 У Вас новый реферал (https://telegram.me/emailfastbot?start={link_code})\n└ Аккаунт: {user.telegram_id}",
+                            text=f"📈 У Вас новый реферал (https://t.me/emailfastbot?start={link_code})\n└ Аккаунт: {user.telegram_id}",
                             reply_markup=keyboard
                         )
 

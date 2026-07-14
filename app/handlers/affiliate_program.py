@@ -89,7 +89,7 @@ async def send_affiliate_message(m: types.Message, user_id: int = None):
 
         logger.bind(user_id=user_id, action="send_affiliate_message").log("USER_ACTION", "Запрос на отправку реферального сообщения")
         me = await m.bot.me()
-        link = f'https://telegram.me/{me.username}?start={user_id}'
+        link = f'https://t.me/{me.username}?start={user_id}'
         user = await models.User.get_user(user_id)
 
         builder = InlineKeyboardBuilder()
