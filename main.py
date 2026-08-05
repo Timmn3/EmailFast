@@ -25,7 +25,7 @@ from app.services.periodic_tasks import (
     check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
     refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
-    check_free_firstmail, notify_inactive_users, notify_unpaid_sms_payments
+    check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments
 )
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -245,6 +245,17 @@ def set_scheduled_jobs(scheduler):
                     max_instances=1,
                     coalesce=True,
                     misfire_grace_time=30,
+                )
+
+                # Ящики «спящих» пользователей — редко и отдельной задачей,
+                # чтобы не тормозить проверку тех, кто сейчас в боте
+                scheduler.add_job(
+                    check_free_firstmail_idle,
+                    "interval",
+                    minutes=15,
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=60,
                 )
             else:
                 logger.info("Scheduler: включён legacy mail.tm")

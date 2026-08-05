@@ -36,6 +36,17 @@ FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES = int(config.get("FIRSTMAIL_MAX_SUCCESSFUL_IS
 if FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES < 1:
     FIRSTMAIL_MAX_SUCCESSFUL_ISSUANCES = 1
 
+# Пороги активности владельца для сканирования бесплатных FirstMail-ящиков.
+# Ящики тех, кто не заходил дольше IDLE-порога, не сканируются вовсе:
+# письма при этом не теряются, а ждут возвращения пользователя в бота.
+FREE_FIRSTMAIL_ACTIVE_DAYS = int(config.get("FREE_FIRSTMAIL_ACTIVE_DAYS", 7))
+if FREE_FIRSTMAIL_ACTIVE_DAYS < 1:
+    FREE_FIRSTMAIL_ACTIVE_DAYS = 1
+
+FREE_FIRSTMAIL_IDLE_DAYS = int(config.get("FREE_FIRSTMAIL_IDLE_DAYS", 30))
+if FREE_FIRSTMAIL_IDLE_DAYS <= FREE_FIRSTMAIL_ACTIVE_DAYS:
+    FREE_FIRSTMAIL_IDLE_DAYS = FREE_FIRSTMAIL_ACTIVE_DAYS + 1
+
 REF_BONUS = config.get("REF_BONUS")
 WITHDRAW_CHAT_ID = config.get("WITHDRAW_CHAT_ID")
 SUPPORT_URL = config.get("SUPPORT_URL")

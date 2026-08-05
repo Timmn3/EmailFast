@@ -42,7 +42,7 @@ from tortoise.transactions import in_transaction
 
 from app.db import models
 from app.db.models import Activation, StatusResponse
-from app.dependencies import bot
+from app.dependencies import bot, FREE_FIRSTMAIL_ACTIVE_DAYS, FREE_FIRSTMAIL_IDLE_DAYS
 
 
 async def refund_and_cleanup_expired_sms() -> None:
@@ -1009,26 +1009,19 @@ async def check_rental_email():
         logger.error(f"Необработанная ошибка в check_rental_email(): {type(e).__name__}: {e}")
 
 
-async def check_free_firstmail():
+async def _scan_free_firstmail(assignment_ids: list, scan_label: str) -> None:
     """
-    Периодически проверяет активные бесплатные FirstMail-ящики на новые письма.
+    Обходит переданные бесплатные FirstMail-ящики и отправляет новые письма.
 
-    Логика:
-    1. Берём только активные FreeFirstMailAssignment.
-    2. Через общий helper читаем новые письма по IMAP.
-    3. Используем old_messages_id / is_initialized, чтобы не слать дубли.
-    4. Новые письма отправляем пользователю напрямую в Telegram.
+    Общее тело для всех уровней сканирования (живые / спящие), чтобы
+    логика обработки писем не разъезжалась между задачами.
 
-    Важно:
-    - это отдельная ветка от legacy Mail/mail.tm;
-    - защита от дублей внутри одного процесса достигается общим lock
-      в pull_free_firstmail_messages().
+    :param assignment_ids: id привязок, которые нужно проверить
+    :param scan_label: метка уровня для логов ("active" / "idle")
     """
+    started_at = timezone.now()
+
     try:
-        assignment_ids = await models.FreeFirstMailAssignment.filter(
-            is_active=True,
-        ).values_list("id", flat=True)
-
         for assignment_id in assignment_ids:
             try:
                 assignment, messages = await pull_free_firstmail_messages(
@@ -1085,10 +1078,63 @@ async def check_free_firstmail():
 
             await asyncio.sleep(0)
 
+        duration = (timezone.now() - started_at).total_seconds()
+        logger.info(
+            f"FirstMail scan завершён | уровень={scan_label} "
+            f"ящиков={len(assignment_ids)} длительность={duration:.1f} сек"
+        )
+
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"Необработанная ошибка в check_free_firstmail(): {type(e).__name__}: {e}")
+        logger.error(
+            f"Необработанная ошибка в _scan_free_firstmail({scan_label}): "
+            f"{type(e).__name__}: {e}"
+        )
+
+
+async def check_free_firstmail():
+    """
+    Проверяет бесплатные FirstMail-ящики активных пользователей.
+
+    Сканируем только тех, кто заходил в бота за последние
+    FREE_FIRSTMAIL_ACTIVE_DAYS дней: обход всех выданных ящиков подряд
+    занимает десятки минут и письма ждут очереди.
+
+    Ящики остальных не теряют письма: old_messages_id обновляется только
+    при сканировании, поэтому непрочитанные UID остаются новыми и придут,
+    как только пользователь вернётся в бота и снова попадёт в выборку.
+    """
+    active_since = timezone.now() - datetime.timedelta(days=FREE_FIRSTMAIL_ACTIVE_DAYS)
+
+    assignment_ids = await models.FreeFirstMailAssignment.filter(
+        is_active=True,
+        user__last_active_at__gte=active_since,
+    ).values_list("id", flat=True)
+
+    await _scan_free_firstmail(assignment_ids, scan_label="active")
+
+
+async def check_free_firstmail_idle():
+    """
+    Проверяет ящики «спящих» пользователей — тех, кто заходил в бота
+    между FREE_FIRSTMAIL_ACTIVE_DAYS и FREE_FIRSTMAIL_IDLE_DAYS дней назад.
+
+    Запускается редко: письма таким пользователям не срочны, но и совсем
+    без автопроверки их оставлять не хочется.
+    """
+    now = timezone.now()
+    active_since = now - datetime.timedelta(days=FREE_FIRSTMAIL_ACTIVE_DAYS)
+    idle_since = now - datetime.timedelta(days=FREE_FIRSTMAIL_IDLE_DAYS)
+
+    assignment_ids = await models.FreeFirstMailAssignment.filter(
+        is_active=True,
+        user__last_active_at__lt=active_since,
+        user__last_active_at__gte=idle_since,
+    ).values_list("id", flat=True)
+
+    await _scan_free_firstmail(assignment_ids, scan_label="idle")
+
 
 def get_rental_email_notice_kb(lease_id: int) -> types.InlineKeyboardMarkup:
     """
