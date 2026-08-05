@@ -15,6 +15,7 @@ from app.dialogs.receive_sms.getters import service_is_smsactivate
 from app.dialogs.rent_sms.getters import get_day_string
 from app.handlers.get_email_handler import get_extend_email_kb
 from app.services.bot_texts import country_flags
+from app.services.mail.firstmail_notify import send_firstmail_message
 from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
@@ -965,24 +966,11 @@ async def check_rental_email():
                     continue
 
                 for message_obj in messages:
-                    from_text = html.escape(message_obj.from_header or "-")
-                    subject_text = html.escape(message_obj.subject or "(без темы)")
-                    content_text = html.escape((message_obj.content or "").strip() or "Нет текста в сообщении.")
-
-                    if len(content_text) > 3500:
-                        content_text = content_text[:3500] + "\n\n...[обрезано]"
-
-                    msg_text = (
-                        f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n'
-                        f"<b>От кого:</b> {from_text}\n"
-                        f"<b>Тема:</b> {subject_text}\n\n"
-                        f"{content_text}"
-                    )
-
                     try:
-                        await bot.send_message(
+                        await send_firstmail_message(
                             chat_id=lease.user.telegram_id,
-                            text=msg_text,
+                            email_addr=lease.email,
+                            message_obj=message_obj,
                         )
 
                         logger.bind(
@@ -1053,26 +1041,11 @@ async def check_free_firstmail():
                     continue
 
                 for message_obj in messages:
-                    from_text = html.escape(message_obj.from_header or "-")
-                    subject_text = html.escape(message_obj.subject or "(без темы)")
-                    content_text = html.escape(
-                        (message_obj.content or "").strip() or "Нет текста в сообщении."
-                    )
-
-                    if len(content_text) > 3500:
-                        content_text = content_text[:3500] + "\n\n...[обрезано]"
-
-                    msg_text = (
-                        f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n'
-                        f"<b>От кого:</b> {from_text}\n"
-                        f"<b>Тема:</b> {subject_text}\n\n"
-                        f"{content_text}"
-                    )
-
                     try:
-                        await bot.send_message(
+                        await send_firstmail_message(
                             chat_id=assignment.user.telegram_id,
-                            text=msg_text,
+                            email_addr=assignment.email,
+                            message_obj=message_obj,
                         )
                         logger.bind(
                             user_id=assignment.user.telegram_id,

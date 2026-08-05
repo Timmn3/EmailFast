@@ -13,6 +13,7 @@ from app.services.bot_texts import RENT_EMAIL_WEEK, RENT_EMAIL_MONTH, RENT_EMAIL
     RENT_EMAIL_YEAR
 
 from app.services.low_balance import check_low_balance, send_low_balance_alert
+from app.services.mail.firstmail_notify import send_firstmail_message
 from app.services.mail.temp_mail_tm import create_mail
 from app.services.need_subscribe import check_subscribe, send_subscribe_msg
 from loguru import logger
@@ -290,21 +291,11 @@ async def receive_my_free_firstmail(call: types.CallbackQuery):
         )
 
         for message_obj in messages:
-            from_text = html.escape(message_obj.from_header or "-")
-            subject_text = html.escape(message_obj.subject or "(без темы)")
-            content_text = html.escape((message_obj.content or "").strip() or "Нет текста в сообщении.")
-
-            if len(content_text) > 3500:
-                content_text = content_text[:3500] + "\n\n...[обрезано]"
-
-            msg_text = (
-                f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(assignment.email)}</b>\n\n'
-                f"<b>От кого:</b> {from_text}\n"
-                f"<b>Тема:</b> {subject_text}\n\n"
-                f"{content_text}"
+            await send_firstmail_message(
+                chat_id=call.message.chat.id,
+                email_addr=assignment.email,
+                message_obj=message_obj,
             )
-
-            await call.message.answer(msg_text)
 
         logger.bind(user_id=user_id, action="receive_my_free_firstmail").log(
             "USER_ACTION",
@@ -776,21 +767,11 @@ async def receive_my_mail(call: types.CallbackQuery):
         )
 
         for message_obj in messages:
-            from_text = html.escape(message_obj.from_header or "-")
-            subject_text = html.escape(message_obj.subject or "(без темы)")
-            content_text = html.escape((message_obj.content or "").strip() or "Нет текста в сообщении.")
-
-            if len(content_text) > 3500:
-                content_text = content_text[:3500] + "\n\n...[обрезано]"
-
-            msg_text = (
-                f'<tg-emoji emoji-id="5472239203590888751">📩</tg-emoji><b>Новое сообщение</b> на почту: <b>{html.escape(lease.email)}</b>\n\n'
-                f"<b>От кого:</b> {from_text}\n"
-                f"<b>Тема:</b> {subject_text}\n\n"
-                f"{content_text}"
+            await send_firstmail_message(
+                chat_id=call.message.chat.id,
+                email_addr=lease.email,
+                message_obj=message_obj,
             )
-
-            await call.message.answer(msg_text)
 
         logger.bind(user_id=user_id, action="receive_my_mail").log(
             "USER_ACTION",

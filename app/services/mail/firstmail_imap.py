@@ -2,8 +2,9 @@ import asyncio
 import email
 import html
 import imaplib
+import mimetypes
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.header import decode_header
 from typing import Optional
 
@@ -15,6 +16,30 @@ from app.dependencies import config
 FIRSTMAIL_IMAP_HOST = config.get("FIRSTMAIL_IMAP_HOST", "imap.firstmail.ltd")
 FIRSTMAIL_IMAP_PORT = int(config.get("FIRSTMAIL_IMAP_PORT", 993))
 
+# Потолок Telegram Bot API на sendDocument — 50 МБ, берём с запасом,
+# чтобы не раздувать RSS процесса при пачке писем.
+FIRSTMAIL_MAX_ATTACHMENT_MB = float(config.get("FIRSTMAIL_MAX_ATTACHMENT_MB", 20))
+FIRSTMAIL_MAX_ATTACHMENT_BYTES = int(FIRSTMAIL_MAX_ATTACHMENT_MB * 1024 * 1024)
+
+# Мелкие inline-картинки — это логотипы из подписей, а не вложения.
+INLINE_IMAGE_SKIP_BYTES = 50 * 1024
+
+
+@dataclass
+class FirstMailAttachment:
+    """
+    Вложение письма.
+
+    content = None означает, что файл слишком большой и байты
+    намеренно не загружались в память; причина лежит в skip_reason.
+    """
+    filename: str
+    content_type: str
+    size: int
+    content: Optional[bytes] = None
+    skip_reason: Optional[str] = None
+    charset: Optional[str] = None
+
 
 @dataclass
 class FirstMailMessage:
@@ -25,6 +50,7 @@ class FirstMailMessage:
     from_header: str
     subject: str
     content: str
+    attachments: list = field(default_factory=list)
 
 
 class FirstMailImapClient:
@@ -80,66 +106,148 @@ class FirstMailImapClient:
 
         text = re.sub(r"<style[^>]*>.*?</style>", "", raw_html, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.IGNORECASE | re.DOTALL)
+        # Условные комментарии Word/Outlook (<!--[if gte mso 9]>...<![endif]-->)
+        # содержат только служебную разметку — вырезаем целиком.
+        text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
         text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"</p\s*>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
         text = html.unescape(text)
         text = text.replace("\xa0", " ")
         text = re.sub(r"[ \t]+", " ", text)
+        # После замены </p> на \n в начале строк остаётся пробел от съеденного <p>
+        text = re.sub(r"\n[ \t]+", "\n", text)
         text = re.sub(r"\n\s+\n", "\n\n", text)
         return text.strip()
 
-    def _get_body_from_msg(self, msg) -> str:
+    @staticmethod
+    def _decode_payload(payload: bytes, charset: Optional[str]) -> str:
         """
-        Возвращает текст письма.
+        Декодирует байты текстовой части письма в unicode.
+        """
+        try:
+            return payload.decode(charset or "utf-8", errors="replace")
+        except LookupError:
+            return payload.decode("utf-8", errors="replace")
 
-        Приоритет:
+    def _build_attachment(self, part, index: int, payload: bytes) -> FirstMailAttachment:
+        """
+        Собирает вложение из MIME-части.
+
+        Слишком большие файлы не тащим в память: отдаём метаданные
+        с пустым content, чтобы пользователь хотя бы узнал о файле.
+        """
+        content_type = part.get_content_type()
+        size = len(payload)
+
+        filename = self._decode_str(part.get_filename() or "").strip()
+        if not filename:
+            ext = mimetypes.guess_extension(content_type) or ".bin"
+            filename = f"attachment_{index}{ext}"
+
+        if size > FIRSTMAIL_MAX_ATTACHMENT_BYTES:
+            return FirstMailAttachment(
+                filename=filename,
+                content_type=content_type,
+                size=size,
+                content=None,
+                skip_reason="too_large",
+                charset=part.get_content_charset(),
+            )
+
+        return FirstMailAttachment(
+            filename=filename,
+            content_type=content_type,
+            size=size,
+            content=payload,
+            charset=part.get_content_charset(),
+        )
+
+    def _extract_body_and_attachments(self, msg) -> tuple[str, list]:
+        """
+        Возвращает (текст письма, список вложений).
+
+        Приоритет тела:
         1) text/plain
         2) text/html -> чистим в текст
+        3) если тела нет вообще — текстовое вложение
+           (некоторые системы шлют тело письма с filename=)
         """
         text_plain = ""
         html_body = ""
+        attachments: list[FirstMailAttachment] = []
 
-        if msg.is_multipart():
-            for part in msg.walk():
-                content_type = part.get_content_type()
-                disposition = str(part.get("Content-Disposition") or "").lower()
+        index = 0
+        for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
 
-                if "attachment" in disposition:
+            index += 1
+            content_type = part.get_content_type()
+            disposition = str(part.get("Content-Disposition") or "").lower()
+            filename = part.get_filename()
+
+            is_attachment = "attachment" in disposition or bool(filename)
+            payload = part.get_payload(decode=True) or b""
+
+            if is_attachment:
+                if not payload:
                     continue
 
-                payload = part.get_payload(decode=True) or b""
-                charset = part.get_content_charset() or "utf-8"
+                # Логотипы из подписей приходят как inline-картинки —
+                # засорять ими чат не нужно.
+                if (
+                    content_type.startswith("image/")
+                    and "attachment" not in disposition
+                    and len(payload) < INLINE_IMAGE_SKIP_BYTES
+                ):
+                    continue
 
-                try:
-                    text = payload.decode(charset, errors="replace")
-                except LookupError:
-                    text = payload.decode("utf-8", errors="replace")
+                attachments.append(self._build_attachment(part, index, payload))
+                continue
 
-                if content_type == "text/plain" and not text_plain:
-                    text_plain = text
-                elif content_type == "text/html" and not html_body:
-                    html_body = text
-        else:
-            content_type = msg.get_content_type()
-            payload = msg.get_payload(decode=True) or b""
-            charset = msg.get_content_charset() or "utf-8"
+            text = self._decode_payload(payload, part.get_content_charset())
 
-            try:
-                text = payload.decode(charset, errors="replace")
-            except LookupError:
-                text = payload.decode("utf-8", errors="replace")
-
-            if content_type == "text/plain":
+            if content_type == "text/plain" and not text_plain:
                 text_plain = text
-            elif content_type == "text/html":
+            elif content_type == "text/html" and not html_body:
                 html_body = text
 
-        if text_plain.strip():
-            return text_plain.strip()
+        body = ""
 
-        if html_body.strip():
-            return self._clean_html(html_body)
+        if text_plain.strip():
+            body = text_plain.strip()
+        elif html_body.strip():
+            body = self._clean_html(html_body)
+
+        # Тело письма могло приехать вложением — достаём его оттуда.
+        if not body:
+            body = self._body_from_text_attachment(attachments)
+
+        return body, attachments
+
+    def _body_from_text_attachment(self, attachments: list) -> str:
+        """
+        Пытается взять тело письма из текстового вложения.
+
+        Вложение при этом остаётся в списке: пользователь получит
+        и текст, и исходный файл.
+        """
+        for attachment in attachments:
+            if not attachment.content:
+                continue
+
+            if attachment.content_type == "text/plain":
+                text = self._decode_payload(attachment.content, attachment.charset)
+                if text.strip():
+                    return text.strip()
+
+            if attachment.content_type == "text/html":
+                text = self._clean_html(
+                    self._decode_payload(attachment.content, attachment.charset)
+                )
+                if text.strip():
+                    return text
 
         return ""
 
@@ -192,13 +300,14 @@ class FirstMailImapClient:
 
         from_header = self._decode_str(msg.get("From", ""))
         subject = self._decode_str(msg.get("Subject", ""))
-        content = self._get_body_from_msg(msg)
+        content, attachments = self._extract_body_and_attachments(msg)
 
         return FirstMailMessage(
             uid=uid,
             from_header=from_header,
             subject=subject,
             content=content,
+            attachments=attachments,
         )
 
     def get_new_messages(
