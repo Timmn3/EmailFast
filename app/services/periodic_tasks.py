@@ -1,4 +1,5 @@
 import json
+import time
 from math import floor
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import types
@@ -19,7 +20,7 @@ from app.services.mail.firstmail_notify import send_firstmail_message
 from app.services.mail.receive_messages import get_unread_messages
 from app.services.onlinesim.rent_number import OnlineSimRentAPI
 from app.services.payments.anypay import AnypayAPI
-from app.services.payments.ckassa import get_ckassa_payments
+from app.services.payments.ckassa import CkassaUnavailable, get_ckassa_payments
 from app.services.rental_email_pool import (
     pull_free_firstmail_messages,
     pull_rental_email_messages,
@@ -424,58 +425,290 @@ async def check_payment_streampay():
             await replenishment_error_message(payment, "streampay")
 
 
+# Окно и размер батча для добора оплат, пропущенных из-за простоя сервиса статусов.
+CKASSA_BACKLOG_HOURS = 48
+CKASSA_BACKLOG_LIMIT = 300
+
+# Сколько ошибок подряд считать падением сервиса. Единичная ошибка на одном
+# invoice_id не должна обрывать проход — иначе один битый платёж блокирует все
+# остальные. Подряд идущие ошибки означают, что лёг сам сервис.
+CKASSA_ERRORS_TO_STOP = 3
+
+# После какого возраста платёж с ответом «не найден» считается протухшим.
+# Ссылка на оплату живёт 1 час (bestBefore в create_invoice_ckassa), так что
+# через 6 часов 404 означает, что платёж не оплачивали и не оплатят.
+# Без этого очередь добора растёт бесконечно: сотни никогда не оплаченных
+# инвойсов крутятся каждые 10 минут и вытесняют реально потерянные оплаты.
+CKASSA_STALE_HOURS = 6
+
+# Троттлинг алертов о недоступности сервиса статусов: при многочасовом простое
+# проход идёт каждые 25 секунд, без троттлинга разработчик получит тысячи сообщений.
+CKASSA_ALERT_INTERVAL_SEC = 900
+_ckassa_last_alert_at: float | None = None
+
+
+async def _report_ckassa_unavailable(label: str, reason: str, pending: int) -> None:
+    """
+    Сообщает о недоступности сервиса статусов CKassa: в лог — всегда, разработчику —
+    не чаще раза в CKASSA_ALERT_INTERVAL_SEC.
+
+    Молчать здесь нельзя: пока сервис лежит, пользователи платят, а баланс не
+    пополняется — именно этот случай выглядит как «оплата прошла, денег нет».
+    """
+    global _ckassa_last_alert_at
+
+    logger.error(
+        f"CKassa ({label}): сервис статусов недоступен, "
+        f"проверка прервана, платежей в очереди={pending}. Причина: {reason}"
+    )
+
+    now = time.monotonic()
+    if _ckassa_last_alert_at is not None and now - _ckassa_last_alert_at < CKASSA_ALERT_INTERVAL_SEC:
+        return
+    _ckassa_last_alert_at = now
+
+    try:
+        await send_coder(
+            f'🚨 CKassa: проверка оплат не работает\n'
+            f'этап: {label}\n'
+            f'платежей ждёт зачисления: {pending}\n'
+            f'причина: {reason[:300]}'
+        )
+    except Exception as e:
+        logger.opt(exception=e).warning("CKassa: не удалось отправить алерт разработчику")
+
+
+async def _credit_ckassa_payment(payment_pk: int) -> dict | None:
+    """
+    Атомарно проводит подтверждённую оплату CKassa: помечает платёж успешным
+    и пополняет баланс пользователя.
+
+    Почему транзакция: раньше is_success сохранялся отдельным запросом ДО начисления,
+    и падение на любом следующем шаге навсегда уводило платёж из выборки
+    (она берёт только is_success=False) — оплата есть, зачисления нет.
+
+    :return: данные для уведомлений после коммита либо None, если зачислять нечего
+        (платёж уже проведён параллельным проходом или пользователь не найден).
+    """
+    async with in_transaction() as conn:
+        # 🔒 Лочим платёж — защита от двойного зачисления параллельными джобами
+        payment = await models.Payment.filter(id=payment_pk).using_db(conn).select_for_update().first()
+        if not payment or payment.is_success:
+            return None
+
+        # 🔒 Лочим пользователя, иначе параллельные списания затрут пополнение
+        user = await models.User.filter(id=payment.user_id).using_db(conn).select_for_update().first()
+        if not user:
+            logger.error(f"CKassa: платёж id={payment_pk} без пользователя, зачисление невозможно")
+            return None
+
+        if user.bonus_end_at is not None and user.bonus_end_at > timezone.now():
+            amount = floor(payment.amount * 1.1)
+            user.bonus_end_at = None
+        else:
+            amount = payment.amount
+
+        # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
+        bonus_amount = int(amount - payment.amount)
+        if bonus_amount > 0:
+            bonus_payment = models.Payment(
+                user_id=user.id,
+                method=models.PaymentMethod.BONUS10,
+                amount=bonus_amount,
+                continue_data={
+                    "source_payment_id": payment.id,
+                    "source_method": payment.method.value,
+                    "source_invoice_id": payment.invoice_id,
+                },
+                is_success=True,
+                processed=True,
+            )
+            await bonus_payment.save(using_db=conn)
+
+        payment.is_success = True
+        payment.processed = True
+        await payment.save(using_db=conn, update_fields=["is_success", "processed"])
+
+        user.balance = float(user.balance or 0.0) + amount
+        await user.save(using_db=conn, update_fields=["balance", "bonus_end_at"])
+
+        return {"payment": payment, "user": user, "amount": amount}
+
+
+async def _after_ckassa_credit(credited: dict) -> None:
+    """
+    Уведомления и реферальный бонус после успешного зачисления.
+
+    Каждый шаг обёрнут отдельно: деньги уже на балансе, и падение уведомления
+    не должно выглядеть как сбой зачисления.
+    """
+    payment = credited["payment"]
+    user = credited["user"]
+    amount = credited["amount"]
+
+    # Восстанавливаем связь для функций, работающих через payment.user
+    payment.user = user
+
+    try:
+        await balance_replenishment_notification(payment, "ckassa")
+    except Exception as e:
+        logger.opt(exception=e).warning(f"CKassa: не записано уведомление о пополнении, payment_id={payment.id}")
+
+    try:
+        await bot.send_message(
+            chat_id=user.telegram_id,
+            text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
+        )
+    except TelegramBadRequest:
+        pass
+    except Exception as e:
+        logger.opt(exception=e).warning(
+            f"CKassa: не удалось уведомить пользователя {user.telegram_id} о пополнении на {amount}₽"
+        )
+
+    try:
+        await process_referral_bonus(payment)
+    except Exception as e:
+        logger.opt(exception=e).error(f"CKassa: реферальный бонус не начислен, payment_id={payment.id}")
+
+
+async def _close_stale_ckassa_payment(payment) -> None:
+    """
+    Помечает processed=True платёж, который сервис считает несуществующим
+    и который уже не могут оплатить. Баланс не трогает — денег по нему не было.
+    """
+    try:
+        await models.Payment.filter(id=payment.id, is_success=False).update(processed=True)
+    except Exception as e:
+        logger.opt(exception=e).warning(f"CKassa: не удалось закрыть протухший платёж id={payment.id}")
+
+
+async def _run_ckassa_check(
+    lookback_hours: int,
+    limit: int,
+    label: str,
+    min_age_hours: int = 0,
+    oldest_first: bool = False,
+) -> None:
+    """
+    Общий проход по неоплаченным инвойсам CKassa.
+
+    :param lookback_hours: верхняя граница возраста платежей.
+    :param limit: максимум платежей за проход (0 — без ограничения).
+    :param label: метка прохода для логов ('основной' / 'добор').
+    :param min_age_hours: нижняя граница возраста (для добора).
+    :param oldest_first: начинать с самых старых (для добора).
+    """
+    try:
+        payments = await models.Payment.get_ckassa_payments(
+            lookback_hours=lookback_hours,
+            min_age_hours=min_age_hours,
+            limit=limit,
+            oldest_first=oldest_first,
+        )
+    except Exception as e:
+        logger.opt(exception=e).error(f"CKassa ({label}): не удалось получить платежи из БД")
+        return
+
+    if not payments:
+        return
+
+    now = timezone.now()
+    errors_in_row = 0
+
+    for index, payment in enumerate(payments):
+        try:
+            payment_data = await get_ckassa_payments(payment.invoice_id)
+            errors_in_row = 0
+        except CkassaUnavailable as e:
+            errors_in_row += 1
+            # Единичная ошибка — проблема конкретного invoice_id, идём дальше.
+            # Ошибки подряд — лёг сам сервис: добивать остаток батча бессмысленно,
+            # каждый запрос упрётся в таймаут и проход зависнет. Платежи остаются
+            # is_success=False и будут проверены следующим проходом либо добором.
+            if errors_in_row >= CKASSA_ERRORS_TO_STOP:
+                await _report_ckassa_unavailable(label, str(e), pending=len(payments) - index)
+                return
+            logger.warning(
+                f"CKassa ({label}): статус не получен для invoice_id={payment.invoice_id} "
+                f"({errors_in_row}/{CKASSA_ERRORS_TO_STOP}): {e}"
+            )
+            continue
+        except Exception as e:
+            logger.opt(exception=e).error(
+                f"CKassa ({label}): непредвиденная ошибка проверки invoice_id={payment.invoice_id}"
+            )
+            continue
+
+        # Сервис ответил «нет такого платежа», а ссылка на оплату уже мертва —
+        # закрываем, чтобы очередь добора не забивалась навсегда.
+        if payment_data is None:
+            if payment.created_at < now - datetime.timedelta(hours=CKASSA_STALE_HOURS):
+                await _close_stale_ckassa_payment(payment)
+            continue
+
+        if payment_data.get('state') != 'PAYED':
+            continue
+
+        try:
+            credited = await _credit_ckassa_payment(payment.id)
+        except Exception as e:
+            # Оплата подтверждена провайдером, но зачисление не прошло —
+            # самый опасный случай, поэтому и лог, и алерт разработчику.
+            logger.opt(exception=e).error(
+                f"CKassa ({label}): оплата подтверждена, зачисление не выполнено, "
+                f"payment_id={payment.id}, invoice_id={payment.invoice_id}, сумма={payment.amount}"
+            )
+            try:
+                await send_coder(
+                    f'🚨 CKassa: оплата есть, баланс не пополнен\n'
+                    f'payment_id: {payment.id}\n'
+                    f'invoice_id: {payment.invoice_id}\n'
+                    f'сумма: {payment.amount}₽\n'
+                    f'ошибка: {e!r}'
+                )
+            except Exception as notify_error:
+                logger.opt(exception=notify_error).warning("CKassa: не удалось отправить алерт о сбое зачисления")
+            await replenishment_error_message(payment, "CKassa")
+            continue
+
+        if not credited:
+            continue
+
+        # Деньги уже на балансе. Любая ошибка в уведомлениях не должна ронять
+        # проход — иначе остальные оплаченные платежи останутся необработанными.
+        try:
+            await _after_ckassa_credit(credited)
+        except Exception as e:
+            logger.opt(exception=e).error(
+                f"CKassa ({label}): баланс пополнен, но постобработка упала, payment_id={payment.id}"
+            )
+
+
 async def check_payment_ckassa():
     """
     Асинхронная функция для проверки статуса платежей CKassa.
     """
-    payments = await models.Payment.get_ckassa_payments()
+    await _run_ckassa_check(lookback_hours=2, limit=0, label="основной")
 
-    for payment in payments:
-        try:
-            payment_data = await get_ckassa_payments(payment.invoice_id)
 
-            if payment_data and payment_data.get('state') == 'PAYED':
-                payment.is_success = True
-                await payment.save()
+async def check_payment_ckassa_backlog():
+    """
+    Добор оплат за широкое окно.
 
-                if payment.user.bonus_end_at is not None and payment.user.bonus_end_at > timezone.now():
-                    amount = floor(payment.amount * 1.1)
-                    payment.user.bonus_end_at = None
-                else:
-                    amount = payment.amount
+    Нужен потому, что основной проход смотрит только 2 часа назад: если сервис
+    статусов лежал дольше, оплаченные платежи молча выпадали из выборки навсегда.
 
-                # ✅ Если применился бонус +10% — записываем его отдельной строкой в payments
-                bonus_amount = int(amount - payment.amount)
-                if bonus_amount > 0:
-                    bonus_payment = await models.Payment.create_payment(
-                        user=payment.user,
-                        method=models.PaymentMethod.BONUS10,
-                        amount=bonus_amount,
-                        continue_data={
-                            "source_payment_id": payment.id,
-                            "source_method": payment.method.value,
-                            "source_invoice_id": payment.invoice_id,
-                        }
-                    )
-                    bonus_payment.is_success = True
-                    await bonus_payment.save()
-
-                payment.user.balance += amount
-                await payment.user.save()
-
-                await balance_replenishment_notification(payment, "ckassa")
-                await bot.send_message(
-                    chat_id=payment.user.telegram_id,
-                    text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
-                )
-
-                await process_referral_bonus(payment)
-
-        except TelegramBadRequest:
-            pass
-        except Exception as e:
-            logger.warning(e)
-            await replenishment_error_message(payment, "CKassa")
+    Берёт самые старые: они ближе всего к краю окна и вот-вот пропадут насовсем.
+    Свежие (моложе 2 часов) не трогает — их и так проверяет основной проход.
+    """
+    await _run_ckassa_check(
+        lookback_hours=CKASSA_BACKLOG_HOURS,
+        min_age_hours=2,
+        limit=CKASSA_BACKLOG_LIMIT,
+        label="добор",
+        oldest_first=True,
+    )
 
 
 async def check_payment_cryptomus():

@@ -78,6 +78,21 @@ async def create_invoice_ckassa(amount_rub: float, payer_id: str):
     return None, None
 
 
+class CkassaUnavailable(Exception):
+    """
+    Статус платежа выяснить НЕ удалось (сеть, 5xx, битый ответ).
+
+    Отдельный тип нужен, чтобы вызывающий код не спутал «сервис лежит»
+    с «платёж не оплачен»: в первом случае платёж обязан остаться в очереди
+    на повторную проверку, иначе деньги списаны, а баланс не пополнен.
+    """
+
+
+# Таймаут намеренно короткий: статусы проверяются пачкой в одном проходе,
+# и при недоступности сервиса длинный таймаут умножается на размер батча.
+CKASSA_STATUS_TIMEOUT = 10.0
+
+
 async def get_ckassa_payments(invoice: str):
     """
     Асинхронная функция для получения данных о платеже по инвойсу.
@@ -86,20 +101,31 @@ async def get_ckassa_payments(invoice: str):
     invoice (str): Уникальный идентификатор инвойса.
 
     Возвращает:
-    dict: Данные о платеже или сообщение об ошибке.
+        dict — сервис ответил, статус платежа известен (ключ 'state');
+        None — платёж не найден (404), штатный ответ для ещё не оплаченного инвойса.
+
+    Исключения:
+        CkassaUnavailable — статус выяснить не удалось, платёж НЕЛЬЗЯ считать неоплаченным.
     """
     url = f'https://emailfast.info/ckassa/payment/{invoice}/'
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=CKASSA_STATUS_TIMEOUT) as client:
             response = await client.get(url)
+    except Exception as e:
+        raise CkassaUnavailable(f"нет связи с {url}: {e!r}") from e
 
-            if response.status_code == 200:
-                return response.json()
-            if response.status_code == 404:
-                return {'error': 'Invoice not found'}
+    if response.status_code == 404:
+        return None
 
-            return {'error': 'Failed to retrieve data', 'status_code': response.status_code}
+    if response.status_code != 200:
+        raise CkassaUnavailable(
+            f"HTTP {response.status_code} от {url}: {response.text[:200]}"
+        )
 
-    except httpx.RequestError as e:
-        return {'error': str(e)}
+    try:
+        return response.json()
+    except Exception as e:
+        raise CkassaUnavailable(
+            f"невалидный JSON от {url}: {response.text[:200]}"
+        ) from e

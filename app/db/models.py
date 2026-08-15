@@ -1564,7 +1564,13 @@ class Payment(Model):
                                 created_at__gt=timezone.now() - timedelta(hours=5)).all().prefetch_related('user')
 
     @classmethod
-    async def get_ckassa_payments(cls):
+    async def get_ckassa_payments(
+        cls,
+        lookback_hours: int = 2,
+        min_age_hours: int = 0,
+        limit: int = 0,
+        oldest_first: bool = False,
+    ):
         """
         Возвращает кандидатов на проверку оплаты CKassa.
 
@@ -1576,20 +1582,34 @@ class Payment(Model):
         Стратегия:
         - ограничиваем окно по времени (обычно достаточно для жизни ссылки)
         - ограничиваем размер батча, чтобы проход всегда был быстрым
-        """
-        LOOKBACK_HOURS = 2  # при необходимости можно поднять до 12/24
 
-        return await (
-            cls.filter(
-                method=PaymentMethod.CKASSA,
-                is_success=False,
-                processed=False,
-                invoice_id__isnull=False,
-                created_at__gte=timezone.now() - timedelta(hours=LOOKBACK_HOURS),
-            )
-            .order_by("-created_at")
-            .prefetch_related("user")
+        :param lookback_hours: верхняя граница возраста платежа.
+        :param min_age_hours: нижняя граница возраста. Нужна добору: свежие платежи
+            и так проверяет частый проход, дублировать их бессмысленно.
+        :param limit: максимум записей за проход (0 — без ограничения).
+        :param oldest_first: с какого края батча начинать. Частому проходу важны
+            свежие, добору — наоборот самые старые: именно они вот-вот выпадут
+            из окна и будут потеряны навсегда.
+        """
+        now = timezone.now()
+
+        query = cls.filter(
+            method=PaymentMethod.CKASSA,
+            is_success=False,
+            processed=False,
+            invoice_id__isnull=False,
+            created_at__gte=now - timedelta(hours=lookback_hours),
         )
+
+        if min_age_hours:
+            query = query.filter(created_at__lte=now - timedelta(hours=min_age_hours))
+
+        query = query.order_by("created_at" if oldest_first else "-created_at").prefetch_related("user")
+
+        if limit:
+            query = query.limit(limit)
+
+        return await query
 
 
 class Withdraw(Model):

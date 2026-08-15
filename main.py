@@ -22,7 +22,7 @@ from app.services.periodic_tasks import (
     check_sms, check_email, check_rental_email, close_expired_rental_email_leases,
     notify_rental_email_expiration, notify_rental_free_week_expiration, check_mail_expiration_and_notify,
     check_payment_freekassa, check_payment_anypay, check_payment_streampay,
-    check_payment_ckassa, check_rent_sms, rents_ending_soon, close_rent,
+    check_payment_ckassa, check_payment_ckassa_backlog, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
     refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
     check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments
@@ -316,6 +316,17 @@ def set_scheduled_jobs(scheduler):
 
             # Проверка платежей через CKassa
             scheduler.add_job(check_payment_ckassa, "interval", seconds=25, max_instances=1)
+
+            # Добор оплат CKassa за 48 часов: подхватывает платежи, пропущенные
+            # основным проходом, пока сервис статусов был недоступен
+            scheduler.add_job(
+                check_payment_ckassa_backlog,
+                "interval",
+                minutes=10,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=60,
+            )
 
             # Проверка платежей через Streampay
             scheduler.add_job(check_payment_streampay, "interval", seconds=48, max_instances=10)
