@@ -134,6 +134,13 @@ API_LOGIN_CKASSA = config.get('API_LOGIN_CKASSA')
 API_KEY_CKASSA = config.get('API_KEY_CKASSA')
 SERV_CODE_CKASSA = config.get('SERV_CODE_CKASSA')
 
+# Показывать ли способы оплаты через CKassa (карта и СБП).
+# Выключено по умолчанию с 15.08.2026: сервис проверки оплат emailfast.info
+# лежит, счета выставляются, а зачислить их бот не может.
+# Включить обратно: добавить в config.yaml строку `CKASSA_ENABLED: true`
+# и перезапустить бота. Правка кода не нужна.
+CKASSA_ENABLED = str(config.get('CKASSA_ENABLED', False)).strip().lower() in ('true', '1', 'yes')
+
 CRYPTOMUS_API_KEY = config.get('CRYPTOMUS_API_KEY')
 CRYPTOMUS_API_KEY_PAYOUT = config.get('CRYPTOMUS_API_KEY_PAYOUT')
 CRYPTOMUS_MERCHANT_ID = config.get('CRYPTOMUS_MERCHANT_ID')

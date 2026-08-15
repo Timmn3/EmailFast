@@ -8,6 +8,7 @@ from aiogram_dialog.widgets.text import Const, Format
 from aiogram import F
 
 from app.dialogs.personal_cabinet.selected import send_payment_keyboard_anypay, on_payment_method
+from app.dialogs.payment_buttons import ckassa_buttons
 from app.dialogs.receive_sms import states
 from app.dialogs.receive_sms.getters import get_countries_service, get_services, get_need_balance, get_other_service, \
     get_services_2, get_show_smsfast_other_button, get_favorites, get_payment_method_info
@@ -289,10 +290,7 @@ def payment_method_window_country():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, switch_to_ckassa_sbp_payment, on_deposit
     return Window(
         _PAYMENT_METHOD_TEXT,
-        Button(Const(bt.METHOD_BANK_SBP), id='sbp_ckassa', on_click=switch_to_ckassa_sbp_payment,
-               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600")),   # зелёная
-        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
-               style=Style(emoji_id="5472250091332993630")),                              # 💳
+        *ckassa_buttons(switch_to_ckassa_sbp_payment, switch_to_payment),
         Button(Const(bt.METHOD_STREAMPAY), id='bank_card', on_click=switch_to_payment,
                style=Style(emoji_id="5226794552907554474")),                              # 🔁
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
@@ -310,10 +308,7 @@ def payment_method_window_country_minimum_pay():
     from app.dialogs.personal_cabinet.selected import switch_to_payment, switch_to_ckassa_sbp_payment, on_deposit
     return Window(
         _PAYMENT_METHOD_TEXT,
-        Button(Const(bt.METHOD_BANK_SBP), id='sbp_ckassa', on_click=switch_to_ckassa_sbp_payment,
-               style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600")),   # зелёная
-        Button(Const(bt.METHOD_CKASSA), id='ckassa', on_click=switch_to_payment,
-               style=Style(emoji_id="5472250091332993630")),                              # 💳
+        *ckassa_buttons(switch_to_ckassa_sbp_payment, switch_to_payment),
         Button(Const(bt.METHOD_STARS_BTN), id='stars', on_click=send_invoice_handler_stars,
                style=Style(emoji_id="5888993774540951956")),                              # ⭐️
         Button(Const(bt.METHOD_CRYPTO_BTN), id='crypto', on_click=switch_to_payment,

@@ -7,6 +7,7 @@ from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Select, Button
 import re
 from app.db import models
+from app.dependencies import CKASSA_ENABLED
 from app.dialogs.personal_cabinet.states import PersonalMenu
 from app.dialogs.receive_sms.scheduler_balance import start_balance_check
 from app.dialogs.receive_sms.states import CountryMenu
@@ -295,7 +296,10 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
     else:
         streampay_url = ''
 
-    if price >= 50:
+    # При выключенном CKASSA_ENABLED счета не выставляем совсем: кнопки скрыты,
+    # а выставленный счёт бот всё равно не сможет зачислить — сервис проверки
+    # оплат недоступен. Заодно не копим мусорные записи в payments.
+    if CKASSA_ENABLED and price >= 50:
         payment_ckassa = await models.Payment.create_payment(
             user=user,
             method=models.PaymentMethod.CKASSA,
@@ -310,7 +314,7 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         ckassa_url = ''
 
     # СБП через Shop API CKassa (анонимный платёж, url-кнопка, без WebApp)
-    if price >= 50:
+    if CKASSA_ENABLED and price >= 50:
         sbp_order_id = f"{str(user.telegram_id)}_{uuid4().hex[:16]}"
         if len(sbp_order_id) > 40:
             sbp_order_id = sbp_order_id[:40]

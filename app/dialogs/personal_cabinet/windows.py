@@ -4,6 +4,7 @@ from aiogram_dialog.widgets.input import TextInput
 from aiogram_dialog.widgets.kbd import Back, Button, Url, Cancel
 from aiogram_dialog.widgets.text import Const, Format
 from app import dependencies
+from app.dialogs.payment_buttons import ckassa_buttons
 from app.dialogs.personal_cabinet import states, keyboards
 from app.dialogs.personal_cabinet.getters import get_user_info, get_deposit_prices, get_order_history
 from app.dialogs.personal_cabinet.selected import on_deposit_price, on_other_price, on_deposit, on_enter_other_price, \
@@ -101,18 +102,7 @@ def enter_amount_window():
 def payment_method_window():
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
-        Button(
-            Const(bt.METHOD_BANK_SBP),
-            id='sbp_ckassa',
-            on_click=switch_to_ckassa_sbp_payment,
-            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600"),   # зелёная
-        ),
-        Button(
-            Const(bt.METHOD_CKASSA),
-            id='ckassa',
-            on_click=switch_to_payment,
-            style=Style(emoji_id="5472250091332993630"),   # 💳
-        ),
+        *ckassa_buttons(switch_to_ckassa_sbp_payment, switch_to_payment),
         Button(
             Const(bt.METHOD_STREAMPAY),
             id='bank_card',
@@ -144,18 +134,7 @@ def payment_method_window():
 def payment_method_window_minimum_pay():
     return Window(
         Const(bt.SELECT_DEPOSIT_METHOD),
-        Button(
-            Const(bt.METHOD_BANK_SBP),
-            id='sbp_ckassa',
-            on_click=switch_to_ckassa_sbp_payment,
-            style=Style(style=ButtonStyle.SUCCESS, emoji_id="5265074015868822600"),   # зелёная
-        ),
-        Button(
-            Const(bt.METHOD_CKASSA),
-            id='ckassa',
-            on_click=switch_to_payment,
-            style=Style(emoji_id="5472250091332993630"),   # 💳
-        ),
+        *ckassa_buttons(switch_to_ckassa_sbp_payment, switch_to_payment),
         Button(
             Const(bt.METHOD_STARS_BTN),
             id='stars',
