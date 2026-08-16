@@ -259,10 +259,16 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         )
 
         # формируем ссылку на оплату
-        # ✅ external_id должен быть уникальным для каждого пользователя
-        external_id = f"user_{user.id}"
+        # external_id уникален для КАЖДОГО счёта: на повторный id StreamPay
+        # возвращает прежний invoice, а invoice_id в payments под уникальным
+        # индексом — раньше это роняло второе и все последующие пополнения
+        # одного и того же пользователя с duplicate key.
+        # customer остаётся стабильным, чтобы StreamPay видел одного плательщика.
+        external_id = f"user_{user.id}_p{payment_streampay.id}"
         try:
-            payment_streampay.invoice_id, streampay_url = await create_payment_streampay(price, external_id)
+            payment_streampay.invoice_id, streampay_url = await create_payment_streampay(
+                price, external_id, customer=f"user_{user.id}"
+            )
             await payment_streampay.save()
         except Exception as e:
             # StreamPay недоступен или неверная подпись — скрываем кнопку, остальные способы работают

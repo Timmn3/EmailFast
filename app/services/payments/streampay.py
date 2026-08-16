@@ -11,13 +11,18 @@ API_BASE_URL = 'https://api.streampay.org'
 key = binascii.unhexlify(PRIVATE_KEY)
 
 
-async def create_payment_streampay(amount: float, external_id: str):
+async def create_payment_streampay(amount: float, external_id: str, customer: str | None = None):
     """
     Асинхронная функция для создания платежа в StreamPay API.
 
     Параметры:
-    external_id (str): Уникальный внешний идентификатор платежа.
+    external_id (str): Уникальный внешний идентификатор ПЛАТЕЖА. Должен быть
+        разным для каждого счёта: на повторный external_id StreamPay отдаёт
+        прежний invoice, а invoice_id в payments лежит под уникальным индексом,
+        и сохранение падает с duplicate key.
     amount (float): Сумма платежа.
+    customer (str|None): Идентификатор ПЛАТЕЛЬЩИКА, стабильный между счетами.
+        Если не передан, используется external_id (прежнее поведение).
 
     Возвращает:
     tuple: Возвращает кортеж из двух элементов:
@@ -27,7 +32,7 @@ async def create_payment_streampay(amount: float, external_id: str):
 
     req_content = json.dumps(dict(
         store_id=STORE_ID,  # integer
-        customer=external_id,  # string
+        customer=customer or external_id,  # string
         external_id=external_id,  # string
         description="Оплата",  # string
         system_currency="USDT",  # string
