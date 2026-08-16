@@ -23,8 +23,6 @@ from app.services.payments.ckassa import create_invoice_ckassa
 from app.services.payments.ckassa_sbp import create_sbp_payment as create_sbp_ckassa
 from uuid import uuid4
 from app.services.payments.cryptomus import link_to_heleket
-from app.services.payments.freekassa import generate_fk_link
-from app.services.payments.lava import LavaApi
 from app.services.payments.streampay import create_payment_streampay
 from loguru import logger
 
@@ -227,33 +225,10 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
 
     user = await models.User.get_user(user_id)
 
-    # формируем ссылку на оплату Lava
-    try:
-        lava = LavaApi()
-        lava_payment = await models.Payment.create_payment(
-            user=user,
-            method=models.PaymentMethod.LAVA,
-            amount=price,
-            continue_data=continue_data
-        )
-        order_id = f'sms_email_:{lava_payment.id}'
-        response = await lava.create_invoice(price, order_id=order_id)
-        invoice_id = response['data']['id']
-        lava_payment.invoice_id = invoice_id
-        lava_payment.order_id = order_id
-        await lava_payment.save()
-        lava_url = response['data']['url']
-    except Exception:
-        lava_url = None
-
-    payment_freekassa = await models.Payment.create_payment(
-        user=user,
-        method=models.PaymentMethod.FREEKASSA,
-        amount=price,
-        continue_data=continue_data
-    )
-    # формируем ссылку на оплату freekassa
-    other_url = generate_fk_link(price, payment_freekassa.id)
+    # Lava и FreeKassa больше не выставляются: кнопок для них в окнах выбора нет,
+    # а ссылки никуда не выводились. При этом на каждое открытие окна создавалось
+    # по записи в payments — за неделю набегало по 1610 штук на каждый способ,
+    # ни одной оплаченной. Вернуть способ = вернуть создание счёта и кнопку.
 
     payment_cryptomus = await models.Payment.create_payment(
         user=user,
@@ -388,11 +363,8 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'ckassa_url': ckassa_url,
         'sbp_ckassa_url': sbp_ckassa_url,
         'bank_card_url': streampay_url,
-        'SBP': lava_url if lava_url is not None else other_url,
-        'yoomoney_url': other_url,
         'stars': price,
         'crypto_url': cryptomus_url,
-        'other_url': other_url,
         'price': price,
         'country_id': country_id,
         'rent_country_code': rent_country_code,
@@ -405,7 +377,6 @@ async def send_payment_keyboard(m: Union[types.Message, types.CallbackQuery], ma
         'balance': int(user.balance),
     })
 
-    # await create_payment_keyboard(m, price, lava_url, sbp_url, other_url)
 
 
 async def switch_to_payment(c: types.CallbackQuery, button: Button, manager: DialogManager):
