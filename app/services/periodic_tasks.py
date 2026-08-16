@@ -564,12 +564,19 @@ async def _after_ckassa_credit(credited: dict) -> None:
         logger.opt(exception=e).warning(f"CKassa: не записано уведомление о пополнении, payment_id={payment.id}")
 
     try:
-        await bot.send_message(
-            chat_id=user.telegram_id,
-            text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
+        # Таймаут обязателен: подвисшая отправка держит весь проход, а джоб
+        # зарегистрирован с max_instances=1 — следующие запуски не стартуют.
+        await asyncio.wait_for(
+            bot.send_message(
+                chat_id=user.telegram_id,
+                text=f'<b>💰Баланс успешно пополнен на {amount}₽</b>'
+            ),
+            timeout=15,
         )
     except TelegramBadRequest:
         pass
+    except asyncio.TimeoutError:
+        logger.warning(f"CKassa: уведомление пользователю {user.telegram_id} не ушло за 15с (деньги зачислены)")
     except Exception as e:
         logger.opt(exception=e).warning(
             f"CKassa: не удалось уведомить пользователя {user.telegram_id} о пополнении на {amount}₽"
@@ -696,11 +703,28 @@ async def _run_ckassa_check(
             )
 
 
+# Потолок на весь проход. Джобы зарегистрированы с max_instances=1: если проход
+# зависнет (подвисший HTTP к сервису статусов или к Telegram при отправке
+# уведомления), новые запуски не стартуют и зачисления встают молча — ровно так
+# 16.08.2026 оплаты перестали зачисляться на несколько часов.
+CKASSA_MAIN_RUN_TIMEOUT = 300
+CKASSA_BACKLOG_RUN_TIMEOUT = 600
+
+
 async def check_payment_ckassa():
     """
     Асинхронная функция для проверки статуса платежей CKassa.
     """
-    await _run_ckassa_check(lookback_hours=2, limit=0, label="основной")
+    try:
+        await asyncio.wait_for(
+            _run_ckassa_check(lookback_hours=2, limit=0, label="основной"),
+            timeout=CKASSA_MAIN_RUN_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            f"CKassa (основной): проход не уложился в {CKASSA_MAIN_RUN_TIMEOUT}с и был прерван. "
+            f"Платежи остались в очереди, следующий проход продолжит."
+        )
 
 
 async def check_payment_ckassa_backlog():
@@ -713,13 +737,22 @@ async def check_payment_ckassa_backlog():
     Берёт самые старые: они ближе всего к краю окна и вот-вот пропадут насовсем.
     Свежие (моложе 2 часов) не трогает — их и так проверяет основной проход.
     """
-    await _run_ckassa_check(
-        lookback_hours=CKASSA_BACKLOG_HOURS,
-        min_age_hours=2,
-        limit=CKASSA_BACKLOG_LIMIT,
-        label="добор",
-        oldest_first=True,
-    )
+    try:
+        await asyncio.wait_for(
+            _run_ckassa_check(
+                lookback_hours=CKASSA_BACKLOG_HOURS,
+                min_age_hours=2,
+                limit=CKASSA_BACKLOG_LIMIT,
+                label="добор",
+                oldest_first=True,
+            ),
+            timeout=CKASSA_BACKLOG_RUN_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            f"CKassa (добор): проход не уложился в {CKASSA_BACKLOG_RUN_TIMEOUT}с и был прерван. "
+            f"Платежи остались в очереди, следующий проход продолжит."
+        )
 
 
 async def check_payment_cryptomus():
