@@ -8,6 +8,7 @@ from app.services.onlinesim.sms_client import OnlineSMS
 from tortoise.functions import Sum
 import html
 from tortoise import timezone
+from tortoise import Tortoise
 from loguru import logger
 from app import dependencies
 from app.db import models
@@ -2277,145 +2278,165 @@ async def process_referral_bonus(payment):
 
 FRAUD_DIFF_THRESHOLD = 1000.0
 
+# Автобан по расхождению баланса. Выключен по умолчанию: джоб долго не работал
+# (падал на лимите параметров asyncpg), а после аварии 15-16.08.2026 у части
+# пользователей баланс закономерно не сходится с пополнениями — ручные
+# компенсации, зачисления задним числом. Пока флаг выключен, джоб ничего
+# не меняет в БД и только присылает разработчику список кандидатов.
+# Включить: строка `FRAUD_AUTOBAN_ENABLED: true` в config.yaml и перезапуск.
+FRAUD_AUTOBAN_ENABLED = str(
+    dependencies.config.get('FRAUD_AUTOBAN_ENABLED', False)
+).strip().lower() in ('true', '1', 'yes')
+
+# Джоб крутится каждые 30 минут, но сводку в сухом режиме шлём редко.
+FRAUD_REPORT_INTERVAL_SEC = 6 * 3600
+FRAUD_REPORT_LIMIT = 15
+_fraud_last_report_at: float | None = None
+
+# Разница считается одним запросом на стороне БД.
+# Раньше три полные агрегации (payments/rents/activations) выгружались в память,
+# а список id подставлялся в IN (...). При десятках тысяч пользователей asyncpg
+# падал с "the number of query arguments cannot exceed 32767", и джоб не
+# отрабатывал вовсе — молча, потому что исключение гасилось общим except.
+# Список админов передаётся одним параметром-массивом, а не тысячей плейсхолдеров.
+_FRAUD_SQL = """
+WITH paid AS (
+    SELECT user_id, sum(amount) AS total
+    FROM payments WHERE is_success GROUP BY user_id
+), rent AS (
+    SELECT user_id, sum(cost) AS total
+    FROM rents WHERE sms_text IS NOT NULL AND sms_text <> '' GROUP BY user_id
+), act AS (
+    SELECT user_id, sum(cost) AS total
+    FROM activations WHERE sms_text IS NOT NULL AND sms_text <> '' GROUP BY user_id
+)
+SELECT u.id, u.telegram_id, u.username, u.balance, u.fraud_suspect_since,
+       coalesce(p.total, 0) AS total_paid,
+       coalesce(r.total, 0) AS total_rent,
+       coalesce(a.total, 0) AS total_act,
+       (coalesce(r.total, 0) + coalesce(a.total, 0) + u.balance - coalesce(p.total, 0)) AS diff
+FROM users u
+LEFT JOIN paid p ON p.user_id = u.id
+LEFT JOIN rent r ON r.user_id = u.id
+LEFT JOIN act  a ON a.user_id = u.id
+WHERE u.fraud_banned = false
+  AND NOT (u.telegram_id = ANY($1::bigint[]))
+  AND (
+        (coalesce(r.total, 0) + coalesce(a.total, 0) + u.balance - coalesce(p.total, 0)) > $2
+        OR u.fraud_suspect_since IS NOT NULL
+      )
+ORDER BY diff DESC
+"""
+
+
+async def _fraud_send_dry_report(rows: list) -> None:
+    """
+    Сухой режим: показываем, кого джоб забанил бы, и ничего не трогаем.
+    Шлём не чаще раза в FRAUD_REPORT_INTERVAL_SEC, иначе при интервале
+    в 30 минут разработчик утонет в одинаковых сводках.
+    """
+    global _fraud_last_report_at
+
+    now = time.monotonic()
+    if _fraud_last_report_at is not None and now - _fraud_last_report_at < FRAUD_REPORT_INTERVAL_SEC:
+        return
+    _fraud_last_report_at = now
+
+    top = rows[:FRAUD_REPORT_LIMIT]
+    lines = [
+        "🔍 Проверка расхождения баланса (режим наблюдения, баны выключены)",
+        f"кандидатов: {len(rows)}",
+        "",
+    ]
+    for r in top:
+        lines.append(
+            f"{r['telegram_id']} @{r['username'] or '-'}: "
+            f"разница {float(r['diff']):.0f}₽ "
+            f"(оплатил {float(r['total_paid']):.0f}, "
+            f"потратил {float(r['total_rent']) + float(r['total_act']):.0f}, "
+            f"баланс {float(r['balance']):.0f})"
+        )
+    if len(rows) > FRAUD_REPORT_LIMIT:
+        lines.append(f"... и ещё {len(rows) - FRAUD_REPORT_LIMIT}")
+    lines.append("")
+    lines.append("Включить бан: FRAUD_AUTOBAN_ENABLED: true в config.yaml")
+
+    try:
+        await send_coder("\n".join(lines))
+    except Exception as e:
+        logger.opt(exception=e).warning("Не удалось отправить сводку по расхождению баланса")
+
 
 async def check_fraud_balance_discrepancy() -> None:
     """
-    Ежечасная проверка по аналогии с /users_with_discrepancy:
-    если (расходы + баланс) - пополнения > FRAUD_DIFF_THRESHOLD → уведомляем CODER и баним пользователя (fraud_banned=True).
+    Ищет пользователей, у которых (расходы + баланс) - пополнения превышает
+    FRAUD_DIFF_THRESHOLD, то есть деньги на балансе взялись не из оплат.
+
+    При FRAUD_AUTOBAN_ENABLED=False (по умолчанию) ничего не меняет в БД,
+    только шлёт сводку. При True — работает как раньше: первое срабатывание
+    помечает подозрительным, второе банит.
     """
     try:
-        logger.bind(action="check_fraud_balance_discrepancy").info("Старт проверки fraud-дисбаланса")
+        admins = [int(a) for a in (dependencies.ADMINS or [])]
 
-        # --- агрегируем пополнения ---
-        payments = await models.Payment.filter(is_success=True).group_by("user_id").annotate(
-            total_paid=Sum("amount")
-        ).values("user_id", "total_paid")
+        conn = Tortoise.get_connection("default")
+        rows = (await conn.execute_query(_FRAUD_SQL, [admins, FRAUD_DIFF_THRESHOLD]))[1]
 
-        # --- агрегируем расходы (как в /users_with_discrepancy) ---
-        rents = await models.Rent.filter(
-            sms_text__isnull=False,
-        ).exclude(
-            sms_text=""
-        ).group_by("user_id").annotate(
-            total_rent_cost=Sum("cost")
-        ).values("user_id", "total_rent_cost")
-
-        activations = await models.Activation.filter(
-            sms_text__isnull=False,
-        ).exclude(
-            sms_text=""
-        ).group_by("user_id").annotate(
-            total_activation_cost=Sum("cost")
-        ).values("user_id", "total_activation_cost")
-
-        user_data: dict[int, dict[str, float]] = {}
-
-        def _get(uid: int) -> dict[str, float]:
-            if uid not in user_data:
-                user_data[uid] = {
-                    "total_paid": 0.0,
-                    "total_rent_cost": 0.0,
-                    "total_activation_cost": 0.0,
-                }
-            return user_data[uid]
-
-        for p in payments:
-            uid = p["user_id"]
-            _get(uid)["total_paid"] = float(p["total_paid"] or 0.0)
-
-        for r in rents:
-            uid = r["user_id"]
-            _get(uid)["total_rent_cost"] = float(r["total_rent_cost"] or 0.0)
-
-        for a in activations:
-            uid = a["user_id"]
-            _get(uid)["total_activation_cost"] = float(a["total_activation_cost"] or 0.0)
-
-        base_ids = set(user_data.keys())
-
-        # ✅ КЛЮЧЕВОЕ: добавляем пользователей с большим балансом,
-        # даже если у них нет записей в payments/rents/activations (например, баланс поправили руками).
-        extra_balance_ids = await models.User.filter(
-            fraud_banned=False,
-            balance__gt=FRAUD_DIFF_THRESHOLD,
-        ).exclude(
-            telegram_id__in=dependencies.ADMINS
-        ).values_list("id", flat=True)
-
-        for uid in extra_balance_ids:
-            _get(int(uid))  # создаём дефолтные нули, чтобы diff считался корректно
-
-        user_ids = list(base_ids.union(set(map(int, extra_balance_ids))))
-        if not user_ids:
-            logger.bind(action="check_fraud_balance_discrepancy").info("Нет данных для проверки (user_ids пуст)")
-            return
-
-        # берём только не забаненных fraud и НЕ админов
-        candidates = await models.User.filter(
-            id__in=user_ids,
-            fraud_banned=False,
-        ).exclude(
-            telegram_id__in=dependencies.ADMINS
-        )
+        over = [r for r in rows if float(r["diff"]) > FRAUD_DIFF_THRESHOLD]
 
         logger.bind(action="check_fraud_balance_discrepancy").info(
-            f"Кандидаты: {len(candidates)} (base={len(base_ids)}, extra_balance={len(extra_balance_ids)})"
+            f"Проверка расхождения: строк {len(rows)}, сверх порога {len(over)}, "
+            f"автобан {'включён' if FRAUD_AUTOBAN_ENABLED else 'ВЫКЛЮЧЕН (режим наблюдения)'}"
         )
+
+        if not FRAUD_AUTOBAN_ENABLED:
+            if over:
+                await _fraud_send_dry_report(over)
+            return
 
         now = timezone.now()
         pending_cutoff = now - datetime.timedelta(minutes=10)
         banned_count = 0
         suspect_count = 0
 
-        for user in candidates:
-            d = user_data.get(user.id, {})
-            total_paid = float(d.get("total_paid", 0.0) or 0.0)
-            total_rent_cost = float(d.get("total_rent_cost", 0.0) or 0.0)
-            total_activation_cost = float(d.get("total_activation_cost", 0.0) or 0.0)
-
-            total_spent = total_rent_cost + total_activation_cost
-            balance = float(getattr(user, "balance", 0.0) or 0.0)
-
-            diff = (total_spent + balance) - total_paid
+        for r in rows:
+            diff = float(r["diff"])
+            user_pk = r["id"]
 
             if diff <= FRAUD_DIFF_THRESHOLD:
-                # Дисбаланс пропал — снимаем подозрение если было
-                if user.fraud_suspect_since is not None:
-                    user.fraud_suspect_since = None
-                    await user.save(update_fields=["fraud_suspect_since"])
-                    logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").info(
+                # Дисбаланс пропал — снимаем подозрение, если оно было
+                if r["fraud_suspect_since"] is not None:
+                    await models.User.filter(id=user_pk).update(fraud_suspect_since=None)
+                    logger.bind(user_id=r["telegram_id"], action="check_fraud_balance_discrepancy").info(
                         f"Подозрение снято (diff={diff:.2f} ≤ порога)"
                     )
                 continue
 
-            # --- Вариант A: платёж в процессе? ---
-            # Если у пользователя есть незакрытый платёж за последние 10 минут —
-            # пропускаем итерацию: payment webhook ещё не записал is_success=True.
+            # Платёж мог быть только что оплачен, а зачисление ещё не прошло
             has_pending = await models.Payment.filter(
-                user_id=user.id,
+                user_id=user_pk,
                 is_success=False,
                 created_at__gte=pending_cutoff,
             ).exists()
-
             if has_pending:
-                logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").info(
+                logger.bind(user_id=r["telegram_id"], action="check_fraud_balance_discrepancy").info(
                     f"Fraud skip: есть pending-платёж за последние 10 мин, diff={diff:.2f}"
                 )
                 continue
 
-            # --- Вариант B: двойная проверка ---
-            # Первое срабатывание → ставим флаг подозрения, не баним.
-            # Второе срабатывание (следующий запуск) → баним.
-            if user.fraud_suspect_since is None:
-                user.fraud_suspect_since = now
-                await user.save(update_fields=["fraud_suspect_since"])
+            # Первое срабатывание — только подозрение, бан на следующем проходе
+            if r["fraud_suspect_since"] is None:
+                await models.User.filter(id=user_pk).update(fraud_suspect_since=now)
                 suspect_count += 1
-                logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").warning(
+                logger.bind(user_id=r["telegram_id"], action="check_fraud_balance_discrepancy").warning(
                     f"Fraud suspect: первое срабатывание, diff={diff:.2f}. Бан — на следующей проверке."
                 )
                 continue
 
-            # --- Второе+ срабатывание: баним ---
+            user = await models.User.get_or_none(id=user_pk)
+            if not user:
+                continue
+
             user.fraud_banned = True
             user.fraud_suspect_since = None
             update_fields = ["fraud_banned", "fraud_suspect_since"]
@@ -2423,11 +2444,9 @@ async def check_fraud_balance_discrepancy() -> None:
             if hasattr(user, "fraud_banned_reason"):
                 user.fraud_banned_reason = f"auto: (spent+balance)-paid > {FRAUD_DIFF_THRESHOLD}"
                 update_fields.append("fraud_banned_reason")
-
             if hasattr(user, "fraud_banned_diff"):
                 user.fraud_banned_diff = float(diff)
                 update_fields.append("fraud_banned_diff")
-
             if hasattr(user, "fraud_banned_at"):
                 user.fraud_banned_at = now
                 update_fields.append("fraud_banned_at")
@@ -2435,20 +2454,20 @@ async def check_fraud_balance_discrepancy() -> None:
             await user.save(update_fields=update_fields)
             banned_count += 1
 
-            username = getattr(user, "username", None) or "-"
-
+            total_paid = float(r["total_paid"])
+            total_spent = float(r["total_rent"]) + float(r["total_act"])
             msg = (
                 "🚨 AUTO-FRAUD BAN\n"
-                f"telegram_id: {user.telegram_id}\n"
-                f"username: @{username}\n"
+                f"telegram_id: {r['telegram_id']}\n"
+                f"username: @{r['username'] or '-'}\n"
                 f"оплаты: {total_paid:.2f}\n"
-                f"потрачено: {total_spent:.2f} (rent={total_rent_cost:.2f} + act={total_activation_cost:.2f})\n"
-                f"баланс: {balance:.2f}\n"
+                f"потрачено: {total_spent:.2f} (rent={float(r['total_rent']):.2f} + act={float(r['total_act']):.2f})\n"
+                f"баланс: {float(r['balance']):.2f}\n"
                 f"разница: {diff:.2f}\n"
                 f"порог: {FRAUD_DIFF_THRESHOLD:.2f}\n"
             )
             kb = InlineKeyboardBuilder()
-            kb.button(text="✅ Разбанить", callback_data=f"fraud_unban:{user.telegram_id}")
+            kb.button(text="✅ Разбанить", callback_data=f"fraud_unban:{r['telegram_id']}")
 
             await send_coder(msg, reply_markup=kb.as_markup())
 
@@ -2465,7 +2484,7 @@ async def check_fraud_balance_discrepancy() -> None:
 
             try:
                 await bot.send_message(
-                    chat_id=user.telegram_id,
+                    chat_id=r["telegram_id"],
                     text=(
                         "🚫 Доступ ограничен.\n\n"
                         "Обнаружено несоответствие баланса и пополнений.\n"
@@ -2476,7 +2495,7 @@ async def check_fraud_balance_discrepancy() -> None:
             except Exception:
                 pass
 
-            logger.bind(user_id=user.telegram_id, action="check_fraud_balance_discrepancy").warning(
+            logger.bind(user_id=r["telegram_id"], action="check_fraud_balance_discrepancy").warning(
                 f"Пользователь fraud_banned=True, diff={diff:.2f}"
             )
 
@@ -2486,6 +2505,7 @@ async def check_fraud_balance_discrepancy() -> None:
 
     except Exception as e:
         logger.opt(exception=e).error("Ошибка в check_fraud_balance_discrepancy")
+
 
 async def auto_fix_users_balance_discrepancy() -> None:
     """
