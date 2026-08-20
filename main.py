@@ -24,7 +24,7 @@ from app.services.periodic_tasks import (
     check_payment_freekassa, check_payment_anypay, check_payment_streampay,
     check_payment_ckassa, check_payment_ckassa_backlog, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
-    refund_and_cleanup_expired_sms, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
+    refund_and_cleanup_expired_sms, watch_refund_backlog, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
     check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments
 )
 from app.services.set_bot_commands import set_default_commands
@@ -227,6 +227,15 @@ def set_scheduled_jobs(scheduler):
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=10,
+            )
+
+            # Сторож: деньги за неполученные SMS реально возвращаются пользователям
+            scheduler.add_job(
+                watch_refund_backlog,
+                "interval",
+                minutes=15,
+                max_instances=1,
+                coalesce=True,
             )
 
             # Обновление цен SMSFast (кэш price_smsfast)

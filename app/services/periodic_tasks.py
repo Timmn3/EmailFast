@@ -47,6 +47,21 @@ from app.db.models import Activation, StatusResponse
 from app.dependencies import bot, FREE_FIRSTMAIL_ACTIVE_DAYS, FREE_FIRSTMAIL_IDLE_DAYS
 
 
+# Потолок на весь проход. Джоба зарегистрирована с max_instances=1: если проход
+# зависнет (подвисший HTTP к Telegram при удалении сообщения или отправке
+# уведомления), новые запуски молча перестают стартовать и возвраты встают
+# насмерть — ровно так 17.08.2026 они прекратились и не работали трое суток,
+# оставив 140 активаций на 10 241 ₽ без возврата.
+REFUND_RUN_TIMEOUT = 240
+
+# Потолок на один вызов Telegram: один недоступный чат не должен съесть проход.
+REFUND_TELEGRAM_CALL_TIMEOUT = 20
+
+# Максимум активаций за проход. Ограничивает время прохода на большом
+# накопившемся хвосте; остаток разберут следующие запуски.
+REFUND_BATCH_LIMIT = 200
+
+
 async def refund_and_cleanup_expired_sms() -> None:
     """
     Находит истёкшие активации, по которым не пришло СМС (WAIT_CODE),
@@ -58,9 +73,18 @@ async def refund_and_cleanup_expired_sms() -> None:
     - Переводим в CANCEL и возвращаем деньги строго один раз
     """
     try:
-        await _refund_and_cleanup_expired_sms_impl()
+        await asyncio.wait_for(
+            _refund_and_cleanup_expired_sms_impl(),
+            timeout=REFUND_RUN_TIMEOUT,
+        )
     except (TimeoutError, asyncio.TimeoutError):
-        logger.warning("refund_and_cleanup_expired_sms: timeout при подключении к БД, пропускаем итерацию")
+        # Сюда попадают и таймаут подключения к БД, и прерывание всего прохода.
+        # Возвраты идемпотентны (лок + повторная проверка статуса под ним),
+        # поэтому обрыв безопасен: следующий проход продолжит с того же места.
+        logger.warning(
+            f"refund_and_cleanup_expired_sms: проход прерван по таймауту "
+            f"({REFUND_RUN_TIMEOUT}с) либо БД недоступна, следующий проход продолжит"
+        )
     except asyncio.CancelledError:
         pass
 
@@ -69,10 +93,16 @@ async def _refund_and_cleanup_expired_sms_impl() -> None:
     now = timezone.now()
 
     # Берём только ID (чтобы не тащить user relation и не работать со "старыми" объектами)
-    expired_ids = await Activation.filter(
-        activation_expire_at__lte=now,
-        status=StatusResponse.STATUS_WAIT_CODE,
-    ).values_list("id", flat=True)
+    # Самые старые первыми: по ним деньги пользователя висят дольше всего.
+    expired_ids = await (
+        Activation.filter(
+            activation_expire_at__lte=now,
+            status=StatusResponse.STATUS_WAIT_CODE,
+        )
+        .order_by("activation_expire_at")
+        .limit(REFUND_BATCH_LIMIT)
+        .values_list("id", flat=True)
+    )
 
     if not expired_ids:
         return
@@ -143,7 +173,10 @@ async def _refund_and_cleanup_expired_sms_impl() -> None:
             # 1) Пытаемся удалить выданное ранее сообщение с номером
             if service_msg_id:
                 try:
-                    await bot.delete_message(chat_id=user_tg_id, message_id=service_msg_id)
+                    await asyncio.wait_for(
+                        bot.delete_message(chat_id=user_tg_id, message_id=service_msg_id),
+                        timeout=REFUND_TELEGRAM_CALL_TIMEOUT,
+                    )
                     logger.info(
                         f"🗑 Удалено сервисное сообщение: activation_id={ext_activation_id}, msg_id={service_msg_id}"
                     )
@@ -152,10 +185,13 @@ async def _refund_and_cleanup_expired_sms_impl() -> None:
 
             # 2) Уведомление пользователю
             try:
-                await bot.send_message(
-                    chat_id=user_tg_id,
-                    text=bt.SMS_NOT_RECEIVED,
-                    parse_mode="HTML",
+                await asyncio.wait_for(
+                    bot.send_message(
+                        chat_id=user_tg_id,
+                        text=bt.SMS_NOT_RECEIVED,
+                        parse_mode="HTML",
+                    ),
+                    timeout=REFUND_TELEGRAM_CALL_TIMEOUT,
                 )
             except Exception as e:
                 logger.warning(f"Не удалось отправить уведомление пользователю {user_tg_id}: {e}")
@@ -168,6 +204,69 @@ async def _refund_and_cleanup_expired_sms_impl() -> None:
         except Exception as e:
             logger.opt(exception=e).error(f"Ошибка при обработке истёкшей активации pk={activation_pk}")
 
+
+# Сколько активация может висеть просроченной, прежде чем это считается аварией.
+# Активация живёт 14 минут, джоба ходит раз в 20 секунд, поэтому в норме возврат
+# случается в пределах минуты после истечения. 30 минут — заведомо ненормально.
+REFUND_WATCHDOG_STALE_MINUTES = 30
+
+# Не чаще одного алерта в час, чтобы авария не превратилась в спам.
+REFUND_WATCHDOG_ALERT_COOLDOWN = 3600
+
+_refund_watchdog_last_alert = 0.0
+
+
+async def watch_refund_backlog() -> None:
+    """
+    Сторож автовозвратов: следит, что деньги за неполученные SMS реально уходят
+    обратно пользователям.
+
+    Зачем: 17.08.2026 джоба возвратов молча зависла и не работала трое суток —
+    140 активаций на 10 241 ₽ остались без возврата, и вскрылось это только через
+    жалобы пользователей. Потолок на проход закрывает ту конкретную причину, а
+    сторож ловит любую следующую: он смотрит не на джобу, а на результат её работы.
+    """
+    global _refund_watchdog_last_alert
+
+    try:
+        threshold = timezone.now() - datetime.timedelta(minutes=REFUND_WATCHDOG_STALE_MINUTES)
+        stale_costs = await Activation.filter(
+            activation_expire_at__lte=threshold,
+            status=StatusResponse.STATUS_WAIT_CODE,
+        ).values_list("cost", flat=True)
+
+        if not stale_costs:
+            return
+
+        count = len(stale_costs)
+        money = round(sum(float(c or 0.0) for c in stale_costs), 2)
+
+        logger.error(
+            f"Сторож возвратов: {count} активаций на {money}₽ висят просроченными "
+            f"дольше {REFUND_WATCHDOG_STALE_MINUTES} мин — возвраты не отрабатывают"
+        )
+
+        # Алерт с холодным стартом: первым срабатыванием после запуска бота
+        # сообщаем сразу, дальше — не чаще раза в час.
+        now_ts = time.monotonic()
+        if _refund_watchdog_last_alert and now_ts - _refund_watchdog_last_alert < REFUND_WATCHDOG_ALERT_COOLDOWN:
+            return
+        _refund_watchdog_last_alert = now_ts
+
+        await send_coder(
+            f"""🚨 Автовозвраты за SMS встали
+──────────────
+⏳ Зависло: {count} активаций
+💰 Не возвращено: {money} ₽
+🕒 Просрочены дольше: {REFUND_WATCHDOG_STALE_MINUTES} мин
+
+Джоба refund_and_cleanup_expired_sms не разгребает очередь. Проверь логи и перезапусти бота."""
+        )
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.opt(exception=e).error("Сторож возвратов: не удалось проверить очередь")
 
 
 async def check_payment_lava():
