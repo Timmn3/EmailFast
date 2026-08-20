@@ -27,7 +27,7 @@ from app.services.periodic_tasks import (
     refund_and_cleanup_expired_sms, watch_refund_backlog, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
     check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments,
     guard_job, JOB_TIMEOUT_FAST, JOB_TIMEOUT_NORMAL, JOB_TIMEOUT_SLOW, JOB_TIMEOUT_BULK,
-    JOB_TIMEOUT_FIRSTMAIL_IDLE, JOB_TIMEOUT_SMSFAST_PRICES,
+    JOB_TIMEOUT_FIRSTMAIL_IDLE, JOB_TIMEOUT_SMSFAST_PRICES, report_job_durations,
 )
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -230,6 +230,16 @@ def set_scheduled_jobs(scheduler):
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=10,
+            )
+
+            # Отчёт о фактических длительностях проходов: по нему видно,
+            # какой потолок задан слишком туго, а какой можно опустить
+            scheduler.add_job(
+                guard_job(report_job_durations, JOB_TIMEOUT_FAST),
+                "interval",
+                hours=1,
+                max_instances=1,
+                coalesce=True,
             )
 
             # Сторож: деньги за неполученные SMS реально возвращаются пользователям

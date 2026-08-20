@@ -84,6 +84,49 @@ JOB_TIMEOUT_FIRSTMAIL_IDLE = 7200
 JOB_TIMEOUT_SMSFAST_PRICES = 10800
 
 
+# Фактические длительности проходов. Нужны, чтобы потолки калибровались по
+# замерам, а не по догадкам: 20.08.2026 потолок для update_smsfast_prices был
+# занижен втрое именно потому, что реальную длительность никто не мерил, и
+# обновление цен молча обрывалось на 15-й стране из 202.
+_job_durations: dict = {}
+
+
+def _record_job_duration(name: str, elapsed: float, timed_out: bool = False) -> None:
+    """Копит статистику по одной задаче; отчёт печатает report_job_durations."""
+    stat = _job_durations.setdefault(
+        name, {"runs": 0, "max": 0.0, "total": 0.0, "timeouts": 0}
+    )
+    if timed_out:
+        stat["timeouts"] += 1
+        return
+    stat["runs"] += 1
+    stat["total"] += elapsed
+    stat["max"] = max(stat["max"], elapsed)
+
+
+async def report_job_durations() -> None:
+    """
+    Раз в час пишет в лог, сколько на самом деле идут проходы фоновых задач.
+
+    Одна строка на задачу: максимум, среднее, число проходов и обрывов. По ней
+    видно, какой потолок стоит слишком туго, а какой можно опустить.
+    """
+    if not _job_durations:
+        return
+
+    snapshot = _job_durations.copy()
+    _job_durations.clear()
+
+    for name, stat in sorted(snapshot.items(), key=lambda kv: -kv[1]["max"]):
+        runs = stat["runs"]
+        average = stat["total"] / runs if runs else 0.0
+        oborvano = f", обрывов {stat['timeouts']}" if stat["timeouts"] else ""
+        logger.info(
+            f"Длительность проходов | {name}: макс {stat['max']:.1f}с, "
+            f"средн {average:.1f}с, проходов {runs}{oborvano}"
+        )
+
+
 def guard_job(func, timeout: float):
     """
     Оборачивает фоновую задачу потолком времени выполнения.
@@ -110,15 +153,18 @@ def guard_job(func, timeout: float):
                 f"Фоновая задача '{func.__name__}' прервана по таймауту {timeout:.0f}с — "
                 f"проход завис, следующий запуск продолжит"
             )
+            _record_job_duration(func.__name__, timeout, timed_out=True)
             return
         except asyncio.CancelledError:
             return
         # Прочие исключения намеренно не ловим: их логирует job_listener в main.py
 
+        elapsed = time.monotonic() - started
+        _record_job_duration(func.__name__, elapsed)
+
         # Раннее предупреждение о том, что потолок задан слишком туго: пока проход
         # укладывается, но подобрался к лимиту. Лучше увидеть это в логах заранее,
         # чем обнаружить по оборванным проходам.
-        elapsed = time.monotonic() - started
         if elapsed > timeout / 2:
             logger.warning(
                 f"Фоновая задача '{func.__name__}' шла {elapsed:.0f}с при потолке "
