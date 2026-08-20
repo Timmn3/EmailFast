@@ -68,6 +68,7 @@ async def update_smsfast_prices() -> None:
             if not isinstance(services_payload, dict):
                 continue
 
+            rows = []
             for service_code, payload in services_payload.items():
                 # payload может содержать 'price' или 'cost'
                 price_raw = None
@@ -93,12 +94,24 @@ async def update_smsfast_prices() -> None:
                     except (TypeError, ValueError):
                         count_value = None
 
-                # Обновляем или добавляем запись в таблицу PriceSmsFast
-                await PriceSmsFast.add_or_update_price(
+                rows.append(PriceSmsFast(
                     country=country_id,
                     service_code=service_code,
                     price=price_value,
-                    count=count_value
+                    count=count_value,
+                ))
+
+            if rows:
+                # Пачкой, а не по одной записи: БД стоит на отдельном сервере
+                # (RTT около 40мс), а поштучный add_or_update_price делал на
+                # каждый сервис два запроса — SELECT и UPDATE. При сотне сервисов
+                # на страну это давало больше восьми секунд сетевых ожиданий, и
+                # именно запись, а не запросы к API, растягивала проход на часы.
+                # on_conflict опирается на уникальный индекс (country, service_code).
+                await PriceSmsFast.bulk_create(
+                    rows,
+                    update_fields=["price", "count"],
+                    on_conflict=["country", "service_code"],
                 )
 
             logger.info(f"SMSFast prices loaded for country {country_id}")
