@@ -25,7 +25,9 @@ from app.services.periodic_tasks import (
     check_payment_ckassa, check_payment_ckassa_backlog, check_rent_sms, rents_ending_soon, close_rent,
     checking_inactive_rent, auto_renewal_of_rent, send_coder, check_payment_cryptomus, notify_week_expiration,
     refund_and_cleanup_expired_sms, watch_refund_backlog, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
-    check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments
+    check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments,
+    guard_job, JOB_TIMEOUT_FAST, JOB_TIMEOUT_NORMAL, JOB_TIMEOUT_SLOW, JOB_TIMEOUT_BULK,
+    JOB_TIMEOUT_FIRSTMAIL_IDLE,
 )
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -36,6 +38,7 @@ from app.services import bot_texts as bt
 from app.dependencies import dp
 import signal
 import logging
+import time
 
 # Версия для отображения/отладки
 msg_text = "Версия 24.06.2026"
@@ -217,7 +220,7 @@ def set_scheduled_jobs(scheduler):
     try:
         if ON_SCHEDULE:
             # Проверка SMS
-            scheduler.add_job(check_sms, "interval", seconds=30, max_instances=10)
+            scheduler.add_job(guard_job(check_sms, JOB_TIMEOUT_NORMAL), "interval", seconds=30, max_instances=10)
 
             # Находит истёкшие активации, по которым не пришло СМС
             scheduler.add_job(
@@ -231,7 +234,7 @@ def set_scheduled_jobs(scheduler):
 
             # Сторож: деньги за неполученные SMS реально возвращаются пользователям
             scheduler.add_job(
-                watch_refund_backlog,
+                guard_job(watch_refund_backlog, JOB_TIMEOUT_FAST),
                 "interval",
                 minutes=15,
                 max_instances=1,
@@ -239,16 +242,16 @@ def set_scheduled_jobs(scheduler):
             )
 
             # Обновление цен SMSFast (кэш price_smsfast)
-            scheduler.add_job(update_smsfast_prices, "interval", minutes=30, max_instances=1)
+            scheduler.add_job(guard_job(update_smsfast_prices, JOB_TIMEOUT_NORMAL), "interval", minutes=30, max_instances=1)
                 
             # Проверка пользователей на пополнение и расходы (бан)
-            scheduler.add_job(check_fraud_balance_discrepancy, "interval", minutes=30, max_instances=1)
+            scheduler.add_job(guard_job(check_fraud_balance_discrepancy, JOB_TIMEOUT_NORMAL), "interval", minutes=30, max_instances=1)
 
             # Бесплатная почта: выбираем только один провайдер
             if FREE_EMAIL_PROVIDER == "firstmail":
                 logger.info("Scheduler: включён бесплатный FirstMail, legacy mail.tm-задачи отключены")
                 scheduler.add_job(
-                    check_free_firstmail,
+                    guard_job(check_free_firstmail, JOB_TIMEOUT_SLOW),
                     "interval",
                     seconds=60,
                     max_instances=1,
@@ -259,7 +262,7 @@ def set_scheduled_jobs(scheduler):
                 # Ящики «спящих» пользователей — редко и отдельной задачей,
                 # чтобы не тормозить проверку тех, кто сейчас в боте
                 scheduler.add_job(
-                    check_free_firstmail_idle,
+                    guard_job(check_free_firstmail_idle, JOB_TIMEOUT_FIRSTMAIL_IDLE),
                     "interval",
                     minutes=15,
                     max_instances=1,
@@ -270,22 +273,22 @@ def set_scheduled_jobs(scheduler):
                 logger.info("Scheduler: включён legacy mail.tm")
 
                 # Проверка Email mail.tm
-                scheduler.add_job(check_email, "interval", seconds=60, max_instances=3)
+                scheduler.add_job(guard_job(check_email, JOB_TIMEOUT_NORMAL), "interval", seconds=60, max_instances=3)
 
                 # Проверка истечения срока почты и уведомления
                 scheduler.add_job(
-                    check_mail_expiration_and_notify,
+                    guard_job(check_mail_expiration_and_notify, JOB_TIMEOUT_NORMAL),
                     "interval",
                     minutes=20,
                     max_instances=3,
                 )
 
                 # Проверка истечения срока почты арендованной на неделю
-                scheduler.add_job(notify_week_expiration, "interval", minutes=10)
+                scheduler.add_job(guard_job(notify_week_expiration, JOB_TIMEOUT_NORMAL), "interval", minutes=10)
 
             # Проверка арендованных FirstMail-ящиков
             scheduler.add_job(
-                check_rental_email,
+                guard_job(check_rental_email, JOB_TIMEOUT_SLOW),
                 "interval",
                 seconds=60,
                 max_instances=1,
@@ -295,7 +298,7 @@ def set_scheduled_jobs(scheduler):
 
             # Автоосвобождение просроченных FirstMail-аренд
             scheduler.add_job(
-                close_expired_rental_email_leases,
+                guard_job(close_expired_rental_email_leases, JOB_TIMEOUT_NORMAL),
                 "interval",
                 minutes=10,
                 max_instances=1,
@@ -305,7 +308,7 @@ def set_scheduled_jobs(scheduler):
 
             # Уведомление о завершении бесплатной недели FirstMail
             scheduler.add_job(
-                notify_rental_free_week_expiration,
+                guard_job(notify_rental_free_week_expiration, JOB_TIMEOUT_NORMAL),
                 "interval",
                 minutes=10,
                 max_instances=1,
@@ -315,7 +318,7 @@ def set_scheduled_jobs(scheduler):
 
             # Уведомление об истечении аренды FirstMail
             scheduler.add_job(
-                notify_rental_email_expiration,
+                guard_job(notify_rental_email_expiration, JOB_TIMEOUT_NORMAL),
                 "interval",
                 minutes=10,
                 max_instances=1,
@@ -338,38 +341,38 @@ def set_scheduled_jobs(scheduler):
             )
 
             # Проверка платежей через Streampay
-            scheduler.add_job(check_payment_streampay, "interval", seconds=48, max_instances=10)
+            scheduler.add_job(guard_job(check_payment_streampay, JOB_TIMEOUT_NORMAL), "interval", seconds=48, max_instances=10)
 
             # Проверка платежей через FreeKassa
-            scheduler.add_job(check_payment_freekassa, "interval", seconds=43, max_instances=10)
+            scheduler.add_job(guard_job(check_payment_freekassa, JOB_TIMEOUT_NORMAL), "interval", seconds=43, max_instances=10)
 
             # Проверка платежей через Anypay
-            scheduler.add_job(check_payment_anypay, "interval", seconds=60, max_instances=10)
+            scheduler.add_job(guard_job(check_payment_anypay, JOB_TIMEOUT_NORMAL), "interval", seconds=60, max_instances=10)
 
             # Проверка платежей через cryptomus
-            scheduler.add_job(check_payment_cryptomus, "interval", seconds=90, max_instances=10)
+            scheduler.add_job(guard_job(check_payment_cryptomus, JOB_TIMEOUT_NORMAL), "interval", seconds=90, max_instances=10)
 
             # Добавление\обновление сервисов
-            scheduler.add_job(add_services, "cron", hour=3, minute=0)
+            scheduler.add_job(guard_job(add_services, JOB_TIMEOUT_BULK), "cron", hour=3, minute=0)
 
             # Проверка арендованных SMS
-            scheduler.add_job(check_rent_sms, "interval", seconds=55, max_instances=10)
+            scheduler.add_job(guard_job(check_rent_sms, JOB_TIMEOUT_NORMAL), "interval", seconds=55, max_instances=10)
 
             # Уведомление об аренде, которая скоро завершится
-            scheduler.add_job(rents_ending_soon, "interval", minutes=10, max_instances=3)
+            scheduler.add_job(guard_job(rents_ending_soon, JOB_TIMEOUT_NORMAL), "interval", minutes=10, max_instances=3)
 
             # Автопродление аренды за 2 часа до окончания
-            scheduler.add_job(auto_renewal_of_rent, "interval", minutes=10, max_instances=3)
+            scheduler.add_job(guard_job(auto_renewal_of_rent, JOB_TIMEOUT_NORMAL), "interval", minutes=10, max_instances=3)
 
             # Завершение аренды
-            scheduler.add_job(close_rent, "interval", minutes=10, max_instances=3)
+            scheduler.add_job(guard_job(close_rent, JOB_TIMEOUT_NORMAL), "interval", minutes=10, max_instances=3)
 
             # Проверка незавершенных аренд
-            scheduler.add_job(checking_inactive_rent, "interval", minutes=20, max_instances=3)
+            scheduler.add_job(guard_job(checking_inactive_rent, JOB_TIMEOUT_NORMAL), "interval", minutes=20, max_instances=3)
 
             # Уведомление неактивным пользователям (30+ дней без активности → скидка 15%)
             scheduler.add_job(
-                notify_inactive_users,
+                guard_job(notify_inactive_users, JOB_TIMEOUT_BULK),
                 "interval",
                 hours=6,
                 max_instances=1,
@@ -379,7 +382,7 @@ def set_scheduled_jobs(scheduler):
 
             # Напоминание о незавершённой оплате SMS-номера (через 3 часа после создания счёта)
             scheduler.add_job(
-                notify_unpaid_sms_payments,
+                guard_job(notify_unpaid_sms_payments, JOB_TIMEOUT_NORMAL),
                 "interval",
                 minutes=5,
                 max_instances=1,
@@ -393,11 +396,59 @@ def set_scheduled_jobs(scheduler):
         logger.opt(exception=e).error("Ошибка при добавлении задач в планировщик")
 # === Фильтры для подавления лишних логов apscheduler ===
 class SkipSpecificLogFilter(logging.Filter):
+    """
+    Гасит спам APScheduler о пропуске запуска (max_instances), но раз в
+    SUMMARY_INTERVAL выпускает по каждой задаче сводку.
+
+    Полное молчание опасно: для такого пропуска APScheduler не шлёт событий,
+    и эта запись в логе — единственный признак того, что предыдущий проход
+    ещё выполняется. 17.08.2026 задача возвратов подвисла, все её пропуски
+    гасились здесь, и авария оставалась невидимой трое суток.
+
+    Регулярные пропуски бывают и штатно: скан спящих FirstMail-ящиков идёт
+    дольше своего интервала. Поэтому не выключаем подавление совсем, а
+    сжимаем поток в редкую сводку.
+    """
+
+    SUMMARY_INTERVAL = 600
+
+    def __init__(self):
+        super().__init__()
+        self._skips = {}          # задача -> сколько пропусков накопилось
+        self._last_summary = {}   # задача -> когда последний раз отчитывались
+
+    @staticmethod
+    def _job_name(message: str) -> str:
+        """Достаёт имя задачи из 'Execution of job "<name> (trigger: ...)" skipped: ...'."""
+        try:
+            return message.split('job "', 1)[1].split(" (trigger", 1)[0]
+        except Exception:
+            return "неизвестная"
+
     def filter(self, record):
-        return not (
-            "Execution of job" in record.getMessage() and
-            "skipped: maximum number of running instances reached" in record.getMessage()
-        )
+        message = record.getMessage()
+        if not (
+            "Execution of job" in message and
+            "skipped: maximum number of running instances reached" in message
+        ):
+            return True
+
+        job = self._job_name(message)
+        self._skips[job] = self._skips.get(job, 0) + 1
+
+        now = time.monotonic()
+        last = self._last_summary.get(job)
+        if last is None or now - last >= self.SUMMARY_INTERVAL:
+            skipped = self._skips[job]
+            za = f" за {int(now - last)}с" if last is not None else ""
+            logger.warning(
+                f"Фоновая задача '{job}' — пропущено запусков: {skipped}{za}, "
+                f"предыдущий проход ещё выполняется"
+            )
+            self._skips[job] = 0
+            self._last_summary[job] = now
+
+        return False
 
 
 class MissedJobLogFilter(logging.Filter):

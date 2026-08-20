@@ -1,5 +1,6 @@
 import json
 import time
+import functools
 from math import floor
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import types
@@ -45,6 +46,75 @@ from tortoise.transactions import in_transaction
 from app.db import models
 from app.db.models import Activation, StatusResponse
 from app.dependencies import bot, FREE_FIRSTMAIL_ACTIVE_DAYS, FREE_FIRSTMAIL_IDLE_DAYS
+
+
+# === Потолок времени для фоновых задач ===
+#
+# Задачи APScheduler по умолчанию идут с max_instances=1, и при зависшем проходе
+# планировщик молча перестаёт запускать новые: события для такого пропуска он не
+# шлёт, а единственную запись в лог гасит фильтр в main.py. Задача умирает
+# беззвучно до перезапуска бота — так 16.08.2026 встали зачисления CKassa, а
+# 17.08.2026 на трое суток встали возвраты за неполученные SMS (140 активаций,
+# 10 233 руб, 102 человека; вскрылось только через жалобы).
+#
+# Таймауты подобраны заведомо больше нормального времени прохода: задача —
+# не оборвать медленный, но живой проход, а не дать зависшему висеть вечно.
+# Прерывание безопасно: проходы идемпотентны и продолжат со следующего запуска.
+
+JOB_TIMEOUT_FAST = 120      # пара запросов в БД + одиночные сообщения
+JOB_TIMEOUT_NORMAL = 600    # проход по списку с сетевым вызовом на каждом шаге
+JOB_TIMEOUT_SLOW = 900      # IMAP-обходы ящиков
+JOB_TIMEOUT_BULK = 3600     # массовые рассылки по всей базе
+
+# Отдельно для скана «спящих» FirstMail-ящиков: он легально идёт очень долго
+# (зафиксированный максимум — 3700с), а _scan_free_firstmail всегда обходит
+# список с начала. Слишком тугой потолок срезал бы хвост списка, и ящики в
+# конце перестали бы проверяться совсем. Берём запас вдвое.
+JOB_TIMEOUT_FIRSTMAIL_IDLE = 7200
+
+
+def guard_job(func, timeout: float):
+    """
+    Оборачивает фоновую задачу потолком времени выполнения.
+
+    Обёртка, а не правка тела каждой задачи: логика задач не трогается, потолок
+    ставится единообразно в одном месте при регистрации в планировщике.
+
+    :param func: корутинная функция-задача (вызывается без аргументов)
+    :param timeout: потолок на один проход в секундах
+    :return: обёрнутая корутинная функция с тем же __name__
+    """
+
+    # wraps обязателен: APScheduler берёт имя задачи из __name__ функции и
+    # подставляет его в свои сообщения ("Execution of job ... skipped"). Без
+    # wraps все задачи стали бы одинаковыми "guarded", и сводки о пропусках
+    # в main.py перестали бы показывать, какая именно задача залипла.
+    @functools.wraps(func)
+    async def guarded() -> None:
+        started = time.monotonic()
+        try:
+            await asyncio.wait_for(func(), timeout=timeout)
+        except (TimeoutError, asyncio.TimeoutError):
+            logger.error(
+                f"Фоновая задача '{func.__name__}' прервана по таймауту {timeout:.0f}с — "
+                f"проход завис, следующий запуск продолжит"
+            )
+            return
+        except asyncio.CancelledError:
+            return
+        # Прочие исключения намеренно не ловим: их логирует job_listener в main.py
+
+        # Раннее предупреждение о том, что потолок задан слишком туго: пока проход
+        # укладывается, но подобрался к лимиту. Лучше увидеть это в логах заранее,
+        # чем обнаружить по оборванным проходам.
+        elapsed = time.monotonic() - started
+        if elapsed > timeout / 2:
+            logger.warning(
+                f"Фоновая задача '{func.__name__}' шла {elapsed:.0f}с при потолке "
+                f"{timeout:.0f}с — потолок стоит поднять"
+            )
+
+    return guarded
 
 
 # Потолок на весь проход. Джоба зарегистрирована с max_instances=1: если проход
