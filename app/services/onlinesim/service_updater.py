@@ -16,31 +16,59 @@ def _make_search_names(code: str, name: str) -> str:
 
 
 async def insert_services(country_id: int, services):
+    """
+    Обновляет цены сервисов одной страны.
+
+    Пишет пачками, а не по одной записи: БД стоит на отдельном сервере
+    (RTT около 40мс), а прежний вариант делал на каждый сервис UPDATE и, при
+    промахе, ещё и CREATE. При двух сотнях сервисов на страну это давало
+    порядка двадцати секунд сетевых ожиданий, и весь проход по справочнику
+    растягивался почти на час (замер на бою 21.08.2026 — 2969с).
+
+    Теперь на страну уходит три запроса: выборка существующих строк, одно
+    пачечное обновление и одна пачечная вставка.
+    """
     try:
         # Получаем экземпляр CountryOnlinesim по country_id
         await CountriesOnlinesim.get(country_id=country_id)
     except DoesNotExist:
         return  # Прекращаем выполнение, если страна не найдена
 
-    for service in services:
-        # Обновляем данные сервиса или создаем новый, если он не существует
-        updated_count = await PriceOnlinesim.filter(
-            name=service["service"],
-            country=country_id
-        ).update(
-            price=float(service["price"]),
-            code=service["slug"]
-        )
+    if not services:
+        return
 
-        # Проверяем, был ли обновлён существующий сервис
-        if updated_count == 0:
-            # Если сервис не был обновлён, создаем новый
-            await PriceOnlinesim.create(
-                country=country_id,
-                price=float(service["price"]),
-                name=service["service"],
-                code=service["slug"]
-            )
+    # Дедупликация по названию: прежний код на повторяющемся сервисе просто
+    # делал второй UPDATE, то есть побеждало последнее значение. Сохраняем это.
+    latest_by_name = {}
+    for service in services:
+        latest_by_name[service["service"]] = service
+
+    existing_ids = {
+        row["name"]: row["id"]
+        for row in await PriceOnlinesim.filter(country=country_id).values("id", "name")
+    }
+
+    to_update = []
+    to_create = []
+    for name, service in latest_by_name.items():
+        price = float(service["price"])
+        code = service["slug"]
+
+        row_id = existing_ids.get(name)
+        if row_id is None:
+            to_create.append(PriceOnlinesim(
+                country=country_id, price=price, name=name, code=code,
+            ))
+        else:
+            to_update.append(PriceOnlinesim(
+                id=row_id, country=country_id, price=price, name=name, code=code,
+            ))
+
+    if to_update:
+        await PriceOnlinesim.bulk_update(to_update, fields=["price", "code"])
+
+    if to_create:
+        await PriceOnlinesim.bulk_create(to_create)
 
 
 async def _sync_services_onlinesim_from_price() -> None:
