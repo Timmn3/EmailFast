@@ -27,7 +27,8 @@ from app.services.periodic_tasks import (
     refund_and_cleanup_expired_sms, watch_refund_backlog, check_fraud_balance_discrepancy, auto_fix_users_balance_discrepancy,
     check_free_firstmail, check_free_firstmail_idle, notify_inactive_users, notify_unpaid_sms_payments,
     guard_job, JOB_TIMEOUT_FAST, JOB_TIMEOUT_NORMAL, JOB_TIMEOUT_SLOW, JOB_TIMEOUT_BULK,
-    JOB_TIMEOUT_FIRSTMAIL_IDLE, JOB_TIMEOUT_SMSFAST_PRICES, report_job_durations,
+    JOB_TIMEOUT_FIRSTMAIL_IDLE, JOB_TIMEOUT_SMSFAST_PRICES, JOB_TIMEOUT_SERVICES_SYNC,
+    report_job_durations,
 )
 from app.services.set_bot_commands import set_default_commands
 from app.services import stars_pay
@@ -363,7 +364,7 @@ def set_scheduled_jobs(scheduler):
             scheduler.add_job(guard_job(check_payment_cryptomus, JOB_TIMEOUT_NORMAL), "interval", seconds=90, max_instances=10)
 
             # Добавление\обновление сервисов
-            scheduler.add_job(guard_job(add_services, JOB_TIMEOUT_BULK), "cron", hour=3, minute=0)
+            scheduler.add_job(guard_job(add_services, JOB_TIMEOUT_SERVICES_SYNC), "cron", hour=3, minute=0)
 
             # Проверка арендованных SMS
             scheduler.add_job(guard_job(check_rent_sms, JOB_TIMEOUT_NORMAL), "interval", seconds=55, max_instances=10)
