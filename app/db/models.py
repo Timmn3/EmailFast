@@ -3,7 +3,7 @@ from enum import Enum, IntEnum
 import pytz
 from aiogram import types
 from tortoise.models import Model
-from tortoise import fields, timezone
+from tortoise import fields, timezone, Tortoise
 from loguru import logger
 from typing import Optional
 from tortoise.expressions import Q
@@ -545,43 +545,69 @@ class ServicesSmsActivate(Model):
     @classmethod
     async def normalize_search_names(cls):
         """
-        Приводит все строки search_names к нижнему регистру и записывает обратно в базу данных.
+        Приводит все строки search_names к нижнему регистру.
+
+        Одним UPDATE, а не перезаписью каждой строки по очереди: сервисов
+        несколько тысяч, БД стоит на отдельном сервере (RTT около 40мс), и
+        поштучный проход занимал минуты. Строки, уже приведённые к нижнему
+        регистру, не трогаются.
         """
-        services = await cls.all()
-        for service in services:
-            if service.search_names:
-                normalized_search_names = service.search_names.lower()
-                service.search_names = normalized_search_names
-                await service.save()
+        conn = Tortoise.get_connection("default")
+        table = cls._meta.db_table
+        await conn.execute_query(
+            f'UPDATE "{table}" SET "search_names" = lower("search_names") '
+            f'WHERE "search_names" IS NOT NULL AND "search_names" <> lower("search_names")'
+        )
 
     @classmethod
     async def update_services(cls, services_data: list):
         """
         Обновляет сервисы в базе данных на основе предоставленного списка данных.
 
+        Пишет пачками: прежний вариант на каждый сервис делал SELECT и следом
+        UPDATE или INSERT, то есть около семи тысяч запросов на проход. При RTT
+        до БД порядка 40мс это давало минуты чистых сетевых ожиданий и было
+        основным вкладом в почти часовой проход add_services.
+
         :param services_data: Список словарей с данными для обновления сервисов.
-        :return: Список обновленных объектов сервисов и список id объектов, которые не были найдены.
         """
-        updated_services = []
+        if not services_data:
+            return
 
+        # Дедупликация по code: прежний цикл на повторяющемся коде просто
+        # перезаписывал запись, то есть побеждало последнее значение.
+        latest_by_code = {}
         for data in services_data:
-            # Проверяем, существует ли сервис с таким code
-            existing_service = await cls.get_or_none(code=data['code'])
+            latest_by_code[data['code']] = data
 
-            if existing_service:
-                # Обновляем существующий сервис
-                existing_service.name = data['name']
-                existing_service.search_names = data['search_names']
-                await existing_service.save()
-                updated_services.append(existing_service)
-            else:
-                # Создаем новый объект сервиса, если code не найден
-                new_service = cls(
-                    code=data['code'],
+        existing_ids = {
+            row["code"]: row["id"]
+            for row in await cls.all().values("id", "code")
+        }
+
+        to_update = []
+        to_create = []
+        for code, data in latest_by_code.items():
+            row_id = existing_ids.get(code)
+            if row_id is None:
+                to_create.append(cls(
+                    code=code,
                     name=data['name'],
                     search_names=data['search_names'],
-                )
-                await new_service.save()
+                ))
+            else:
+                to_update.append(cls(
+                    id=row_id,
+                    code=code,
+                    name=data['name'],
+                    search_names=data['search_names'],
+                ))
+
+        if to_update:
+            await cls.bulk_update(to_update, fields=["name", "search_names"])
+
+        if to_create:
+            await cls.bulk_create(to_create)
 
     @classmethod
     async def get_code_by_name(cls, name: str):
