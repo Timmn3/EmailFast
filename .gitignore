@@ -1,0 +1,66 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# Migration files
+migrations/
+
+# Pytest cache
+.pytest_cache/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# Compiled files
+*.pyc
+*.pyo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Certificates and keys
+*.crt
+*.key
+
+# Environment and config files (if not to be shared)
+.env
+config.yaml
+
+# Other temporary files
+*.tmp
+*.swp
+
+# Exclude this file itself
+
+# SSH keys
+ssh-copy-id*
+
+# Aerich config
+aerich.ini
+
+test/
+server_data/
+CLAUDE.md
+
+neofetch/
+settings.ini
+cookies*
+*.session
+state/
+.bashrc
+*.pem
+id_rsa
+!.env.example
